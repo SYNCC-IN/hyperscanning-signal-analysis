@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, sosfiltfilt, decimate, hilbert, welch
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 from plotly.subplots import make_subplots  # TODO czy trzeba mieszać plotly i matplotlib?
 from scipy.stats import zscore
 
@@ -91,7 +92,7 @@ def clean_data_with_ICA(data, selected_channels, event):
     ica = FastICA(n_components=len(selected_channels), max_iter=1000, whiten="unit-variance")
     S_ = ica.fit_transform(data.T)  # get components
 
-    fig, ax = plt.subplots(len(selected_channels), 1, figsize=(12, 8), sharex=True)
+    _, ax = plt.subplots(len(selected_channels), 1, figsize=(12, 8), sharex=True)
     for i, ch in enumerate(selected_channels):
         ax[i].plot(S_[:, i])
         ax[i].set_ylabel(ch)
@@ -108,7 +109,7 @@ def clean_data_with_ICA(data, selected_channels, event):
 
 ### PLOTS ####
 
-def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filtered EEG Channels', renderer='auto'):
+def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filtered EEG Channels', renderer='auto'):
     """
     Plot the filtered EEG channels with events highlighted using Plotly.
     Replicates the matplotlib version with vertical offsets in a single plot.
@@ -134,8 +135,8 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
 
     offset = 0
     spacing = 200  # vertical spacing between channels
-    yticks = []
-    yticklabels = []
+    y_ticks = []
+    y_tick_labels = []
 
     # Plot each channel with vertical offset
     for i, ch in enumerate(selected_channels):
@@ -151,12 +152,12 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
                 y=x_ch + offset,
                 mode='lines',
                 name=ch,
-                line=dict(width=1),
+                line={'width': 1},
                 showlegend=True
             ))
 
-            yticks.append(offset)
-            yticklabels.append(ch)
+            y_ticks.append(offset)
+            y_tick_labels.append(ch)
             offset += spacing
 
     # Add event highlights as vertical rectangles spanning all channels
@@ -173,19 +174,15 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
                 line_width=0,
                 annotation_text=f'{event} (60s)',
                 annotation_position="top left",
-                annotation=dict(
-                    font=dict(size=10, color=colors[color_idx]),
-                    bgcolor="white",
-                    bordercolor=colors[color_idx],
-                    borderwidth=1
-                )
+                annotation={'font': {'size': 10, 'color': colors[color_idx]}, 'bgcolor': "white",
+                            'bordercolor': colors[color_idx], 'borderwidth': 1}
             )
             if color_idx not in event_colors_used:
                 # Add invisible trace for legend
                 fig.add_trace(go.Scatter(
                     x=[None], y=[None],
                     mode='markers',
-                    marker=dict(size=10, color=colors[color_idx]),
+                    marker={'size': 10, 'color': colors[color_idx]},
                     name=f'{event} Events',
                     showlegend=True
                 ))
@@ -193,53 +190,27 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
 
     # Update layout to match matplotlib appearance with enhanced interactivity
     fig.update_layout(
-        title=dict(
-            text=title,
-            x=0.5,
-            font=dict(size=16)
-        ),
+        title={'text': title, 'x': 0.5, 'font': {'size': 16}},
         xaxis_title="Time [s]",
         yaxis_title="EEG Channels",
-        yaxis=dict(
-            tickvals=yticks,
-            ticktext=yticklabels,
-            showgrid=False,
-            zeroline=False
-        ),
-        xaxis=dict(
-            showgrid=True,
-            gridwidth=1,
-            gridcolor='lightgray'
-        ),
+        yaxis={'tickvals': y_ticks, 'ticktext': y_tick_labels, 'showgrid': False, 'zeroline': False},
+        xaxis={'showgrid': True, 'gridwidth': 1, 'gridcolor': 'lightgray'},
         height=600,
         width=1200,
         showlegend=True,
-        legend=dict(
-            orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.01,
-            font=dict(size=10)
-        ),
+        legend={'orientation': "v", 'yanchor': "top", 'y': 1, 'xanchor': "left", 'x': 1.01, 'font': {'size': 10}},
         # hovermode='x unified',
         plot_bgcolor='white'
     )
 
     # Add range selector for time navigation
     fig.update_layout(
-        xaxis=dict(
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=30, label="30s", step="second", stepmode="backward"),
-                    dict(count=60, label="1m", step="second", stepmode="backward"),
-                    dict(count=300, label="5m", step="second", stepmode="backward"),
-                    dict(step="all")
-                ])
-            ),
-            rangeslider=dict(visible=True, thickness=0.05),
-            type="linear"
-        )
+        xaxis={'rangeselector': {'buttons': [
+            {'count': 30, 'label': "30s", 'step': "second", 'stepmode': "backward"},
+            {'count': 60, 'label': "1m", 'step': "second", 'stepmode': "backward"},
+            {'count': 300, 'label': "5m", 'step': "second", 'stepmode': "backward"},
+            {'step': "all"}
+        ]}, 'rangeslider': {'visible': True, 'thickness': 0.05}, 'type': "linear"}
     )
 
     # Show the figure based on renderer preference
@@ -278,21 +249,19 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
             print("Open this file in your web browser to view the interactive plot.")
 
 
-def overlay_EEG_channels_hyperscanning(data_ch, data_cg, all_channels, event, selected_channels_ch,
+def overlay_eeg_channels_hyperscanning(data_ch, data_cg, all_channels, event, selected_channels_ch,
                                        selected_channels_cg, title='Filtered EEG Channels - Hyperscanning'):
     """
     Overlay EEG channels for child and caregiver during a specific event.
     """
-    fig, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    _, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
     ax[0].set_title(f'Child EEG channels for {event}')
     ax[1].set_title(f'Caregiver EEG channels for {event}')
     for i, ch in enumerate(selected_channels_ch):
         if ch in all_channels:
-            # idx_ch = data['channels'][ch]
             ax[0].plot(data_ch[i, :], label=ch)
     for i, ch in enumerate(selected_channels_cg):
         if ch in all_channels:
-            # idx_cg = data['channels'][ch]
             ax[1].plot(data_cg[i, :], label=ch)
     ax[0].set_ylabel('Amplitude [uV]')
     ax[1].set_ylabel('Amplitude [uV]')
@@ -303,7 +272,7 @@ def overlay_EEG_channels_hyperscanning(data_ch, data_cg, all_channels, event, se
     plt.tight_layout()
 
 
-def overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event, selected_channels_ch,
+def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event, selected_channels_ch,
                                           selected_channels_cg, title='Filtered EEG Channels - Hyperscanning',
                                           renderer='auto'):
     """
@@ -368,33 +337,21 @@ def overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
                     y=data_cg[i, :],
                     mode='lines',
                     name=ch,
-                    line=dict(color=colors[color_idx], width=1.5),
+                    line={'color': colors[color_idx], 'width': 1.5},
                     legendgroup='caregiver',
-                    legendgrouptitle_text="Caregiver Channels"
+                    legendgrouptitle={'text': "Caregiver Channels"}
                 ),
                 row=2, col=1
             )
 
     # Update layout
     fig.update_layout(
-        title=dict(
-            text=title,
-            x=0.5,
-            font=dict(size=16)
-        ),
+        title={'text': title, 'x': 0.5, 'font': {'size': 16}},
         height=800,
         width=1200,
         showlegend=True,
-        legend=dict(
-            orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.01,
-            font=dict(size=10),
-            groupclick="toggleitem"
-        ),
-        # hovermode='x unified',
+        legend={'orientation': "v", 'yanchor': "top", 'y': 1, 'xanchor': "left", 'x': 1.01, 'font': {'size': 10},
+                'groupclick': "toggleitem"},
         plot_bgcolor='white'
     )
 
@@ -409,38 +366,25 @@ def overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 
     # Show the figure based on renderer preference
     if renderer == 'html':
-        # Save as HTML file
-        import os
-        html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}_{event}.html"
-        fig.write_html(html_file)
-        print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-        print("Open this file in your web browser to view the interactive plot.")
+        save_figure_to_html(fig, title, event)
     elif renderer == 'auto':
         # Try different renderers in order of preference
         try:
             fig.show(renderer="browser")
-        except:
+        except Exception as e:
+            print(f"Failed to display with renderer 'browser': {e}")
             try:
                 fig.show(renderer="notebook")
-            except:
-                # Fallback: save as HTML file
-                import os
-                html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}_{event}.html"
-                fig.write_html(html_file)
-                print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-                print("Open this file in your web browser to view the interactive plot.")
+            except Exception as e:
+                print(f"Failed to display with renderer 'notebook': {e}")
+                save_figure_to_html(fig, title, event)
     else:
         # Use specified renderer
         try:
             fig.show(renderer=renderer)
         except Exception as e:
             print(f"Failed to display with renderer '{renderer}': {e}")
-            # Fallback to HTML
-            import os
-            html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}_{event}.html"
-            fig.write_html(html_file)
-            print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-            print("Open this file in your web browser to view the interactive plot.")
+            save_figure_to_html(fig, title, event)
 
 
 # ==================================
@@ -449,6 +393,13 @@ def overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 # ==================================
 # ==================================
 # ==================================
+
+def save_figure_to_html(fig, title, event):
+    html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}_{event}.html"
+    fig.write_html(html_file)
+    print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
+    print("Open this file in your web browser to view the interactive plot.")
+
 
 def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_channels_cg, events, event):
     # design a bandpass filter for the theta band
@@ -630,16 +581,16 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
         data_ch = get_data_for_selected_channel_and_event(filtered_data, selected_channels_ch, events, event)
         data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
 
-        if clean_with_ica: # clean EEG data with ICA separately for child and caregiver EEG channels
+        if clean_with_ica:  # clean EEG data with ICA separately for child and caregiver EEG channels
             data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
             data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
 
         # plot the data for the child and caregiver EEG channels
-        overlay_EEG_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
+        overlay_eeg_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
                                            selected_channels_cg, title='Filtered EEG Channels - Hyperscanning')
 
         # Also plot using Plotly for interactive visualization
-        overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
+        overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
                                               selected_channels_cg,
                                               title='Filtered EEG Channels - Hyperscanning (Plotly)')
 
@@ -653,6 +604,7 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
         spectra = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
         mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
         plt.show()
+
 
 def eeg_hrv_dtf(filtered_data, events, selected_events):
     # Something interesting seems to happen in the theta band in the Fz electrode of both child and caregiver

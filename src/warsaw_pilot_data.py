@@ -1,5 +1,5 @@
 from src.DataLoader import DataLoader
-from utils import debug_plot, hrv_dtf, eeg_dtf, eeg_hrv_dtf, plot_EEG_channels_pl
+from utils import debug_plot, hrv_dtf, eeg_dtf, eeg_hrv_dtf, plot_eeg_channels_pl
 
 if __name__ == "__main__":
     folder = '../DATA/W_010/'
@@ -19,9 +19,9 @@ if __name__ == "__main__":
 
     if debug_PLOT:
         debug_plot(data, events)
-        plot_EEG_channels_pl(data, events, data.channel_names['EEG']['ch'],
+        plot_eeg_channels_pl(data, events, data.channel_names['EEG']['ch'],
                              title='Filtered Child EEG Channels (offset for clarity)')
-        plot_EEG_channels_pl(data, events, data.channel_names['EEG']['cg'],
+        plot_eeg_channels_pl(data, events, data.channel_names['EEG']['cg'],
                              title='Filtered Caregiver EEG Channels (offset for clarity)')
 
     if HRV_DTF:

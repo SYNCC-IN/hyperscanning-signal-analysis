@@ -32,9 +32,9 @@ import networkx as nx
 
 
 def count_corr(x, ip, iwhat):
-    '''
-    Internal procedure 
-    '''
+    """
+    Internal procedure
+    """
     sdt = np.shape(x)
     m = sdt[0]
     n = sdt[1]
@@ -88,7 +88,7 @@ def count_corr(x, ip, iwhat):
 
 def ar_coeff(data, p=5):
     """
-    Estimate MVAR coefficients for multivariate / multitrial data.
+    Estimate MVAR coefficients for multivariate / multi-trial data.
 
     Parameters:
     data : np.ndarray
@@ -97,7 +97,7 @@ def ar_coeff(data, p=5):
         Model order.
 
     Returns:
-    coefficients : np.ndarray
+    coeffs : np.ndarray
         AR coefficients with shape (channels, channels, p).
     variance : np.ndarray
         Residual covariance matrix with shape (channels, channels).
@@ -118,47 +118,48 @@ def ar_coeff(data, p=5):
     variance = r_zero - x.dot(r_right)
 
     # Reshape coefficients into (channels, channels, p) to match previous behavior
-    coefficients = x.reshape(n_channels, p, n_channels).transpose((0, 2, 1))
-    return coefficients, variance
+    coeffs = x.reshape(n_channels, p, n_channels).transpose((0, 2, 1))
+    return coeffs, variance
 
 
-def mvar_H(Ar, f, Fs):
+def mvar_transfer_function(Ar, freqs, fs):
     """
     Calculate the transfer function H from multivariate autoregressive coefficients Ar.
     
     Parameters:
     Ar : numpy.ndarray
         AR coefficient matrix with shape (chan, chan, p), where p is model order.
-    f : numpy.ndarray
+    freqs : numpy.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
 
     Returns:
-    H : numpy.ndarray
-        Transfer function matrix with shape (chan, chan, len(f)).
+    transfer_function_matrix : numpy.ndarray
+        Transfer function matrix with shape (chan, chan, len(freqs)).
     A_out : numpy.ndarray
-        Frequency-dependent AR matrix with shape (chan, chan, len(f)).
+        Frequency-dependent AR matrix with shape (chan, chan, len(freqs)).
     """
     p = Ar.shape[2]
-    Nf = len(f)
+    Nf = len(freqs)
     chan = Ar.shape[0]
 
-    H = np.zeros((chan, chan, Nf), dtype=complex)
+    transfer_function_matrix = np.zeros((chan, chan, Nf), dtype=complex)
     A_out = np.zeros((chan, chan, Nf), dtype=complex)
 
     z = np.zeros((p, Nf), dtype=complex)
     for m in range(1, p + 1):
-        z[m - 1, :] = np.exp(-m * 2 * np.pi * 1j * f / Fs)
+        z[m - 1, :] = np.exp(-m * 2 * np.pi * 1j * freqs / fs)
 
     for fi in range(Nf):
         A = np.eye(chan, dtype=complex)
         for m in range(p):
             A -= Ar[:, :, m] * z[m, fi].item()
-        H[:, :, fi] = np.linalg.inv(A)
+        transfer_function_matrix[:, :, fi] = np.linalg.inv(A)
         A_out[:, :, fi] = A
 
-    return H, A_out
+    return transfer_function_matrix, A_out
+
 
 def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
@@ -167,7 +168,7 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     Parameters:
     signals : np.ndarray
         Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
@@ -189,7 +190,7 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         print('Using provided model order: p = ', str(p_opt))
     # Estimate AR coefficients and residual variance
     Ar, V = ar_coeff(signals, p_opt)
-    H, _ = mvar_H(Ar, f, Fs)
+    H, _ = mvar_transfer_function(Ar, f, Fs)
     N_chan = signals.shape[0]
     N_f = f.shape[0]
     S_multivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the multivariate spectrum
@@ -198,13 +199,14 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
 
     return S_multivariate
 
+
 def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comment=None):
     """
     Compute the directed transfer function (DTF) for the multivariate case.
     Parameters:
     signals : np.ndarray    
         Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
@@ -224,7 +226,7 @@ def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comm
     else:
         print(f'Using provided model order: p = {p_opt}')
     Ar, _ = ar_coeff(signals, p_opt)
-    H, _ = mvar_H(Ar, f, Fs)
+    H, _ = mvar_transfer_function(Ar, f, Fs)
     DTF = np.abs(H) ** 2
 
     return DTF
@@ -239,8 +241,8 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     normalizes by frequency-specific inflows, ffDTF normalizes by the sum over all frequencies.
     
     Mathematical formula:
-    Standard DTF: DTF_ij(f) = |H_ij(f)|² / Σ_k |H_ik(f)|²
-    Full-frequency DTF: ffDTF_ij(f) = |H_ij(f)|² / Σ_f Σ_k |H_ik(f)|²
+    Standard DTF: DTF_ij(freqs) = |H_ij(freqs)|² / Σ_k |H_ik(freqs)|²
+    Full-frequency DTF: ffDTF_ij(freqs) = |H_ij(freqs)|² / Σ_f Σ_k |H_ik(freqs)|²
     
     The normalization takes into account inflows to channel i across the entire frequency range,
     allowing for more meaningful comparison of information flow at different frequencies.
@@ -254,7 +256,7 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     Parameters:
     signals : np.ndarray
         Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
@@ -343,7 +345,7 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     or indirect pathways.
     
     Mathematical formula:
-    dDTF_ij(f) = DTF_ij(f) × |partial_coherence_ij(f)|
+    dDTF_ij(freqs) = DTF_ij(freqs) × |partial_coherence_ij(freqs)|
     
     Reference:
     Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003). 
@@ -354,7 +356,7 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     Parameters:
     signals : np.ndarray    
         Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
@@ -392,11 +394,11 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     proper normalization using the noise covariance structure.
     
     Mathematical formula:
-    GPDC_ij(f) = |A_ij(f)|/σ_i / sqrt(Σ_k (|A_kj(f)|² / σ²_k))
+    GPDC_ij(freqs) = |A_ij(freqs)|/σ_i / sqrt(Σ_k (|A_kj(freqs)|² / σ²_k))
 
     Where:
-    - A(f) is the frequency domain AR coefficient matrix (inverse of H)
-    - |A_ij(f)| is the absolute value of the AR coefficient from source channel i to target channel j at frequency f
+    - A(freqs) is the frequency domain AR coefficient matrix (inverse of H)
+    - |A_ij(freqs)| is the absolute value of the AR coefficient from source channel i to target channel j at frequency freqs
     - σ_i is the noise standard deviation for source channel i (sqrt of diagonal elements of noise covariance matrix V)
     - σ²_k is the noise variance for source channel k (diagonal elements of noise covariance matrix V)
     
@@ -416,7 +418,7 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     Parameters:
     signals : np.ndarray    
         Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     fs : float
         Sampling frequency.
@@ -439,7 +441,7 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
 
     # Estimate AR coefficients and residual variance
     Ar, V = ar_coeff(signals, p_opt)
-    _, A = mvar_H(Ar, f, Fs)  # A is the frequency domain AR matrix
+    _, A = mvar_transfer_function(Ar, f, Fs)  # A is the frequency domain AR matrix
 
     N_chan, _, N_f = A.shape
     GPDC = np.zeros((N_chan, N_chan, N_f))
@@ -450,10 +452,10 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     # Compute GPDC 
     for i in range(N_chan):  # source
         for j in range(N_chan):  # target
-            # Numerator: |A_ij(f)| / σ_i
+            # Numerator: |A_ij(freqs)| / σ_i
             numerator = np.abs(A[i, j, :]) / np.sqrt(sigma_squared[i])
 
-            # Denominator: sqrt(Σ_k (|A_kj(f)|² / σ²_k))
+            # Denominator: sqrt(Σ_k (|A_kj(freqs)|² / σ²_k))
             denominator = np.sqrt(np.sum(np.abs(A[:, j, :]) ** 2 / sigma_squared[:, np.newaxis], axis=0))
 
             # Avoid division by zero
@@ -471,10 +473,10 @@ def mvar_plot(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linea
 
     Parameters:
     onDiag : np.ndarray
-        Auto components (shape: N_chan x N_chan x len(f))
+        Auto components (shape: N_chan x N_chan x len(freqs))
     offDiag : np.ndarray
-        Cross components (shape: N_chan x N_chan x len(f))
-    f : np.ndarray
+        Cross components (shape: N_chan x N_chan x len(freqs))
+    freqs : np.ndarray
         Frequency vector
     xlab : str
         Label for x-axis
@@ -540,10 +542,10 @@ def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale=
 
     Parameters:
     onDiag : np.ndarray
-        Auto components (shape: N_chan x N_chan x len(f))
+        Auto components (shape: N_chan x N_chan x len(freqs))
     offDiag : np.ndarray
-        Cross components (shape: N_chan x N_chan x len(f))
-    f : np.ndarray
+        Cross components (shape: N_chan x N_chan x len(freqs))
+    freqs : np.ndarray
         Frequency vector
     xlab : str
         Label for x-axis
@@ -681,7 +683,7 @@ def graph_plot(connectivity_matrix, ax, f, f_range, chan_names, title):
         Connectivity matrix with complex values. e.g. Directed Transfer Function (DTF).
     ax : matplotlib.axes.Axes
         Axes on which to plot the graph.
-    f : np.ndarray
+    freqs : np.ndarray
         Frequency vector.
     f_range : tuple
         Frequency range for the plot (min, max).
