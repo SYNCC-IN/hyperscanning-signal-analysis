@@ -10,7 +10,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots  # TODO czy trzeba mieszać plotly i matplotlib?
 from scipy.stats import zscore
 
-from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense
+from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense, graph_plot
 
 
 # przeniesiona do DataLoader
@@ -937,4 +937,31 @@ def eeg_dtf(filtered_data, events, selected_events):
         DTF = DTF_multivariate(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='caregiver')
         S = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
         mvar_plot_dense(S, DTF, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
+        plt.show()
+
+def eeg_hrv_dtf(filtered_data, events, selected_events):
+    # Something interesting seems to happen in the theta band in the Fz electrode of both child and caregiver
+    # Let's filter the channel Fz in the theta band, get the instantaneous amplitude of the activity and evaluate DTF for the system consisting of
+    # HRV and Fz theta instantaneous amplitude of both members
+
+    f = np.arange(0.01, 1, 0.01)  # frequency vector for the DTF estimation
+    selected_channels_ch = ['Fz']
+    selected_channels_cg = ['Fz_cg']
+
+    for event in selected_events:
+        DTF_data = eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch,
+                                             selected_channels_cg, events, event)
+
+        # estimate DTF for the system consisting of HRV and Fz theta amplitude of both child and caregiver
+        DTF = DTF_multivariate(DTF_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+        S = multivariate_spectra(DTF_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+        """Let's  plot the results in the table form."""
+        ChanNames = ['Child IBI', 'Caregiver IBI', 'Child Fz theta amp', 'Caregiver Fz_cg theta amp']
+        mvar_plot(S, DTF, f, 'From ', 'To ', ChanNames, 'DTF ' + event, 'sqrt')
+        plt.show()
+
+        # Finally let's plot the DTF results in the graph form using graph_plot  from mtmvar
+        fig, ax = plt.subplots(figsize=(10, 8))
+        graph_plot(connectivity_matrix=DTF, ax=ax, f=f, f_range=[0.2, 0.6], ChanNames=ChanNames,
+                   title='DTF ' + event)
         plt.show()
