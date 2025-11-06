@@ -126,7 +126,7 @@ def mvar_H(Ar, f, Fs):
         AR coefficient matrix with shape (chan, chan, p), where p is model order.
     f : numpy.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
 
     Returns:
@@ -165,7 +165,7 @@ def bivariate_spectra(signals, f, Fs, max_p, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -212,7 +212,7 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -251,7 +251,7 @@ def DTF_bivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -290,7 +290,7 @@ def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comm
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -340,7 +340,7 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -440,7 +440,7 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -502,7 +502,7 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Input signals of shape (N_chan, N_samp).
     f : np.ndarray
         Frequency vector.
-    Fs : float
+    fs : float
         Sampling frequency.
     max_p : int
         Maximum model order.
@@ -752,12 +752,12 @@ def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
 
 
 # Compute linewidths
-def get_linewidths(G):
-    weights = np.array([d['weight'] for u, v, d in G.edges(data=True)])
+def get_linewidths(graph):
+    weights = np.array([d['weight'] for u, v, d in graph.edges(data=True)])
     return 5 * weights / weights.max()
 
 
-def graph_plot(connectivity_matrix, ax, f, f_range, ChanNames, title):
+def graph_plot(connectivity_matrix, ax, f, f_range, chan_names, title):
     """
     Plot connectivity matrix as a graph.
     Parameters:
@@ -789,16 +789,16 @@ def graph_plot(connectivity_matrix, ax, f, f_range, ChanNames, title):
     # Remove self-loops by setting diagonal to zero
     np.fill_diagonal(adj, 0)
     # Create directed graphs
-    G = nx.from_numpy_array(adj, create_using=nx.DiGraph)
+    graph = nx.from_numpy_array(adj, create_using=nx.DiGraph)
     # Plotting
-    pos = nx.spring_layout(G)  # use the same layout for both
-    # Map ChanNames to node labels
-    labels = {i: ChanNames[i] for i in range(len(ChanNames))}
-    nx.draw(G, pos, ax=ax, with_labels=True, labels=labels, arrows=True,
-            width=get_linewidths(G), node_size=500,
+    pos = nx.spring_layout(graph)  # use the same layout for both
+    # Map chan_names to node labels
+    labels = {i: chan_names[i] for i in range(len(chan_names))}
+    nx.draw(graph, pos, ax=ax, with_labels=True, labels=labels, arrows=True,
+            width=get_linewidths(graph), node_size=500,
             arrowstyle='->',
             arrowsize=35,
             connectionstyle='arc3,rad=0.2')
     ax.set_title(title)
 
-    return G
+    return graph

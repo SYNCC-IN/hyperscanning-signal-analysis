@@ -18,18 +18,18 @@ def load_warsaw_pilot_data(folder, file, plot=False):
     with open(os.path.join(folder, f"{file}.xml")) as fd:
         xml = xmltodict.parse(fd.read())
 
-    N_ch = int(xml['rs:rawSignal']['rs:channelCount'])
-    Fs_EEG = int(float(xml['rs:rawSignal']['rs:samplingFrequency']))
-    ChanNames = xml['rs:rawSignal']['rs:channelLabels']['rs:label']
+    n_ch = int(xml['rs:rawSignal']['rs:channelCount'])
+    fs_eeg = int(float(xml['rs:rawSignal']['rs:samplingFrequency']))
+    chan_names = xml['rs:rawSignal']['rs:channelLabels']['rs:label']
     channels = {}
-    for i, name in enumerate(ChanNames):
+    for i, name in enumerate(chan_names):
         channels[name] = i
-    data = np.fromfile(os.path.join(folder, f"{file}.raw"), dtype='float32').reshape((-1, N_ch))
+    data = np.fromfile(os.path.join(folder, f"{file}.raw"), dtype='float32').reshape((-1, n_ch))
     data = data.T
 
     if plot:
-        ECG_CH = data[ChanNames.index('EKG1'), :] - data[ChanNames.index('EKG2'), :]
-        ECG_CG = data[ChanNames.index('EKG1_cg'), :] - data[ChanNames.index('EKG2_cg'), :]
+        ECG_CH = data[chan_names.index('EKG1'), :] - data[chan_names.index('EKG2'), :]
+        ECG_CG = data[chan_names.index('EKG1_cg'), :] - data[chan_names.index('EKG2_cg'), :]
         fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
         ax[0].plot(ECG_CH, label='Child ECG')
         ax[1].plot(ECG_CG, label='Caregiver ECG')
@@ -37,8 +37,8 @@ def load_warsaw_pilot_data(folder, file, plot=False):
         plt.show()
     output = {
         'data': data,
-        'Fs_EEG': Fs_EEG,
-        'ChanNames': ChanNames,
+        'Fs_EEG': fs_eeg,
+        'chan_names': chan_names,
         'channels': channels
     }
     return output
@@ -49,7 +49,7 @@ def scan_for_events(data, threshold=20000, plot=True):
     '''Scan for events in the diode signal and plot them if required.
     Args:
         diode (np.ndarray): Diode signal.
-        Fs_EEG (int): Sampling frequency of the EEG data.
+        fs_eeg (int): Sampling frequency of the EEG data.
         plot (bool): Whether to plot the diode signal and detected events.
     Returns:
         events (dict): Dictionary containing the start and end time of detected events measured in seconds from the start of the recording. The expected events are:
@@ -61,7 +61,7 @@ def scan_for_events(data, threshold=20000, plot=True):
     events = {'Talk_1': None, 'Talk_2': None, 'Movie_1': None, 'Movie_2': None, 'Movie_3': None}
     diode_idx = data['channels']['Diode']
     diode = data['data'][diode_idx, :]
-    Fs_EEG = data['Fs_EEG']
+    fs_eeg = data['Fs_EEG']
     x = np.zeros(diode.shape)
     d = diode.copy()
     d /= threshold
@@ -89,40 +89,40 @@ def scan_for_events(data, threshold=20000, plot=True):
     i = 0
     while i < len(down):
         if down[i] == 1:
-            s1 = int(np.sum(up[i + int(0.5 * Fs_EEG) - 2 * dt: i + int(0.5 * Fs_EEG) + 2 * dt]))
-            s2 = int(np.sum(up[i + int(1.0 * Fs_EEG) - 3 * dt: i + int(1.0 * Fs_EEG) + 3 * dt]))
-            s3 = int(np.sum(up[i + int(1.5 * Fs_EEG) - 4 * dt: i + int(1.5 * Fs_EEG) + 4 * dt]))
-            s4 = int(np.sum(up[i + int(2.0 * Fs_EEG) - 5 * dt: i + int(2.0 * Fs_EEG) + 5 * dt]))
-            s5 = int(np.sum(up[i + int(2.5 * Fs_EEG) - 6 * dt: i + int(2.5 * Fs_EEG) + 6 * dt]))
+            s1 = int(np.sum(up[i + int(0.5 * fs_eeg) - 2 * dt: i + int(0.5 * fs_eeg) + 2 * dt]))
+            s2 = int(np.sum(up[i + int(1.0 * fs_eeg) - 3 * dt: i + int(1.0 * fs_eeg) + 3 * dt]))
+            s3 = int(np.sum(up[i + int(1.5 * fs_eeg) - 4 * dt: i + int(1.5 * fs_eeg) + 4 * dt]))
+            s4 = int(np.sum(up[i + int(2.0 * fs_eeg) - 5 * dt: i + int(2.0 * fs_eeg) + 5 * dt]))
+            s5 = int(np.sum(up[i + int(2.5 * fs_eeg) - 6 * dt: i + int(2.5 * fs_eeg) + 6 * dt]))
             # plt.plot(x, 'b'), plt.plot(i,x[i],'bo')
             if s1 == 1 and s2 == 0 and s3 == 0 and s4 == 0 and s5 == 0:
-                print(f"Movie 1 starts at {i / Fs_EEG:.2f} seconds")
-                events['Movie_1'] = i / Fs_EEG
+                print(f"Movie 1 starts at {i / fs_eeg:.2f} seconds")
+                events['Movie_1'] = i / fs_eeg
                 if plot:
                     plt.plot(x, 'b'), plt.plot(i, x[i], 'ro')
-                i += int(2.5 * Fs_EEG)
+                i += int(2.5 * fs_eeg)
             elif s1 == 1 and s2 == 0 and s3 == 1 and s4 == 0 and s5 == 0:
-                print(f"Movie 2 starts at {i / Fs_EEG:.2f} seconds")
-                events['Movie_2'] = i / Fs_EEG
+                print(f"Movie 2 starts at {i / fs_eeg:.2f} seconds")
+                events['Movie_2'] = i / fs_eeg
                 if plot:
                     plt.plot(x, 'b'), plt.plot(i, x[i], 'go')
-                i += int(2.5 * Fs_EEG)
+                i += int(2.5 * fs_eeg)
             elif s1 == 1 and s2 == 0 and s3 == 1 and s4 == 0 and s5 == 1:
-                print(f"Movie 3 starts at {i / Fs_EEG:.2f} seconds")
-                events['Movie_3'] = i / Fs_EEG
+                print(f"Movie 3 starts at {i / fs_eeg:.2f} seconds")
+                events['Movie_3'] = i / fs_eeg
                 if plot:
                     plt.plot(x, 'b'), plt.plot(i, x[i], 'yo')
-                i += int(2.5 * Fs_EEG)
+                i += int(2.5 * fs_eeg)
             elif s1 == 0 and s2 == 1 and s3 == 0 and s4 == 0 and s5 == 0:
                 if events['Talk_1'] is None:
-                    print(f"Talk 1 starts at {i / Fs_EEG:.2f} seconds")
-                    events['Talk_1'] = i / Fs_EEG
+                    print(f"Talk 1 starts at {i / fs_eeg:.2f} seconds")
+                    events['Talk_1'] = i / fs_eeg
                     if plot:
                         plt.plot(x, 'b'), plt.plot(i, x[i], 'co')
-                    i += int(2.5 * Fs_EEG)
+                    i += int(2.5 * fs_eeg)
                 else:
-                    print(f"Talk 2 starts at {i / Fs_EEG:.2f} seconds")
-                    events['Talk_2'] = i / Fs_EEG
+                    print(f"Talk 2 starts at {i / fs_eeg:.2f} seconds")
+                    events['Talk_2'] = i / fs_eeg
                     if plot:
                         plt.plot(x, 'b'), plt.plot(i, x[i], 'mo')
                         plt.show()
@@ -152,7 +152,7 @@ def interpolate_IBI_signals(ECG, Fs_ECG, Fs_IBI=4, plot=False, label=''):
     return IBI_interp, t_ECG
 
 
-def get_IBI_signal_from_ECG_for_selected_event(filtered_data, events, selected_event, plot=False, label=''):
+def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event, plot=False, label=''):
     '''Get IBI signal from ECG data for a specific event.
     Args:
         filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
@@ -169,14 +169,14 @@ def get_IBI_signal_from_ECG_for_selected_event(filtered_data, events, selected_e
     if selected_event not in events:
         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
         # extract the ECG signal for the selected event
-    IBI_ch_interp = filtered_data['IBI_ch_interp']
-    IBI_cg_interp = filtered_data['IBI_cg_interp']
-    t_IBI = filtered_data['t_IBI']
+    ibi_ch_interp = filtered_data['IBI_ch_interp']
+    ibi_cg_interp = filtered_data['IBI_cg_interp']
+    t_ibi = filtered_data['t_IBI']
     t_idx = events[selected_event]  # get the time of the event in the data
     if t_idx is not None:
         # extract 60 seconds after the event
         # find the index in t_IBI
-        start_idx = np.searchsorted(t_IBI, t_idx)  # find the index in t_IBI    
+        start_idx = np.searchsorted(t_ibi, t_idx)  # find the index in t_IBI
         end_idx = start_idx + int(60 * filtered_data['Fs_IBI'])  # extract 60 seconds after the event
         # check if the start and end indices are within the bounds of the data
         if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
@@ -185,11 +185,11 @@ def get_IBI_signal_from_ECG_for_selected_event(filtered_data, events, selected_e
         raise ValueError(f"Event '{selected_event}' is None.")
 
     # cut the IBI signal of the selected event
-    IBI_ch_interp = IBI_ch_interp[start_idx:end_idx]
-    IBI_cg_interp = IBI_cg_interp[start_idx:end_idx]
-    t_IBI = t_IBI[start_idx:end_idx]
+    ibi_ch_interp = ibi_ch_interp[start_idx:end_idx]
+    ibi_cg_interp = ibi_cg_interp[start_idx:end_idx]
+    t_ibi = t_ibi[start_idx:end_idx]
 
-    return IBI_ch_interp, IBI_cg_interp, t_IBI
+    return ibi_ch_interp, ibi_cg_interp, t_ibi
 
 
 def get_data_for_selected_channel_and_event(filtered_data, selected_channels, events, selected_event):
@@ -787,7 +787,7 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     data_cg_theta_amp = zscore(data_cg_theta_amp)  # normalize the theta amplitude signals
 
     # Now we have the theta amplitude signals for both child and caregiver, let's get the IBI signals for the selected event
-    IBI_ch_interp, IBI_cg_interp, t_IBI = get_IBI_signal_from_ECG_for_selected_event(filtered_data, events, event,
+    IBI_ch_interp, IBI_cg_interp, t_IBI = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, event,
                                                                                      plot=False,
                                                                                      label='IBI signals for ' + event)
     # zscore the IBI signals
@@ -882,7 +882,7 @@ def hrv_dtf(filtered_data, events, selected_events):
         if event in events:
             # extract 60 seconds after the event
             data = np.zeros((2, 60 * filtered_data['Fs_IBI']))
-            IBI_ch_interp, IBI_cg_interp, t_IBI = get_IBI_signal_from_ECG_for_selected_event(filtered_data, events,
+            IBI_ch_interp, IBI_cg_interp, t_IBI = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events,
                                                                                              event, plot=False,
                                                                                              label='IBI signals for ' + event)
             # zscore the IBI signals
@@ -898,7 +898,7 @@ def hrv_dtf(filtered_data, events, selected_events):
     plt.show()
 
 
-def eeg_dtf(filtered_data, events, selected_events):
+def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
     # for each event extract the EEG signals
     # of child and of the caregiver
     # costruct a numpy data array with the shape (N_samples, 19)
@@ -914,10 +914,9 @@ def eeg_dtf(filtered_data, events, selected_events):
         data_ch = get_data_for_selected_channel_and_event(filtered_data, selected_channels_ch, events, event)
         data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
 
-        # ICA = True # if True, apply ICA to the EEG data to remove artifacts
-        # if ICA: # clean EEG data with ICA separately for child and caregiver EEG channels
-        #     data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
-        #     data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
+        if clean_with_ica: # clean EEG data with ICA separately for child and caregiver EEG channels
+            data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
+            data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
 
         # plot the data for the child and caregiver EEG channels
         overlay_EEG_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
@@ -962,6 +961,6 @@ def eeg_hrv_dtf(filtered_data, events, selected_events):
 
         # Finally let's plot the DTF results in the graph form using graph_plot  from mtmvar
         fig, ax = plt.subplots(figsize=(10, 8))
-        graph_plot(connectivity_matrix=DTF, ax=ax, f=f, f_range=[0.2, 0.6], ChanNames=ChanNames,
+        graph_plot(connectivity_matrix=DTF, ax=ax, f=f, f_range=[0.2, 0.6], chan_names=ChanNames,
                    title='DTF ' + event)
         plt.show()

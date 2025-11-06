@@ -10,33 +10,33 @@ import joblib
 
 class DataLoader:
 
-    def __init__(self, ID, plot_flag):
+    def __init__(self, id, plot_flag):
         '''DataLoader class for loading and processing Warsaw pilot data.
-        The constructor initializes the DataLoader with the given ID and an empty list of possible modalities.
+        The constructor initializes the DataLoader with the given id and an empty list of possible modalities.
         The data related to the modalities will be added by setter methods.
         Retrieving the data will be done by getter methods.
             '''
         self.output_dir = "../DATA/OUT"
         self.plot_flag = plot_flag
-        self.Fs = dict()
-        self.time = dict()
-        self.data = dict()
-        self.channels = dict()
-        self.folder = dict()
-        self.channel_names = dict()
-        self.ID = ID
+        self.fs = {}
+        self.time = {}
+        self.data = {}
+        self.channels = {}
+        self.folder = {}
+        self.channel_names = {}
+        self.id = id
         self.modalities = []  # list of modalities already loaded: 'EEG', 'H10', 'ET'
 
-    def set_EEG_data(self, folder_EEG, debug_flag=False):
+    def set_eeg_data(self, folder_eeg, debug_flag=False):
         '''Set the EEG data for the DataLoader instance by loading and filtering the Warsaw pilot data.
         We assume data were recorded as multiplexed signals in SVAROG system format.
         We also assume specific channel names for child and caregiver EEG data, as specified below.
         Args:
-            folder_EEG (str): Path to the folder containing the EEG data files.
+            folder_eeg (str): Path to the folder containing the EEG data files.
             debug_flag (bool): Whether to plot intermediate results for debugging/visualization.
         '''
-        self.folder['EEG'] = folder_EEG
-        self.channel_names['EEG'] = dict()
+        self.folder['EEG'] = folder_eeg
+        self.channel_names['EEG'] = {}
         # define EEG channels for child and caregiver
         self.channel_names['EEG']['ch'] = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4',
                                            'T4', 'M2', 'T5',
@@ -47,10 +47,10 @@ class DataLoader:
                                            'T6_cg', 'O1_cg',
                                            'O2_cg']
         self.channel_names['EEG']['all'] = self.channel_names['EEG']['ch'] + self.channel_names['EEG']['cg']
-        self._read_raw_SVAROG_data()  # load the raw data, works inplace, no return value
+        self._read_raw_svarog_data()  # load the raw data, works inplace, no return value
 
-    def _read_raw_SVAROG_data(self, lowcut=4.0, highcut=40.0, q=8):
-        file = self.ID + ".obci"  # SVAROG files have .obci extension
+    def _read_raw_svarog_data(self, lowcut=4.0, highcut=40.0, q=8):
+        file = self.id + ".obci"  # SVAROG files have .obci extension
         # read meta informations from xml file
         with open(os.path.join(self.folder['EEG'], f"{file}.xml")) as fd:
             xml = xmltodict.parse(fd.read())
@@ -68,8 +68,8 @@ class DataLoader:
         if self.plot_flag:
             print(f"N_chan: {N_ch},\n Fs_EEG: {Fs_EEG},\n ChanNames: {ChanNames}")
 
-        self.Fs['EEG'] = Fs_EEG
-        self.Fs['ECG'] = Fs_EEG  # ECG data is sampled at the same frequency as EEG data
+        self.fs['EEG'] = Fs_EEG
+        self.fs['ECG'] = Fs_EEG  # ECG data is sampled at the same frequency as EEG data
         # read raw data from .raw file
         data = np.fromfile(os.path.join(self.folder['EEG'], f"{file}.raw"), dtype='float32').reshape((-1, N_ch))
         data = data.T  # transpose to have channels in rows and samples in columns
@@ -119,9 +119,9 @@ class DataLoader:
     def _filter_decimate_and_set_EEG_signals(self, data, lowcut=4.0, highcut=40.0, q=8):
 
         # design EEG filters
-        b_notch, a_notch = iirnotch(50, 30, fs=self.Fs['EEG'])
-        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=self.Fs['EEG'])
-        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=self.Fs['EEG'])
+        b_notch, a_notch = iirnotch(50, 30, fs=self.fs['EEG'])
+        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=self.fs['EEG'])
+        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=self.fs['EEG'])
 
         #  arrays for filtered EEG signals
         EEG_cg = np.zeros((len(self.channel_names['EEG']['cg']), data.shape[1]))
@@ -153,22 +153,22 @@ class DataLoader:
         # set the filtered and decimated EEG data
         self.channels['EEG'] = {'cg': channels_cg, 'ch': channels_ch}
         self.data['EEG'] = {'cg': signal_cg, 'ch': signal_ch}
-        self.Fs['EEG'] = self.Fs['EEG'] // q  # new sampling frequency for the EEG data after decimation
+        self.fs['EEG'] = self.fs['EEG'] // q  # new sampling frequency for the EEG data after decimation
         # time vector for the EEG data after decimation
-        self.time['EEG'] = np.arange(0, signal_cg.shape[1] / self.Fs['EEG'], 1 / self.Fs['EEG'])
+        self.time['EEG'] = np.arange(0, signal_cg.shape[1] / self.fs['EEG'], 1 / self.fs['EEG'])
         self.modalities.append('EEG')
 
     def _extract_ECG_data(self, data, channels):
-        t_ECG = np.arange(0, data.shape[1] / self.Fs['ECG'],
-                          1 / self.Fs['ECG'])  # time vector for the ECG data in seconds
+        t_ECG = np.arange(0, data.shape[1] / self.fs['ECG'],
+                          1 / self.fs['ECG'])  # time vector for the ECG data in seconds
 
         # extract and filter the ECG data
         ECG_ch = data[channels['EKG1'], :] - data[channels['EKG2'], :]
         ECG_cg = data[channels['EKG1_cg'], :] - data[channels['EKG2_cg'], :]
 
         # design filters:
-        b_notch, a_notch = iirnotch(50, 30, fs=self.Fs['ECG'])
-        sos_ecg = butter(5, 0.5, btype='high', output="sos", fs=self.Fs['ECG'])
+        b_notch, a_notch = iirnotch(50, 30, fs=self.fs['ECG'])
+        sos_ecg = butter(5, 0.5, btype='high', output="sos", fs=self.fs['ECG'])
         ECG_ch_filtered = sosfiltfilt(sos_ecg, ECG_ch)
         ECG_ch_filtered = filtfilt(b_notch, a_notch, ECG_ch_filtered)
         ECG_cg_filtered = sosfiltfilt(sos_ecg, ECG_cg)
@@ -179,9 +179,9 @@ class DataLoader:
 
     def _compute_IBI(self, Fs_IBI=4):
         # interpolate IBI signals from ECG data
-        self.Fs['IBI'] = Fs_IBI
-        IBI_ch_interp, t_IBI_ch = self._interpolate_IBI_signals(self.data['ECG']['ch'], self.Fs['ECG'])
-        IBI_cg_interp, t_IBI_cg = self._interpolate_IBI_signals(self.data['ECG']['cg'], self.Fs['ECG'])
+        self.fs['IBI'] = Fs_IBI
+        IBI_ch_interp, t_IBI_ch = self._interpolate_IBI_signals(self.data['ECG']['ch'], self.fs['ECG'])
+        IBI_cg_interp, t_IBI_cg = self._interpolate_IBI_signals(self.data['ECG']['cg'], self.fs['ECG'])
 
         self.modalities.append('IBI')
         # truncate the IBI signals are of the same length
@@ -192,12 +192,12 @@ class DataLoader:
 
     def _interpolate_IBI_signals(self, ECG, label=''):
         # Extract R-peaks location
-        _, info_ECG = nk.ecg_process(ECG, sampling_rate=self.Fs['ECG'], method='neurokit')
+        _, info_ECG = nk.ecg_process(ECG, sampling_rate=self.fs['ECG'], method='neurokit')
         rpeaks = info_ECG["ECG_R_Peaks"]
-        IBI = np.diff(rpeaks) / self.Fs['ECG'] * 1000  # IBI in ms
+        IBI = np.diff(rpeaks) / self.fs['ECG'] * 1000  # IBI in ms
         t = np.cumsum(IBI) / 1000  # time vector for the IBI signals [s]
         # DO SPRAWDZENIA
-        t_ECG = np.arange(0, t[-1], 1 / self.Fs['IBI'])  # time vector for the interpolated IBI signals
+        t_ECG = np.arange(0, t[-1], 1 / self.fs['IBI'])  # time vector for the interpolated IBI signals
         cs = CubicSpline(t, IBI)
         IBI_interp = cs(t_ECG)
         if self.plot_flag:
@@ -226,7 +226,7 @@ class DataLoader:
                 - Talk_2'''
         events = {'Talk_1': None, 'Talk_2': None, 'Movie_1': None, 'Movie_2': None, 'Movie_3': None}
 
-        Fs_EEG = self.Fs['EEG']
+        Fs_EEG = self.fs['EEG']
         x = np.zeros(self.diode.shape)
         d = self.diode.copy()
         d /= threshold
@@ -304,4 +304,4 @@ class DataLoader:
             print(f"File not found {filename}")
 
     def save_to_file(self):
-        joblib.dump(self, self.output_dir + f"/{self.ID}.joblib")
+        joblib.dump(self, self.output_dir + f"/{self.id}.joblib")
