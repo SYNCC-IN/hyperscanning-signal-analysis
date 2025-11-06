@@ -200,7 +200,7 @@ def bivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
             S_bivariate[ch2,ch1,:] = S_2chan[1,0,:]
     return S_bivariate
 
-def multivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
+def multivariate_spectra(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     """
     Compute the multivariate spectra for all channels in signals.
     
@@ -222,18 +222,17 @@ def multivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
     np.ndarray
         Multivariate spectra of shape (N_chan, N_chan, N_f).
     """
-    x = signals
     if p_opt is None:
-        _, _, p_opt = mvar_criterion(x, max_p, crit_type, True)
+        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, True)
         print('Optimal model order for all channels: p = ', str(p_opt))
     else:
         print('Using provided model order: p = ', str(p_opt))
     # Estimate AR coefficients and residual variance
-    Ar, V = AR_coeff(x, p_opt)
+    Ar, V = AR_coeff(signals, p_opt)
     H, _ = mvar_H(Ar, f, Fs)
-    N_chan = x.shape[0]
+    N_chan = signals.shape[0]
     N_f = f.shape[0]
-    S_multivariate = np.zeros((N_chan,N_chan, N_f), dtype=np.complex128) #initialize the multivariate spectrum
+    S_multivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128) #initialize the multivariate spectrum
     for fi in range(N_f): #compute spectrum for all channels
         S_multivariate[:,:,fi] = H[:,:,fi].dot(V.dot(H[:,:,fi].T))      
     
@@ -277,7 +276,7 @@ def DTF_bivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
             DTF_bivariate[ch2,ch1,:] = DTF_2chan[1,0,:]
     return DTF_bivariate
 
-def DTF_multivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+def DTF_multivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC', comment=None):
     """
     Compute the directed transfer function (DTF) for the multivariate case.
     Parameters:
@@ -299,9 +298,9 @@ def DTF_multivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     """
     if p_opt is None:
         _, _, p_opt = mvar_criterion(signals, max_p, crit_type, False)
-        print('Optimal model order for all channels: p = ', str(p_opt))
+        print(f'Optimal model order for all {'' if comment == None else comment + ' '}channels: p = {p_opt}')
     else:
-        print('Using provided model order: p = ', str(p_opt))
+        print(f'Using provided model order: p = {p_opt}')
     Ar, _ = AR_coeff(signals, p_opt)
     H, _ = mvar_H(Ar, f, Fs)
     DTF = np.abs(H)**2
@@ -748,30 +747,6 @@ def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
         plt.show()
 
     return crit, p_range, p_opt
-
-
-def mvar_spectra(H, V, f  ):
-    """
-    Calculate the MVAR spectra from transfer function H and noise covariance V. 
-    Parameters:
-    H : np.ndarray
-        Transfer function matrix with shape (chan, chan, len(f)).
-    V : np.ndarray      
-        Noise covariance matrix with shape (chan, chan).
-    f : np.ndarray  
-        Frequency vector.           
-    Returns:    
-    S : np.ndarray
-        MVAR spectra with shape (chan, chan, len(f)).
-    """ 
-    N_chan, _, N_f = H.shape
-    # check if f has the same length as the third dimension of H
-    if len(f) != N_f:
-        raise ValueError("Frequency vector f must match the third dimension of H.") 
-    S_multivariate = np.zeros((N_chan,N_chan, N_f), dtype=np.complex128) #initialize the multivariate spectrum
-    for fi in range(N_f): #compute spectrum for all channels
-        S_multivariate[:,:,fi] = H[:,:,fi].dot(V.dot(H[:,:,fi].T)) 
-    return S_multivariate, f
 
 # Compute linewidths
 def get_linewidths(G):
