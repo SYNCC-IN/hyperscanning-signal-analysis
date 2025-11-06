@@ -1,17 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, iirnotch, filtfilt, sosfiltfilt, decimate, hilbert, welch
-from scipy.stats import zscore  # type: ignore
-from mtmvar import mvar_criterion, AR_coeff, mvar_H, mvar_plot, mvar_plot_dense, \
-    multivariate_spectra  # type: ignore
+from scipy.stats import zscore
+from mtmvar import mvar_plot, mvar_plot_dense, multivariate_spectra
 from src.mtmvar import DTF_multivariate
+from src.utils import plot_EEG_channels_pl, hrv_dtf
 from utils import load_warsaw_pilot_data, scan_for_events, filter_warsaw_pilot_data, \
-    get_IBI_signal_from_ECG_for_selected_event, get_data_for_selected_channel_and_event, clean_data_with_ICA, \
-    eeg_hrv_dtf_analyze_event
+    get_IBI_signal_from_ECG_for_selected_event, get_data_for_selected_channel_and_event, \
+    eeg_hrv_dtf_analyze_event, debug_plot
 
 if __name__ == "__main__":
     folder = './DATA/W_010/' #'./DATA/W_009/'
     file  =  'W_010.obci'   #'W_009.obci'
+    selected_events = ['Movie_1', 'Movie_2', 'Movie_3'] # events to extract data for ; #, 'Talk_1', 'Talk_2'
     
     debug_PLOT = True
     HRV_DTF = True # if True, the DTF will be estimated for the IBI signals from the ECG amplifier
@@ -22,135 +22,15 @@ if __name__ == "__main__":
     events = scan_for_events(data, plot = True) #indexes of events in the data, this is done before filtering to avoid artifacts in the diode signal
     filtered_data = filter_warsaw_pilot_data(data)
     if debug_PLOT:
-        print("Filtered data shape:", filtered_data['data'].shape)
-        print("Filtered EEG channels:", filtered_data['EEG_channels_ch'])
-        print("Filtered ECG channels:", filtered_data['EEG_channels_cg'])
-        print("Events detected:", events)
+        debug_plot(filtered_data, events)
+        plot_EEG_channels_pl(filtered_data, events, filtered_data['EEG_channels_ch'],
+                             title='Filtered Child EEG Channels (offset for clarity)')
+        plot_EEG_channels_pl(filtered_data, events, filtered_data['EEG_channels_cg'],
+                             title='Filtered Caregiver EEG Channels (offset for clarity)')
 
-        # separately (in subplots) for child and caregiver, plot the filtered ECG and overall it with the interpolated IBI signals, highlithing the events
-
-        fig, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-        # Plot Child ECG on left y-axis
-        ax[0].plot(filtered_data['t_ECG'], filtered_data['ECG_ch'], label='Child ECG', color='tab:blue')
-        ax[0].set_ylabel('ECG (uV)', color='tab:blue')
-        ax[0].tick_params(axis='y', labelcolor='tab:blue')
-
-        # Create a twin y-axis to plot IBI
-        ax0b = ax[0].twinx()
-        ax0b.plot(filtered_data['t_IBI'], filtered_data['IBI_ch_interp'], label='Child IBI', color='tab:orange')
-        ax0b.set_ylabel('IBI (ms)', color='tab:orange')
-        ax0b.tick_params(axis='y', labelcolor='tab:orange')
-        ax[0].plot(filtered_data['t_IBI'], filtered_data['IBI_ch_interp'], label='Child IBI')
-        colors = ['r', 'g', 'y', 'c', 'm']  # colors for different events
-        for i, event in enumerate(events):
-            if events[event] is not None:
-                ax[0].axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
-        ax[0].legend()
-
-        ax[1].plot(filtered_data['t_ECG'], filtered_data['ECG_cg'], label='Caregiver ECG', color='tab:blue')
-        ax[1].set_ylabel('ECG (uV)', color='tab:blue')
-        ax[1].tick_params(axis='y', labelcolor='tab:blue')     
-        # Create a twin y-axis to plot IBI
-        ax1b = ax[1].twinx()
-        ax1b.plot(filtered_data['t_IBI'], filtered_data['IBI_cg_interp'], label='Caregiver IBI', color='tab:orange')
-        ax1b.set_ylabel('IBI (ms)', color='tab:orange')
-        ax1b.tick_params(axis='y', labelcolor='tab:orange')
-        for i, event in enumerate(events):
-            if events[event] is not None:
-                ax[1].axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
-        ax[1].legend()
-        ax[1].set_xlabel('Time (s)')
-        plt.suptitle('Filtered ECG and IBI signals with events highlighted')
-        plt.tight_layout()
-        plt.show()
-
-
-        # plot the filtered EEG channels
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8), sharex=True)
-        offset = 0
-        spacing = 200  # vertical spacing between channels
-        yticks = []
-        yticklabels = []
-        for i, ch in enumerate(filtered_data['EEG_channels_ch']):
-            if ch in filtered_data['channels']:
-                idx = filtered_data['channels'][ch]
-                x_ch = filtered_data['data'][idx, :]
-                # clip the amplitudes
-                x_ch = np.clip(x_ch, -100, 100)
-                ax.plot(filtered_data['t_EEG'], x_ch + offset, label=ch)
-                yticks.append(offset)
-                yticklabels.append(ch)
-                offset += spacing
-        for i, event in enumerate(events):
-            if events[event] is not None:
-                ax.axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(yticklabels)
-        ax.set_title('Filtered Child EEG Channels (offset for clarity)')
-        ax.set_xlabel('Samples')
-        ax.set_ylabel('Channels')
-        plt.tight_layout()   
-        plt.show()
-
-        # plot the filtered EEG channels for caregiver
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8), sharex=True)
-        offset = 0
-        spacing = 200  # vertical spacing between channels
-        yticks = []
-        yticklabels = []
-        for i, ch in enumerate(filtered_data['EEG_channels_cg']):
-            if ch in filtered_data['channels']:
-                idx = filtered_data['channels'][ch]
-                x_ch = filtered_data['data'][idx, :]
-                # clip the amplitudes
-                x_ch = np.clip(x_ch, -100, 100)
-                ax.plot(filtered_data['t_EEG'], x_ch + offset, label=ch)
-                yticks.append(offset)
-                yticklabels.append(ch)
-                offset += spacing
-        for i, event in enumerate(events):
-            if events[event] is not None:
-                ax.axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(yticklabels)
-        ax.set_title('Filtered Caregiver EEG Channels (offset for clarity)')
-        ax.set_xlabel('Samples')
-        ax.set_ylabel('Channels')
-        plt.tight_layout()
-        plt.legend()
-        plt.show()
-        
     if HRV_DTF:
-        # for each event extract the IBI signals from the ECG amplifier
-        # of child and of the caregiver
-        # costruct a numpy data array with the shape (N_samples, 2) 
-        # and estimate DTF for each event
-        selected_events = ['Movie_1', 'Movie_2', 'Movie_3'] # events to extract data for ; #, 'Talk_1', 'Talk_2'
+        hrv_dtf(filtered_data, events, selected_events)
 
-        f = np.arange(0.01, 1, 0.01) # frequency vector for the DTF estimation
-        for event in selected_events:
-            if event in events:
-                # t_event = events[event] # get the time of the event in the data
-                # # find the closest index in the IBI signals
-                # start_idx = np.argmin(np.abs(t_ECG - t_event))
-                # end_idx = start_idx + int(60 * Fs_IBI)
-
-                # extract 60 seconds after the event
-                data = np.zeros((2, 60*filtered_data['Fs_IBI']))
-                IBI_ch_interp, IBI_cg_interp, t_IBI = get_IBI_signal_from_ECG_for_selected_event(filtered_data, events, event, plot=False, label='IBI signals for ' + event )
-                # zscore the IBI signals
-                IBI_ch_interp = zscore(IBI_ch_interp) # normalize the IBI   signals
-                IBI_cg_interp = zscore(IBI_cg_interp) # normalize the IBI   signals
-                data[0, :] = IBI_ch_interp #[start_idx:end_idx]
-                data[1, :] = IBI_cg_interp #[start_idx:end_idx]
-
-                DTF = DTF_multivariate(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-                S = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-                """Let's  plot the results in the table form."""
-                mvar_plot(S, DTF,   f, 'From ', 'To ',['Child', 'Caregiver'],  'DTF '+ event ,'sqrt')
-        plt.show()
-
-    
     if EEG_DTF:
         # for each event extract the EEG signals 
         # of child and of the caregiver

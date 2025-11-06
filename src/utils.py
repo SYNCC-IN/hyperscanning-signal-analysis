@@ -1,14 +1,16 @@
-import numpy as np  # type: ignore
+import numpy as np
 import os
-import xmltodict  # type: ignore    
-import matplotlib.pyplot as plt  # type: ignore
-from scipy.signal import iirnotch, butter, sosfiltfilt, filtfilt, decimate, hilbert, welch  # type: ignore
-from scipy.interpolate import CubicSpline  # type: ignore
-import neurokit2 as nk  # type: ignore
+import xmltodict
+import matplotlib.pyplot as plt
+from scipy.signal import iirnotch, butter, sosfiltfilt, filtfilt, decimate, hilbert, welch
+from scipy.interpolate import CubicSpline
+import neurokit2 as nk
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
+from plotly.subplots import make_subplots #TODO czy trzeba mieszać plotly i matplotlib?
 from scipy.stats import zscore
+
+from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra
 
 
 # przeniesiona do DataLoader
@@ -806,3 +808,72 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     plt.show()
 
     return DTF_data
+
+def debug_plot(filtered_data, events):
+    print("Filtered data shape:", filtered_data['data'].shape)
+    print("Filtered EEG channels:", filtered_data['EEG_channels_ch'])
+    print("Filtered ECG channels:", filtered_data['EEG_channels_cg'])
+    print("Events detected:", events)
+
+    # separately (in subplots) for child and caregiver, plot the filtered ECG and overlay it with the interpolated IBI signals, highlithing the events
+
+    fig, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    # Plot Child ECG on left y-axis
+    ax[0].plot(filtered_data['t_ECG'], filtered_data['ECG_ch'], label='Child ECG', color='tab:blue')
+    ax[0].set_ylabel('ECG (uV)', color='tab:blue')
+    ax[0].tick_params(axis='y', labelcolor='tab:blue')
+
+    # Create a twin y-axis to plot IBI
+    ax0b = ax[0].twinx()
+    ax0b.plot(filtered_data['t_IBI'], filtered_data['IBI_ch_interp'], label='Child IBI', color='tab:orange')
+    ax0b.set_ylabel('IBI (ms)', color='tab:orange')
+    ax0b.tick_params(axis='y', labelcolor='tab:orange')
+    ax[0].plot(filtered_data['t_IBI'], filtered_data['IBI_ch_interp'], label='Child IBI')
+    colors = ['r', 'g', 'y', 'c', 'm']  # colors for different events
+    for i, event in enumerate(events):
+        if events[event] is not None:
+            ax[0].axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
+    ax[0].legend()
+
+    ax[1].plot(filtered_data['t_ECG'], filtered_data['ECG_cg'], label='Caregiver ECG', color='tab:blue')
+    ax[1].set_ylabel('ECG (uV)', color='tab:blue')
+    ax[1].tick_params(axis='y', labelcolor='tab:blue')
+    # Create a twin y-axis to plot IBI
+    ax1b = ax[1].twinx()
+    ax1b.plot(filtered_data['t_IBI'], filtered_data['IBI_cg_interp'], label='Caregiver IBI', color='tab:orange')
+    ax1b.set_ylabel('IBI (ms)', color='tab:orange')
+    ax1b.tick_params(axis='y', labelcolor='tab:orange')
+    for i, event in enumerate(events):
+        if events[event] is not None:
+            ax[1].axvspan(events[event], events[event] + 60, color=colors[i], alpha=0.2, label=f'{event} (60s)')
+    ax[1].legend()
+    ax[1].set_xlabel('Time (s)')
+    plt.suptitle('Filtered ECG and IBI signals with events highlighted')
+    plt.tight_layout()
+    plt.show()
+
+def hrv_dtf(filtered_data, events, selected_events):
+    # for each event extract the IBI signals from the ECG amplifier
+    # of child and of the caregiver
+    # costruct a numpy data array with the shape (N_samples, 2)
+    # and estimate DTF for each event
+
+    f = np.arange(0.01, 1, 0.01)  # frequency vector for the DTF estimation
+    for event in selected_events:
+        if event in events:
+            # extract 60 seconds after the event
+            data = np.zeros((2, 60 * filtered_data['Fs_IBI']))
+            IBI_ch_interp, IBI_cg_interp, t_IBI = get_IBI_signal_from_ECG_for_selected_event(filtered_data, events,
+                                                                                             event, plot=False,
+                                                                                             label='IBI signals for ' + event)
+            # zscore the IBI signals
+            IBI_ch_interp = zscore(IBI_ch_interp)  # normalize the IBI   signals
+            IBI_cg_interp = zscore(IBI_cg_interp)  # normalize the IBI   signals
+            data[0, :] = IBI_ch_interp  # [start_idx:end_idx]
+            data[1, :] = IBI_cg_interp  # [start_idx:end_idx]
+
+            DTF = DTF_multivariate(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+            S = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+            """Let's  plot the results in the table form."""
+            mvar_plot(S, DTF, f, 'From ', 'To ', ['Child', 'Caregiver'], 'DTF ' + event, 'sqrt')
+    plt.show()
