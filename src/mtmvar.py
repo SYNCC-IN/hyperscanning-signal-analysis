@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 
-def countCorr(x, ip, iwhat):
+def count_corr(x, ip, iwhat):
     '''
     Internal procedure 
     '''
@@ -43,78 +43,83 @@ def countCorr(x, ip, iwhat):
     else:
         trials = 1
     mip = m * ip
-    rleft = np.zeros((mip, mip))
-    rright = np.zeros((mip, m))
+    r_left = np.zeros((mip, mip))
+    r_right = np.zeros((mip, m))
     r = np.zeros((m, m))
-    rleft_tot = np.zeros((mip, mip))
-    rright_tot = np.zeros((mip, m))
+    r_left_tot = np.zeros((mip, mip))
+    r_right_tot = np.zeros((mip, m))
     r_tot = np.zeros((m, m))
 
     for trial in range(trials):
         for k in range(ip):
             if iwhat == 1:
-                corrscale = 1 / n
+                corr_scale = 1 / n
                 nn = n - k - 1
-                r[:, :] = np.dot(x[:, :nn, trial], x[:, k + 1:k + nn + 1, trial].T) * corrscale
+                r[:, :] = np.dot(x[:, :nn, trial], x[:, k + 1:k + nn + 1, trial].T) * corr_scale
             elif iwhat == 2:
-                corrscale = 1 / (n - k)
+                corr_scale = 1 / (n - k)
                 nn = n - k - 1
-                r[:, :] = np.dot(x[:, :nn, trial], x[:, k + 1:k + nn + 1, trial].T) * corrscale
+                r[:, :] = np.dot(x[:, :nn, trial], x[:, k + 1:k + nn + 1, trial].T) * corr_scale
 
-            rright[k * m:k * m + m, :] = r[:, :]
+            r_right[k * m:k * m + m, :] = r[:, :]
 
             if k < ip:
                 for i in range(1, ip - k):
-                    rleft[(k + i) * m:(k + i) * m + m, (i - 1) * m:(i - 1) * m + m] = r[:, :]
-                    rleft[(i - 1) * m:(i - 1) * m + m, (k + i) * m:(k + i) * m + m] = r[:, :].T
+                    r_left[(k + i) * m:(k + i) * m + m, (i - 1) * m:(i - 1) * m + m] = r[:, :]
+                    r_left[(i - 1) * m:(i - 1) * m + m, (k + i) * m:(k + i) * m + m] = r[:, :].T
 
-        corrscale = 1 / n
-        r[:, :] = np.dot(x[:, :, trial], x[:, :, trial].T) * corrscale
+        corr_scale = 1 / n
+        r[:, :] = np.dot(x[:, :, trial], x[:, :, trial].T) * corr_scale
 
         for k in range(ip):
-            rleft[k * m:k * m + m, k * m:k * m + m] = r[:, :]
+            r_left[k * m:k * m + m, k * m:k * m + m] = r[:, :]
 
-        rleft_tot = rleft_tot + rleft
-        rright_tot = rright_tot + rright
+        r_left_tot = r_left_tot + r_left
+        r_right_tot = r_right_tot + r_right
         r_tot = r_tot + r
 
     if trials > 1:
-        rleft_tot = rleft_tot / trials
-        rright_tot = rright_tot / trials
+        r_left_tot = r_left_tot / trials
+        r_right_tot = r_right_tot / trials
         r_tot = r_tot / trials
 
-    return rleft_tot, rright_tot, r_tot
+    return r_left_tot, r_right_tot, r_tot
 
 
-def AR_coeff(dat0, p=5, method=1):
-    '''
-    Estimates AR model coefficients
-    for multivariate/multitrial data.
+def ar_coeff(data, p=5):
+    """
+    Estimate MVAR coefficients for multivariate / multitrial data.
 
-    dat - input time series of shape (trials,chans,timepoints)
-    p - model order
-    method - unused
+    Parameters:
+    data : np.ndarray
+        Input time series with shape (channels, samples) or (channels, samples, trials).
+    p : int
+        Model order.
 
-    returns:
-    ARr - model coefficients of size (p,chans,chans)
-    Vr - residual data variance matrix
-    '''
+    Returns:
+    coefficients : np.ndarray
+        AR coefficients with shape (channels, channels, p).
+    variance : np.ndarray
+        Residual covariance matrix with shape (channels, channels).
+    """
+    # Ensure data has a trials dimension: (channels, samples, trials)
+    if data.ndim < 3:
+        data = data[:, :, None]
 
-    ds = dat0.shape
-    if len(ds) < 3:
-        dat = np.zeros((ds[0], ds[1], 1))
-        dat[:, :, 0] = dat0[:, :]
-    else:
-        dat = dat0
-    chans = ds[0]
+    n_channels = data.shape[0]
 
-    rleft, rright, r = countCorr(dat, p, 1)
-    xres = np.linalg.solve(rleft, rright)
-    xres = xres.T
-    Vr = -np.dot(xres, rright) + r
-    AR = np.reshape(xres, (chans, p, chans))  # (chans, p, chans))# ( chans, chans,p,)) #
-    AR = AR.transpose((0, 2, 1))
-    return AR, Vr
+    # Compute correlation/block-correlation matrices
+    r_left, r_right, r_zero = count_corr(data, p, 1)
+
+    # Solve for stacked AR coefficients (shape: (n_channels * p, n_channels))
+    x = np.linalg.solve(r_left, r_right).T
+
+    # Residual covariance: r_zero - x @ r_right
+    variance = r_zero - x.dot(r_right)
+
+    # Reshape coefficients into (channels, channels, p) to match previous behavior
+    coefficients = x.reshape(n_channels, p, n_channels).transpose((0, 2, 1))
+    return coefficients, variance
 
 
 def mvar_H(Ar, f, Fs):
@@ -190,7 +195,7 @@ def bivariate_spectra(signals, f, Fs, max_p, p_opt=None, crit_type='AIC'):
             else:
                 print('Using provided model order: p = ', str(p_opt))
                 # Estimate AR coefficients and residual variance
-            Ar, V = AR_coeff(x, p_opt)
+            Ar, V = ar_coeff(x, p_opt)
             H, _ = mvar_H(Ar, f, Fs)
             S_2chan = np.zeros((2, 2, N_f),
                                dtype=np.complex128)  # initialize the bivariate spectrum for the pair of channels
@@ -231,7 +236,7 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     else:
         print('Using provided model order: p = ', str(p_opt))
     # Estimate AR coefficients and residual variance
-    Ar, V = AR_coeff(signals, p_opt)
+    Ar, V = ar_coeff(signals, p_opt)
     H, _ = mvar_H(Ar, f, Fs)
     N_chan = signals.shape[0]
     N_f = f.shape[0]
@@ -272,7 +277,7 @@ def DTF_bivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
                            signals[ch2, :]))
             if p_opt is None:
                 _, _, p_opt = mvar_criterion(x, max_p, crit_type, False)
-            Ar, _ = AR_coeff(x, p_opt)
+            Ar, _ = ar_coeff(x, p_opt)
             H, _ = mvar_H(Ar, f, Fs)
 
             DTF_2chan = np.abs(H) ** 2
@@ -307,7 +312,7 @@ def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comm
         print(f'Optimal model order for all {'' if comment == None else comment + ' '}channels: p = {p_opt}')
     else:
         print(f'Using provided model order: p = {p_opt}')
-    Ar, _ = AR_coeff(signals, p_opt)
+    Ar, _ = ar_coeff(signals, p_opt)
     H, _ = mvar_H(Ar, f, Fs)
     DTF = np.abs(H) ** 2
 
@@ -522,7 +527,7 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         print('Using provided model order: p = ', str(p_opt))
 
     # Estimate AR coefficients and residual variance
-    Ar, V = AR_coeff(signals, p_opt)
+    Ar, V = ar_coeff(signals, p_opt)
     _, A = mvar_H(Ar, f, Fs)  # A is the frequency domain AR matrix
 
     N_chan, _, N_f = A.shape
@@ -727,7 +732,7 @@ def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
     crit = np.zeros(max_p)
 
     for p in p_range:
-        _, Vr = AR_coeff(dat, p)  # You must define or import AR_coeff
+        _, Vr = ar_coeff(dat, p)  # You must define or import AR_coeff
         if crit_type == 'AIC':
             crit[p - 1] = np.log(np.linalg.det(Vr)) + 2 * p * k ** 2 / N
         elif crit_type == 'HQ':

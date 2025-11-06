@@ -9,7 +9,7 @@ from scipy.stats import zscore
 from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense, graph_plot
 
 
-def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event, plot=False, label=''):
+def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
     '''Get IBI signal from ECG data for a specific event.
     Args:
         filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
@@ -460,12 +460,12 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
 
     # compute and plot spectra of the selected channels using Welch's method
-    f_ch, Pxx_ch = welch(data_ch[0, :], fs=filtered_data['Fs_EEG'], nperseg=1024)
-    f_cg, Pxx_cg = welch(data_cg[0, :], fs=filtered_data['Fs_EEG'], nperseg=1024)
+    f_ch, pxx_ch = welch(data_ch[0, :], fs=filtered_data['Fs_EEG'], nperseg=1024)
+    f_cg, pxx_cg = welch(data_cg[0, :], fs=filtered_data['Fs_EEG'], nperseg=1024)
     # plot the power spectral density of the child and caregiver Fz channels
     plt.figure(figsize=(12, 6))
-    plt.plot(f_ch, Pxx_ch, label='Child Fz channel')
-    plt.plot(f_cg, Pxx_cg, label='Caregiver Fz_cg channel')
+    plt.plot(f_ch, pxx_ch, label='Child Fz channel')
+    plt.plot(f_cg, pxx_cg, label='Caregiver Fz_cg channel')
     plt.title(f'Power Spectrum of {event} for Child and Caregiver Fz channels')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Power Spectral Density (uV^2/Hz)')
@@ -484,7 +484,7 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     data_cg_theta_amp = np.abs(hilbert(data_cg_theta))
 
     # plot the envelope for the child and caregiver EEG channels, add the filtered signal as the background
-    fig, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    _, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
     ax[0].set_title(f'Child EEG channel Fz theta amplitude for {event}')
     ax[1].set_title(f'Caregiver EEG channel Fz_cg theta amplitude for {event}')
     ax[0].plot(data_ch_theta_amp, 'r', label='Fz theta amplitude')
@@ -507,20 +507,18 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     data_cg_theta_amp = zscore(data_cg_theta_amp)  # normalize the theta amplitude signals
 
     # Now we have the theta amplitude signals for both child and caregiver, let's get the IBI signals for the selected event
-    IBI_ch_interp, IBI_cg_interp, t_IBI = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, event,
-                                                                                     plot=False,
-                                                                                     label='IBI signals for ' + event)
+    ibi_ch_interp, ibi_cg_interp, t_ibi = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, event)
     # zscore the IBI signals
-    IBI_ch_interp = zscore(IBI_ch_interp)  # normalize the IBI   signals
-    IBI_cg_interp = zscore(IBI_cg_interp)  # normalize the IBI   signals
+    ibi_ch_interp = zscore(ibi_ch_interp)  # normalize the IBI   signals
+    ibi_cg_interp = zscore(ibi_cg_interp)  # normalize the IBI   signals
 
     # construct a numpy data array with the shape (4, N_samples), it will contain HRV and Fz theta amplitude of both child and caregiver
-    DTF_data = np.zeros((4, len(data_ch_theta_amp)))
+    dtf_data = np.zeros((4, len(data_ch_theta_amp)))
     # fill the data array with the IBI signals and Fz theta amplitude signals
-    DTF_data[0, :] = IBI_ch_interp
-    DTF_data[1, :] = IBI_cg_interp
-    DTF_data[2, :] = data_ch_theta_amp
-    DTF_data[3, :] = data_cg_theta_amp
+    dtf_data[0, :] = ibi_ch_interp
+    dtf_data[1, :] = ibi_cg_interp
+    dtf_data[2, :] = data_ch_theta_amp
+    dtf_data[3, :] = data_cg_theta_amp
 
     # plot the data for the child and caregiver IBI signals and Fz theta amplitude signals
     fig, ax = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
@@ -528,10 +526,10 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     ax[1].set_title(f'Caregiver IBI signal and Fz_cg theta amplitude for {event}')
     ax[2].set_title(f'Child Fz theta amplitude for {event}')
     ax[3].set_title(f'Caregiver Fz_cg theta amplitude for {event}')
-    ax[0].plot(t_IBI, IBI_ch_interp, 'b', label='Child IBI signal')
-    ax[1].plot(t_IBI, IBI_cg_interp, 'b', label='Caregiver IBI signal')
-    ax[2].plot(t_IBI, data_ch_theta_amp, 'r', label='Child Fz theta amplitude')
-    ax[3].plot(t_IBI, data_cg_theta_amp, 'r', label='Caregiver Fz_cg theta amplitude')
+    ax[0].plot(t_ibi, ibi_ch_interp, 'b', label='Child IBI signal')
+    ax[1].plot(t_ibi, ibi_cg_interp, 'b', label='Caregiver IBI signal')
+    ax[2].plot(t_ibi, data_ch_theta_amp, 'r', label='Child Fz theta amplitude')
+    ax[3].plot(t_ibi, data_cg_theta_amp, 'r', label='Caregiver Fz_cg theta amplitude')
     ax[0].set_ylabel('IBI (ms)')
     ax[1].set_ylabel('IBI (ms)')
     ax[2].set_ylabel('Fz theta amplitude (uV)')
@@ -544,7 +542,7 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     plt.tight_layout()
     plt.show()
 
-    return DTF_data
+    return dtf_data
 
 
 def debug_plot(filtered_data, events):
@@ -555,7 +553,7 @@ def debug_plot(filtered_data, events):
 
     # separately (in subplots) for child and caregiver, plot the filtered ECG and overlay it with the interpolated IBI signals, highlithing the events
 
-    fig, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    _, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
     # Plot Child ECG on left y-axis
     ax[0].plot(filtered_data['t_ECG'], filtered_data['ECG_ch'], label='Child ECG', color='tab:blue')
     ax[0].set_ylabel('ECG (uV)', color='tab:blue')
@@ -594,7 +592,7 @@ def debug_plot(filtered_data, events):
 def hrv_dtf(filtered_data, events, selected_events):
     # for each event extract the IBI signals from the ECG amplifier
     # of child and of the caregiver
-    # costruct a numpy data array with the shape (N_samples, 2)
+    # construct a numpy data array with the shape (N_samples, 2)
     # and estimate DTF for each event
 
     f = np.arange(0.01, 1, 0.01)  # frequency vector for the DTF estimation
@@ -602,26 +600,24 @@ def hrv_dtf(filtered_data, events, selected_events):
         if event in events:
             # extract 60 seconds after the event
             data = np.zeros((2, 60 * filtered_data['Fs_IBI']))
-            IBI_ch_interp, IBI_cg_interp, t_IBI = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events,
-                                                                                             event, plot=False,
-                                                                                             label='IBI signals for ' + event)
+            ibi_ch_interp, ibi_cg_interp, _ = get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, event)
             # zscore the IBI signals
-            IBI_ch_interp = zscore(IBI_ch_interp)  # normalize the IBI   signals
-            IBI_cg_interp = zscore(IBI_cg_interp)  # normalize the IBI   signals
-            data[0, :] = IBI_ch_interp  # [start_idx:end_idx]
-            data[1, :] = IBI_cg_interp  # [start_idx:end_idx]
+            ibi_ch_interp = zscore(ibi_ch_interp)  # normalize the IBI   signals
+            ibi_cg_interp = zscore(ibi_cg_interp)  # normalize the IBI   signals
+            data[0, :] = ibi_ch_interp  # [start_idx:end_idx]
+            data[1, :] = ibi_cg_interp  # [start_idx:end_idx]
 
-            DTF = DTF_multivariate(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-            S = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+            dtf = DTF_multivariate(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+            spectra = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
             """Let's  plot the results in the table form."""
-            mvar_plot(S, DTF, f, 'From ', 'To ', ['Child', 'Caregiver'], 'DTF ' + event, 'sqrt')
+            mvar_plot(spectra, dtf, f, 'From ', 'To ', ['Child', 'Caregiver'], 'DTF ' + event, 'sqrt')
     plt.show()
 
 
 def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
     # for each event extract the EEG signals
     # of child and of the caregiver
-    # costruct a numpy data array with the shape (N_samples, 19)
+    # construct a numpy data array with the shape (N_samples, 19)
     # and estimate DTF for each event separately for child and caregiver EEG channels
 
     f = np.arange(1, 30, 0.5)  # frequency vector for the DTF estimation
@@ -649,13 +645,13 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
 
         p_opt = 9  # force the model order to be 9, this is a good compromise between the model complexity and the estimation accuracy
 
-        DTF = DTF_multivariate(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='child')
-        S = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt)
-        mvar_plot_dense(S, DTF, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
+        dtf = DTF_multivariate(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='child')
+        spectra = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
 
-        DTF = DTF_multivariate(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='caregiver')
-        S = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
-        mvar_plot_dense(S, DTF, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
+        dtf = DTF_multivariate(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='caregiver')
+        spectra = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
         plt.show()
 
 def eeg_hrv_dtf(filtered_data, events, selected_events):
@@ -668,19 +664,19 @@ def eeg_hrv_dtf(filtered_data, events, selected_events):
     selected_channels_cg = ['Fz_cg']
 
     for event in selected_events:
-        DTF_data = eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch,
+        dtf_data = eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch,
                                              selected_channels_cg, events, event)
 
         # estimate DTF for the system consisting of HRV and Fz theta amplitude of both child and caregiver
-        DTF = DTF_multivariate(DTF_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-        S = multivariate_spectra(DTF_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+        dtf = DTF_multivariate(dtf_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+        spectra = multivariate_spectra(dtf_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
         """Let's  plot the results in the table form."""
-        ChanNames = ['Child IBI', 'Caregiver IBI', 'Child Fz theta amp', 'Caregiver Fz_cg theta amp']
-        mvar_plot(S, DTF, f, 'From ', 'To ', ChanNames, 'DTF ' + event, 'sqrt')
+        chan_names = ['Child IBI', 'Caregiver IBI', 'Child Fz theta amp', 'Caregiver Fz_cg theta amp']
+        mvar_plot(spectra, dtf, f, 'From ', 'To ', chan_names, 'DTF ' + event, 'sqrt')
         plt.show()
 
         # Finally let's plot the DTF results in the graph form using graph_plot  from mtmvar
-        fig, ax = plt.subplots(figsize=(10, 8))
-        graph_plot(connectivity_matrix=DTF, ax=ax, f=f, f_range=[0.2, 0.6], chan_names=ChanNames,
+        _, ax = plt.subplots(figsize=(10, 8))
+        graph_plot(connectivity_matrix=dtf, ax=ax, f=f, f_range=[0.2, 0.6], chan_names=chan_names,
                    title='DTF ' + event)
         plt.show()
