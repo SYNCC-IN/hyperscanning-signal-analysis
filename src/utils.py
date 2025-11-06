@@ -199,7 +199,6 @@ def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filter
         width=1200,
         showlegend=True,
         legend={'orientation': "v", 'yanchor': "top", 'y': 1, 'xanchor': "left", 'x': 1.01, 'font': {'size': 10}},
-        # hovermode='x unified',
         plot_bgcolor='white'
     )
 
@@ -215,38 +214,25 @@ def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filter
 
     # Show the figure based on renderer preference
     if renderer == 'html':
-        # Save as HTML file
-        import os
-        html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}.html"
-        fig.write_html(html_file)
-        print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-        print("Open this file in your web browser to view the interactive plot.")
+        save_figure_to_html(fig, title)
     elif renderer == 'auto':
         # Try different renderers in order of preference
         try:
             fig.show(renderer="browser")
-        except:
+        except Exception as e:
+            print(f"Failed to display with renderer 'browser': {e}")
             try:
                 fig.show(renderer="notebook")
-            except:
-                # Fallback: save as HTML file
-                import os
-                html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}.html"
-                fig.write_html(html_file)
-                print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-                print("Open this file in your web browser to view the interactive plot.")
+            except Exception as e:
+                print(f"Failed to display with renderer 'notebook': {e}")
+                save_figure_to_html(fig, title)
     else:
         # Use specified renderer
         try:
             fig.show(renderer=renderer)
         except Exception as e:
             print(f"Failed to display with renderer '{renderer}': {e}")
-            # Fallback to HTML
-            import os
-            html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}.html"
-            fig.write_html(html_file)
-            print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
-            print("Open this file in your web browser to view the interactive plot.")
+            save_figure_to_html(fig, title)
 
 
 def overlay_eeg_channels_hyperscanning(data_ch, data_cg, all_channels, event, selected_channels_ch,
@@ -394,8 +380,8 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 # ==================================
 # ==================================
 
-def save_figure_to_html(fig, title, event):
-    html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}_{event}.html"
+def save_figure_to_html(fig, title, event=None):
+    html_file = f"{title.replace(' ', '_').replace('(', '').replace(')', '').lower()}{'' if event is None else '_' + event}.html"
     fig.write_html(html_file)
     print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
     print("Open this file in your web browser to view the interactive plot.")
