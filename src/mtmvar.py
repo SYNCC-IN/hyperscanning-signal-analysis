@@ -27,8 +27,6 @@ License: Educational use
 """
 
 import numpy as np
-import pandas as pd
-import scipy.signal as signal
 import matplotlib.pyplot as plt
 import networkx as nx
 
@@ -155,7 +153,7 @@ def mvar_H(Ar, f, Fs):
 
     return H, A_out
 
-
+# TODO czy multivariate_spectra z dwoma kanałami nie robi tego samego?
 def bivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
     """
     Compute the bivariate spectra for each pair of channels in signals.
@@ -238,6 +236,7 @@ def multivariate_spectra(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AI
     
     return S_multivariate
 
+# TODO czy DTF_multivariate z dwoma kanałami nie robi tego samego?
 def DTF_bivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     """
     Compute the directed transfer function (DTF) for the bivariate case.
@@ -346,17 +345,11 @@ def ffDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     np.ndarray
         Full-frequency DTF of shape (N_chan, N_chan, N_f).
     """
-    if p_opt is None:
-        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, False)
-        print('Optimal model order for all channels: p = ', str(p_opt))
-    else:
-        print('Using provided model order: p = ', str(p_opt))
-    Ar, _ = AR_coeff(signals, p_opt)
-    H, _ = mvar_H(Ar, f, Fs)
-    DTF = np.abs(H)**2
+    DTF = DTF_multivariate(signals, f, Fs, max_p, p_opt, crit_type)
+
     N_chan, _, N_f = DTF.shape
     # Normalize DTF to get full-frequency DTF (ffDTF)
-    ffDTF = np.zeros((N_chan,N_chan, N_f))
+    ffDTF = np.zeros((N_chan, N_chan, N_f))
     for i in range(N_chan):  # rows
         for j in range(N_chan):  # columns
             ffDTF[i,j,:] = DTF[i,j,:] / np.sum(DTF[i,:,:])
@@ -450,18 +443,13 @@ def dDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     np.ndarray
         Direct directed transfer function (dDTF) of shape (N_chan, N_chan, N_f).
     """
-    if p_opt is None:
-        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, False)
-        print('Optimal model order for all channels: p = ', str(p_opt))
-    else:
-        print('Using provided model order: p = ', str(p_opt))  
     # compute spectral density matrix
     S = multivariate_spectra(signals, f, Fs, max_p, p_opt, crit_type)
     # Compute partial coherence
     kappa = partial_coherence(S)
     # compute the ffDTF
     ff_DTF = ffDTF(signals, f, Fs, max_p, p_opt, crit_type)
-    # Compute dDTF using the formula: dDTF = ff_DTF * kappa
+    # Compute dDTF using the formula: dDTF = ff_DTF * |kappa|
     dDTF = ff_DTF * np.abs(kappa)
 
     return dDTF
@@ -524,7 +512,7 @@ def GPDC(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     
     # Estimate AR coefficients and residual variance
     Ar, V = AR_coeff(signals, p_opt)
-    H, A = mvar_H(Ar, f, Fs)  # A is the frequency domain AR matrix
+    _, A = mvar_H(Ar, f, Fs)  # A is the frequency domain AR matrix
     
     N_chan, _, N_f = A.shape
     GPDC = np.zeros((N_chan, N_chan, N_f))
