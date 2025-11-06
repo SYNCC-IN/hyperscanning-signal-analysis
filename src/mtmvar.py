@@ -30,6 +30,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 
+
 def countCorr(x, ip, iwhat):
     '''
     Internal procedure 
@@ -59,20 +60,20 @@ def countCorr(x, ip, iwhat):
                 corrscale = 1 / (n - k)
                 nn = n - k - 1
                 r[:, :] = np.dot(x[:, :nn, trial], x[:, k + 1:k + nn + 1, trial].T) * corrscale
-        
+
             rright[k * m:k * m + m, :] = r[:, :]
-        
+
             if k < ip:
                 for i in range(1, ip - k):
                     rleft[(k + i) * m:(k + i) * m + m, (i - 1) * m:(i - 1) * m + m] = r[:, :]
                     rleft[(i - 1) * m:(i - 1) * m + m, (k + i) * m:(k + i) * m + m] = r[:, :].T
-        
+
         corrscale = 1 / n
         r[:, :] = np.dot(x[:, :, trial], x[:, :, trial].T) * corrscale
-    
+
         for k in range(ip):
             rleft[k * m:k * m + m, k * m:k * m + m] = r[:, :]
-    
+
         rleft_tot = rleft_tot + rleft
         rright_tot = rright_tot + rright
         r_tot = r_tot + r
@@ -83,6 +84,7 @@ def countCorr(x, ip, iwhat):
         r_tot = r_tot / trials
 
     return rleft_tot, rright_tot, r_tot
+
 
 def AR_coeff(dat0, p=5, method=1):
     '''
@@ -97,7 +99,7 @@ def AR_coeff(dat0, p=5, method=1):
     ARr - model coefficients of size (p,chans,chans)
     Vr - residual data variance matrix
     '''
-    
+
     ds = dat0.shape
     if len(ds) < 3:
         dat = np.zeros((ds[0], ds[1], 1))
@@ -107,10 +109,10 @@ def AR_coeff(dat0, p=5, method=1):
     chans = ds[0]
 
     rleft, rright, r = countCorr(dat, p, 1)
-    xres = np.linalg.solve(rleft, rright)  
-    xres= xres.T  
+    xres = np.linalg.solve(rleft, rright)
+    xres = xres.T
     Vr = -np.dot(xres, rright) + r
-    AR = np.reshape(xres, ( chans, p,chans)) #(chans, p, chans))# ( chans, chans,p,)) #
+    AR = np.reshape(xres, (chans, p, chans))  # (chans, p, chans))# ( chans, chans,p,)) #
     AR = AR.transpose((0, 2, 1))
     return AR, Vr
 
@@ -136,25 +138,26 @@ def mvar_H(Ar, f, Fs):
     p = Ar.shape[2]
     Nf = len(f)
     chan = Ar.shape[0]
-    
+
     H = np.zeros((chan, chan, Nf), dtype=complex)
     A_out = np.zeros((chan, chan, Nf), dtype=complex)
 
     z = np.zeros((p, Nf), dtype=complex)
     for m in range(1, p + 1):
-        z[m-1, :] = np.exp(-m * 2 * np.pi * 1j * f / Fs)
+        z[m - 1, :] = np.exp(-m * 2 * np.pi * 1j * f / Fs)
 
     for fi in range(Nf):
         A = np.eye(chan, dtype=complex)
         for m in range(p):
-            A -= Ar[:, :,m] * z[m, fi].item()
+            A -= Ar[:, :, m] * z[m, fi].item()
         H[:, :, fi] = np.linalg.inv(A)
         A_out[:, :, fi] = A
 
     return H, A_out
 
+
 # TODO czy multivariate_spectra z dwoma kanałami nie robi tego samego?
-def bivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
+def bivariate_spectra(signals, f, Fs, max_p, p_opt=None, crit_type='AIC'):
     """
     Compute the bivariate spectra for each pair of channels in signals.
     Parameters:
@@ -176,29 +179,31 @@ def bivariate_spectra(signals, f, Fs, max_p, p_opt = None, crit_type='AIC'):
     """
     N_chan = signals.shape[0]
     N_f = f.shape[0]
-    S_bivariate = np.zeros((N_chan,N_chan, N_f), dtype=np.complex128   ) #initialize the bivariate spectrum
+    S_bivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the bivariate spectrum
     for ch1 in range(N_chan):
-        for ch2 in range(ch1+1,N_chan):
-            x = np.vstack((signals[ch1,:],
-                           signals[ch2,:]))
+        for ch2 in range(ch1 + 1, N_chan):
+            x = np.vstack((signals[ch1, :],
+                           signals[ch2, :]))
             if p_opt is None:
                 _, _, p_opt = mvar_criterion(x, max_p, crit_type, False)
-                print('Optimal model order for channel pair: ', str(ch1), ' and ', str(ch2), ' p = ', str(p_opt))   
+                print('Optimal model order for channel pair: ', str(ch1), ' and ', str(ch2), ' p = ', str(p_opt))
             else:
-                print('Using provided model order: p = ', str(p_opt))   
-            # Estimate AR coefficients and residual variance
+                print('Using provided model order: p = ', str(p_opt))
+                # Estimate AR coefficients and residual variance
             Ar, V = AR_coeff(x, p_opt)
             H, _ = mvar_H(Ar, f, Fs)
-            S_2chan = np.zeros((2,2, N_f), dtype=np.complex128) #initialize the bivariate spectrum for the pair of channels
-            for fi in range(N_f): #compute spectrum for the pair ch1, ch2
-                S_2chan[:,:,fi] = H[:,:,fi].dot(V.dot(H[:,:,fi].T))
-            S_bivariate[ch1,ch1,:] = S_2chan[0,0,:]
-            S_bivariate[ch2,ch2,:] = S_2chan[1,1,:]
-            S_bivariate[ch1,ch2,:] = S_2chan[0,1,:]
-            S_bivariate[ch2,ch1,:] = S_2chan[1,0,:]
+            S_2chan = np.zeros((2, 2, N_f),
+                               dtype=np.complex128)  # initialize the bivariate spectrum for the pair of channels
+            for fi in range(N_f):  # compute spectrum for the pair ch1, ch2
+                S_2chan[:, :, fi] = H[:, :, fi].dot(V.dot(H[:, :, fi].T))
+            S_bivariate[ch1, ch1, :] = S_2chan[0, 0, :]
+            S_bivariate[ch2, ch2, :] = S_2chan[1, 1, :]
+            S_bivariate[ch1, ch2, :] = S_2chan[0, 1, :]
+            S_bivariate[ch2, ch1, :] = S_2chan[1, 0, :]
     return S_bivariate
 
-def multivariate_spectra(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+
+def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the multivariate spectra for all channels in signals.
     
@@ -230,14 +235,15 @@ def multivariate_spectra(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AI
     H, _ = mvar_H(Ar, f, Fs)
     N_chan = signals.shape[0]
     N_f = f.shape[0]
-    S_multivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128) #initialize the multivariate spectrum
-    for fi in range(N_f): #compute spectrum for all channels
-        S_multivariate[:,:,fi] = H[:,:,fi].dot(V.dot(H[:,:,fi].T))      
-    
+    S_multivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the multivariate spectrum
+    for fi in range(N_f):  # compute spectrum for all channels
+        S_multivariate[:, :, fi] = H[:, :, fi].dot(V.dot(H[:, :, fi].T))
+
     return S_multivariate
 
+
 # TODO czy DTF_multivariate z dwoma kanałami nie robi tego samego?
-def DTF_bivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+def DTF_bivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the directed transfer function (DTF) for the bivariate case.
     Parameters:
@@ -259,23 +265,24 @@ def DTF_bivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     """
     N_chan = signals.shape[0]
     N_f = f.shape[0]
-    DTF_bivariate = np.zeros((N_chan,N_chan, N_f),dtype=np.complex128) #initialize the bivariate DTF; 
+    DTF_bivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the bivariate DTF;
     for ch1 in range(N_chan):
-        for ch2 in range(ch1+1,N_chan):
-            x = np.vstack( (signals[ch1,:],
-                            signals[ch2,:]) )  
-            if p_opt is None:  
+        for ch2 in range(ch1 + 1, N_chan):
+            x = np.vstack((signals[ch1, :],
+                           signals[ch2, :]))
+            if p_opt is None:
                 _, _, p_opt = mvar_criterion(x, max_p, crit_type, False)
             Ar, _ = AR_coeff(x, p_opt)
             H, _ = mvar_H(Ar, f, Fs)
-            
-            DTF_2chan = np.abs(H)**2
-            
-            DTF_bivariate[ch1,ch2,:] = DTF_2chan[0,1,:]
-            DTF_bivariate[ch2,ch1,:] = DTF_2chan[1,0,:]
+
+            DTF_2chan = np.abs(H) ** 2
+
+            DTF_bivariate[ch1, ch2, :] = DTF_2chan[0, 1, :]
+            DTF_bivariate[ch2, ch1, :] = DTF_2chan[1, 0, :]
     return DTF_bivariate
 
-def DTF_multivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC', comment=None):
+
+def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comment=None):
     """
     Compute the directed transfer function (DTF) for the multivariate case.
     Parameters:
@@ -302,11 +309,12 @@ def DTF_multivariate(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC', 
         print(f'Using provided model order: p = {p_opt}')
     Ar, _ = AR_coeff(signals, p_opt)
     H, _ = mvar_H(Ar, f, Fs)
-    DTF = np.abs(H)**2
+    DTF = np.abs(H) ** 2
 
     return DTF
 
-def ffDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+
+def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the full-frequency directed transfer function (ffDTF) for the multivariate case.
     
@@ -352,8 +360,9 @@ def ffDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
     ffDTF = np.zeros((N_chan, N_chan, N_f))
     for i in range(N_chan):  # rows
         for j in range(N_chan):  # columns
-            ffDTF[i,j,:] = DTF[i,j,:] / np.sum(DTF[i,:,:])
+            ffDTF[i, j, :] = DTF[i, j, :] / np.sum(DTF[i, :, :])
     return ffDTF
+
 
 def partial_coherence(S):
     """
@@ -368,16 +377,16 @@ def partial_coherence(S):
         Partial coherence of shape (N_chan, N_chan, N_f).
     """
     N_chan, _, N_f = S.shape
-    
+
     # Compute minors of S using boolean indexing (Method 2)
     M = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)
-    
+
     for i in range(N_chan):  # rows to delete
         for j in range(N_chan):  # columns to delete
             for fi in range(N_f):  # for each frequency
                 # Extract the (N_chan x N_chan) matrix at frequency fi
                 S_freq = S[:, :, fi]
-                
+
                 # Create minor by deleting row i and column j using boolean indexing
                 if N_chan > 1:  # Only compute minor if matrix is larger than 1x1
                     # Create boolean masks
@@ -385,13 +394,13 @@ def partial_coherence(S):
                     col_mask = np.ones(N_chan, dtype=bool)
                     row_mask[i] = False
                     col_mask[j] = False
-                    
+
                     # Extract submatrix using boolean indexing
                     minor_matrix = S_freq[np.ix_(row_mask, col_mask)]
                     M[i, j, fi] = np.linalg.det(minor_matrix)
                 else:
                     M[i, j, fi] = 1.0  # For 1x1 matrix, minor is 1
-    
+
     # Compute partial coherence
     kappa = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)
     for i in range(N_chan):
@@ -399,16 +408,17 @@ def partial_coherence(S):
             if i != j:  # Only compute for off-diagonal elements
                 # Avoid division by zero
                 denominator = np.sqrt(M[i, i, :] * M[j, j, :])
-                kappa[i, j, :] = np.where(denominator != 0, 
-                                        M[i, j, :] / denominator, 
-                                        0)
+                kappa[i, j, :] = np.where(denominator != 0,
+                                          M[i, j, :] / denominator,
+                                          0)
             # Diagonal elements are set to 1 (perfect coherence with itself)
             else:
                 kappa[i, j, :] = 1.0
-    
+
     return kappa
 
-def dDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+
+def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the direct directed transfer function (dDTF) for the multivariate case.
     
@@ -454,7 +464,8 @@ def dDTF(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
 
     return dDTF
 
-def GPDC(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
+
+def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the generalized partial directed coherence (GPDC) for the multivariate case.
     
@@ -509,32 +520,33 @@ def GPDC(signals, f, Fs, max_p = 20, p_opt = None, crit_type='AIC'):
         print('Optimal model order for all channels: p = ', str(p_opt))
     else:
         print('Using provided model order: p = ', str(p_opt))
-    
+
     # Estimate AR coefficients and residual variance
     Ar, V = AR_coeff(signals, p_opt)
     _, A = mvar_H(Ar, f, Fs)  # A is the frequency domain AR matrix
-    
+
     N_chan, _, N_f = A.shape
     GPDC = np.zeros((N_chan, N_chan, N_f))
-    
+
     # Extract noise variances (diagonal of V)
     sigma_squared = np.diag(V)
-    
+
     # Compute GPDC 
     for i in range(N_chan):  # source
         for j in range(N_chan):  # target
             # Numerator: |A_ij(f)| / σ_i
             numerator = np.abs(A[i, j, :]) / np.sqrt(sigma_squared[i])
-            
+
             # Denominator: sqrt(Σ_k (|A_kj(f)|² / σ²_k))
-            denominator = np.sqrt(np.sum(np.abs(A[:, j, :])**2 / sigma_squared[:, np.newaxis], axis=0))
-            
+            denominator = np.sqrt(np.sum(np.abs(A[:, j, :]) ** 2 / sigma_squared[:, np.newaxis], axis=0))
+
             # Avoid division by zero
-            GPDC[i, j, :] = np.where(denominator != 0, 
-                                   numerator / denominator, 
-                                   0)
+            GPDC[i, j, :] = np.where(denominator != 0,
+                                     numerator / denominator,
+                                     0)
 
     return GPDC
+
 
 # Plotting function for graph visualization
 def mvar_plot(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linear'):
@@ -582,7 +594,7 @@ def mvar_plot(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linea
     MaxonDiag = np.max(onDiag)
     MaxoffDiag = np.max(offDiag)
 
-    fig, axs = plt.subplots(N_chan, N_chan, figsize=(6,6), constrained_layout=True)
+    fig, axs = plt.subplots(N_chan, N_chan, figsize=(6, 6), constrained_layout=True)
     for i in range(N_chan):
         for j in range(N_chan):
             ax = axs[i, j] if N_chan > 1 else axs
@@ -603,9 +615,10 @@ def mvar_plot(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linea
                 ax.set_ylabel(f"{ylab}{ChanNames[i]}")
 
     axs[0, 0].set_title(Top_title)
-    #plt.tight_layout()
+    # plt.tight_layout()
 
-def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab,ChanNames , Top_title, scale='linear'):
+
+def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linear'):
     """
     Plot MVAR results for diagonal (auto) and off-diagonal (cross) terms.
 
@@ -653,7 +666,7 @@ def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab,ChanNames , Top_title, scale=
     MaxonDiag = np.max(onDiag)
     MaxoffDiag = np.max(offDiag)
 
-    fig, axs = plt.subplots(N_chan, N_chan, figsize=(8,8),
+    fig, axs = plt.subplots(N_chan, N_chan, figsize=(8, 8),
                             gridspec_kw={'wspace': 0, 'hspace': 0})
 
     for i in range(N_chan):
@@ -672,11 +685,11 @@ def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab,ChanNames , Top_title, scale=
                 ax.set_ylim([0, MaxonDiag])
                 ax.set_yticks([0, MaxonDiag // 2])
 
-            ax.set_xticks([f[0], int(f[len(f)//2]) ])
+            ax.set_xticks([f[0], int(f[len(f) // 2])])
             ax.tick_params(labelleft=(j == 0), labelbottom=(i == N_chan - 1))
 
             if i == N_chan - 1:
-                ax.set_xlabel(f"{xlab}{ ChanNames[j]}")
+                ax.set_xlabel(f"{xlab}{ChanNames[j]}")
             if j == 0:
                 ax.set_ylabel(f"{ylab}{ChanNames[i]}")
 
@@ -684,7 +697,8 @@ def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab,ChanNames , Top_title, scale=
         axs[0, 0].set_title(Top_title)
     else:
         axs.set_title(Top_title)
-    #plt.tight_layout()
+    # plt.tight_layout()
+
 
 def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
     """
@@ -715,11 +729,11 @@ def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
     for p in p_range:
         _, Vr = AR_coeff(dat, p)  # You must define or import AR_coeff
         if crit_type == 'AIC':
-            crit[p-1] = np.log(np.linalg.det(Vr)) + 2 * p * k**2 / N
+            crit[p - 1] = np.log(np.linalg.det(Vr)) + 2 * p * k ** 2 / N
         elif crit_type == 'HQ':
-            crit[p-1] = np.log(np.linalg.det(Vr)) + 2 * np.log(np.log(N)) * p * k**2 / N
+            crit[p - 1] = np.log(np.linalg.det(Vr)) + 2 * np.log(np.log(N)) * p * k ** 2 / N
         elif crit_type == 'SC':
-            crit[p-1] = np.log(np.linalg.det(Vr)) + np.log(N) * p * k**2 / N
+            crit[p - 1] = np.log(np.linalg.det(Vr)) + np.log(N) * p * k ** 2 / N
         else:
             raise ValueError("Invalid criterion type. Choose from 'AIC', 'HQ', 'SC'.")
 
@@ -736,13 +750,14 @@ def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
 
     return crit, p_range, p_opt
 
+
 # Compute linewidths
 def get_linewidths(G):
     weights = np.array([d['weight'] for u, v, d in G.edges(data=True)])
     return 5 * weights / weights.max()
 
+
 def graph_plot(connectivity_matrix, ax, f, f_range, ChanNames, title):
-    
     """
     Plot connectivity matrix as a graph.
     Parameters:
@@ -770,7 +785,7 @@ def graph_plot(connectivity_matrix, ax, f, f_range, ChanNames, title):
     f_indices = np.where((f >= f_range[0]) & (f <= f_range[1]))[0]
     if len(f_indices) == 0:
         raise ValueError("No frequencies found in the specified range.")
-    adj  = np.sum(connectivity[:,:,f_indices], axis=2).T
+    adj = np.sum(connectivity[:, :, f_indices], axis=2).T
     # Remove self-loops by setting diagonal to zero
     np.fill_diagonal(adj, 0)
     # Create directed graphs
@@ -787,4 +802,3 @@ def graph_plot(connectivity_matrix, ax, f, f_range, ChanNames, title):
     ax.set_title(title)
 
     return G
-

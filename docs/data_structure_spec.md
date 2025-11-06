@@ -1,17 +1,19 @@
-# Data Structure Specification  
+# Data Structure Specification
+
 ### EEGLAB-style multimodal structure for EEG, ET, and IBI signals
 
 **Version:** 1.0  
 **Last updated:** 2025-10-19  
 **Author:** Joanna Duda-Goławska
 
-
 This document defines the unified **Python data structure** for handling multimodal child-caregiver data recorded with:
+
 - EEG (electroencephalography),
 - ET (eye-tracking),
 - IBI (inter-beat interval, derived from ECG).
 
-The structure is designed for transparent integration across different signal types, maintaining synchronisation and consistent metadata.
+The structure is designed for transparent integration across different signal types, maintaining synchronisation and
+consistent metadata.
 
 The data are stored as a single Python object, named `data`.
 
