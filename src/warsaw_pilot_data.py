@@ -1,5 +1,5 @@
-from utils import load_warsaw_pilot_data, scan_for_events, filter_warsaw_pilot_data, \
-    debug_plot, hrv_dtf, eeg_dtf, eeg_hrv_dtf, plot_EEG_channels_pl
+from src.DataLoader import DataLoader
+from utils import debug_plot, hrv_dtf, eeg_dtf, eeg_hrv_dtf, plot_EEG_channels_pl
 
 if __name__ == "__main__":
     folder = '../DATA/W_010/'
@@ -12,23 +12,23 @@ if __name__ == "__main__":
     EEG_DTF = True  # if True, the DTF will be estimated for the EEG signals from child and caregiver separately
     EEG_HRV_DTF = True
 
-    data = load_warsaw_pilot_data(folder, file, plot=False)
-    events = scan_for_events(data,
-                             plot=True)  # indexes of events in the data, this is done before filtering to avoid artifacts in the diode signal
-    filtered_data = filter_warsaw_pilot_data(data)
+
+    data = DataLoader("W_010", False)
+    data.set_eeg_data("../DATA/W_010/")
+    events = data.events
 
     if debug_PLOT:
-        debug_plot(filtered_data, events)
-        plot_EEG_channels_pl(filtered_data, events, filtered_data['EEG_channels_ch'],
+        debug_plot(data, events)
+        plot_EEG_channels_pl(data, events, data.channel_names['EEG']['ch'],
                              title='Filtered Child EEG Channels (offset for clarity)')
-        plot_EEG_channels_pl(filtered_data, events, filtered_data['EEG_channels_cg'],
+        plot_EEG_channels_pl(data, events, data.channel_names['EEG']['cg'],
                              title='Filtered Caregiver EEG Channels (offset for clarity)')
 
     if HRV_DTF:
-        hrv_dtf(filtered_data, events, selected_events)
+        hrv_dtf(data, events, selected_events)
 
     if EEG_DTF:
-        eeg_dtf(filtered_data, events, selected_events)
+        eeg_dtf(data, events, selected_events)
 
     if EEG_HRV_DTF:
-        eeg_hrv_dtf(filtered_data, events, selected_events)
+        eeg_hrv_dtf(data, events, selected_events)

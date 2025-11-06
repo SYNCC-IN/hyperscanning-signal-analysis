@@ -26,6 +26,7 @@ class DataLoader:
         self.channel_names = {}
         self.id = id
         self.modalities = []  # list of modalities already loaded: 'EEG', 'H10', 'ET'
+        self.events = []
 
     def set_eeg_data(self, folder_eeg, debug_flag=False):
         '''Set the EEG data for the DataLoader instance by loading and filtering the Warsaw pilot data.

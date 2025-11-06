@@ -236,7 +236,7 @@ def filter_warsaw_pilot_data(data, lowcut=4.0, highcut=40.0, q=8):
         highcut (float): The high cutoff frequency for the bandpass filter.
         q: decimation of the EEG data
     Returns:
-        filtered_data (dict): Filtered data with the structure:
+        data (dict): Filtered data with the structure:
         {
             'data': filtered signal,
             't_EEG': time vector for the EEG data after decimation,
@@ -396,7 +396,7 @@ def plot_EEG_channels_pl(filtered_data, events, selected_channels, title='Filter
     
     Parameters:
     -----------
-    filtered_data : dict
+    data : dict
         Dictionary containing EEG data, channels, and time vectors
     events : dict
         Dictionary containing event timings
@@ -568,11 +568,11 @@ def overlay_EEG_channels_hyperscanning(data_ch, data_cg, all_channels, event, se
     ax[1].set_title(f'Caregiver EEG channels for {event}')
     for i, ch in enumerate(selected_channels_ch):
         if ch in all_channels:
-            # idx_ch = filtered_data['channels'][ch]
+            # idx_ch = data['channels'][ch]
             ax[0].plot(data_ch[i, :], label=ch)
     for i, ch in enumerate(selected_channels_cg):
         if ch in all_channels:
-            # idx_cg = filtered_data['channels'][ch]
+            # idx_cg = data['channels'][ch]
             ax[1].plot(data_cg[i, :], label=ch)
     ax[0].set_ylabel('Amplitude [uV]')
     ax[1].set_ylabel('Amplitude [uV]')
