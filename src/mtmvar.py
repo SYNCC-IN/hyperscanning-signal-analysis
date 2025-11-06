@@ -160,54 +160,6 @@ def mvar_H(Ar, f, Fs):
 
     return H, A_out
 
-
-# TODO czy multivariate_spectra z dwoma kanałami nie robi tego samego?
-def bivariate_spectra(signals, f, Fs, max_p, p_opt=None, crit_type='AIC'):
-    """
-    Compute the bivariate spectra for each pair of channels in signals.
-    Parameters:
-    signals : np.ndarray
-        Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
-        Frequency vector.
-    fs : float
-        Sampling frequency.
-    max_p : int
-        Maximum model order.
-    p_opt : int or None
-        Optimal model order. If None, it will be computed.
-    crit_type : str
-        Criterion type for model order selection.   
-    Returns:
-    np.ndarray
-        Bivariate spectra of shape (N_chan, N_chan, N_f).
-    """
-    N_chan = signals.shape[0]
-    N_f = f.shape[0]
-    S_bivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the bivariate spectrum
-    for ch1 in range(N_chan):
-        for ch2 in range(ch1 + 1, N_chan):
-            x = np.vstack((signals[ch1, :],
-                           signals[ch2, :]))
-            if p_opt is None:
-                _, _, p_opt = mvar_criterion(x, max_p, crit_type, False)
-                print('Optimal model order for channel pair: ', str(ch1), ' and ', str(ch2), ' p = ', str(p_opt))
-            else:
-                print('Using provided model order: p = ', str(p_opt))
-                # Estimate AR coefficients and residual variance
-            Ar, V = ar_coeff(x, p_opt)
-            H, _ = mvar_H(Ar, f, Fs)
-            S_2chan = np.zeros((2, 2, N_f),
-                               dtype=np.complex128)  # initialize the bivariate spectrum for the pair of channels
-            for fi in range(N_f):  # compute spectrum for the pair ch1, ch2
-                S_2chan[:, :, fi] = H[:, :, fi].dot(V.dot(H[:, :, fi].T))
-            S_bivariate[ch1, ch1, :] = S_2chan[0, 0, :]
-            S_bivariate[ch2, ch2, :] = S_2chan[1, 1, :]
-            S_bivariate[ch1, ch2, :] = S_2chan[0, 1, :]
-            S_bivariate[ch2, ch1, :] = S_2chan[1, 0, :]
-    return S_bivariate
-
-
 def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     """
     Compute the multivariate spectra for all channels in signals.
@@ -245,47 +197,6 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         S_multivariate[:, :, fi] = H[:, :, fi].dot(V.dot(H[:, :, fi].T))
 
     return S_multivariate
-
-
-# TODO czy DTF_multivariate z dwoma kanałami nie robi tego samego?
-def DTF_bivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
-    """
-    Compute the directed transfer function (DTF) for the bivariate case.
-    Parameters:
-    signals : np.ndarray
-        Input signals of shape (N_chan, N_samp).
-    f : np.ndarray
-        Frequency vector.
-    fs : float
-        Sampling frequency.
-    max_p : int
-        Maximum model order.
-    p_opt : int or None
-        Optimal model order. If None, it will be computed.
-    crit_type : str
-        Criterion type for model order selection.
-    Returns:
-    np.ndarray
-        Bivariate DTF of shape (N_chan, N_chan, N_f).
-    """
-    N_chan = signals.shape[0]
-    N_f = f.shape[0]
-    DTF_bivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the bivariate DTF;
-    for ch1 in range(N_chan):
-        for ch2 in range(ch1 + 1, N_chan):
-            x = np.vstack((signals[ch1, :],
-                           signals[ch2, :]))
-            if p_opt is None:
-                _, _, p_opt = mvar_criterion(x, max_p, crit_type, False)
-            Ar, _ = ar_coeff(x, p_opt)
-            H, _ = mvar_H(Ar, f, Fs)
-
-            DTF_2chan = np.abs(H) ** 2
-
-            DTF_bivariate[ch1, ch2, :] = DTF_2chan[0, 1, :]
-            DTF_bivariate[ch2, ch1, :] = DTF_2chan[1, 0, :]
-    return DTF_bivariate
-
 
 def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comment=None):
     """
