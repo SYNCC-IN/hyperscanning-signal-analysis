@@ -1,10 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import zscore
 from mtmvar import mvar_plot, mvar_plot_dense, DTF_multivariate, \
     multivariate_spectra, graph_plot
 from utils import load_warsaw_pilot_data, scan_for_events, filter_warsaw_pilot_data, \
-    get_IBI_signal_from_ECG_for_selected_event, get_data_for_selected_channel_and_event, debug_plot, hrv_dtf
+    get_data_for_selected_channel_and_event, debug_plot, hrv_dtf, eeg_dtf
 from utils import plot_EEG_channels_pl, overlay_EEG_channels_hyperscanning_pl, overlay_EEG_channels_hyperscanning
 from utils import eeg_hrv_dtf_analyze_event
 
@@ -12,7 +11,7 @@ from utils import eeg_hrv_dtf_analyze_event
 if __name__ == "__main__":
     folder = '../DATA/W_010/' 
     file  =  'W_010.obci'
-    selected_events = ['Movie_1']# # events to extract data for ; #, 'Movie_2', 'Movie_3', 'Talk_1', 'Talk_2'
+    selected_events = ['Movie_1', 'Movie_2', 'Movie_3']# # events to extract data for ; #, 'Movie_2', 'Movie_3', 'Talk_1', 'Talk_2'
 
     debug_PLOT = True
     HRV_DTF = True # if True, the DTF will be estimated for the IBI signals from the ECG amplifier
@@ -35,36 +34,7 @@ if __name__ == "__main__":
         hrv_dtf(filtered_data, events, selected_events)
     
     if EEG_DTF:
-        # for each event extract the EEG signals 
-        # of child and of the caregiver
-        # costruct a numpy data array with the shape (N_samples, 19) 
-        # and estimate DTF for each event separately for child and caregiver EEG channels
-
-        f = np.arange(1,30,0.5 ) # frequency vector for the DTF estimation
-        selected_channels_ch  = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'C3', 'Cz', 'C4', 'P3', 'Pz', 'P4', 'O1', 'O2'] #, , 'T3','T4',  'T6',  'T5'
-        selected_channels_cg = ['Fp1_cg', 'Fp2_cg', 'F7_cg', 'F3_cg', 'Fz_cg', 'F4_cg', 'F8_cg', 'C3_cg', 'Cz_cg', 'C4_cg', 'P3_cg', 'Pz_cg', 'P4_cg', 'O1_cg', 'O2_cg'] # , 'T3_cg', , 'T4_cg', , 'T5_cg', , 'T6_cg'
-        
-        for event in selected_events:
-            data_ch = get_data_for_selected_channel_and_event(filtered_data, selected_channels_ch, events, event)
-            data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
-
-            # plot the data for the child and caregiver EEG channels
-            overlay_EEG_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch, selected_channels_cg, title='Filtered EEG Channels - Hyperscanning')
-            
-            # Also plot using Plotly for interactive visualization
-            overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch, selected_channels_cg, title='Filtered EEG Channels - Hyperscanning (Plotly)')
-
-            p_opt =9 # force the model order to be 9, this is a good compromise between the model complexity and the estimation accuracy
-
-            S = multivariate_spectra(data_ch, f, Fs = filtered_data['Fs_EEG'], max_p = 15, p_opt = p_opt, crit_type='AIC')
-            DTF = DTF_multivariate(data_ch, f, Fs = filtered_data['Fs_EEG'], max_p = 15, p_opt = p_opt, crit_type='AIC')
-            mvar_plot_dense(S, DTF,   f, 'From ', 'To ',selected_channels_ch ,  'DTF ch '+ event ,'sqrt')
-
-            S = multivariate_spectra(data_cg, f, Fs = filtered_data['Fs_EEG'], max_p = 15, p_opt = p_opt, crit_type='AIC')
-            DTF = DTF_multivariate(data_cg, f, Fs = filtered_data['Fs_EEG'], max_p = 15, p_opt = p_opt, crit_type='AIC')
-            mvar_plot_dense(S, DTF,   f, 'From ', 'To ', selected_channels_cg,  'DTF cg '+ event ,'sqrt')
-            plt.show()
-
+        eeg_dtf(filtered_data, events, selected_events)
 
     if EEG_HRV_DTF:
     # Something interesting seems to happen in the theta band in the Fz electrode of both child and caregiver

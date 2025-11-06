@@ -10,7 +10,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots #TODO czy trzeba mieszać plotly i matplotlib?
 from scipy.stats import zscore
 
-from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra
+from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense
 
 
 # przeniesiona do DataLoader
@@ -877,3 +877,44 @@ def hrv_dtf(filtered_data, events, selected_events):
             """Let's  plot the results in the table form."""
             mvar_plot(S, DTF, f, 'From ', 'To ', ['Child', 'Caregiver'], 'DTF ' + event, 'sqrt')
     plt.show()
+
+def eeg_dtf(filtered_data, events, selected_events):
+    # for each event extract the EEG signals
+    # of child and of the caregiver
+    # costruct a numpy data array with the shape (N_samples, 19)
+    # and estimate DTF for each event separately for child and caregiver EEG channels
+
+    f = np.arange(1, 30, 0.5)  # frequency vector for the DTF estimation
+    selected_channels_ch = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'C3', 'Cz', 'C4', 'P3', 'Pz', 'P4', 'O1',
+                            'O2']  # , , 'T3','T4',  'T6',  'T5'
+    selected_channels_cg = ['Fp1_cg', 'Fp2_cg', 'F7_cg', 'F3_cg', 'Fz_cg', 'F4_cg', 'F8_cg', 'C3_cg', 'Cz_cg', 'C4_cg',
+                            'P3_cg', 'Pz_cg', 'P4_cg', 'O1_cg', 'O2_cg']  # , 'T3_cg', , 'T4_cg', , 'T5_cg', , 'T6_cg'
+
+    for event in selected_events:
+        data_ch = get_data_for_selected_channel_and_event(filtered_data, selected_channels_ch, events, event)
+        data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
+
+        # ICA = True # if True, apply ICA to the EEG data to remove artifacts
+        # if ICA: # clean EEG data with ICA separately for child and caregiver EEG channels
+        #     data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
+        #     data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
+
+        # plot the data for the child and caregiver EEG channels
+        overlay_EEG_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
+                                           selected_channels_cg, title='Filtered EEG Channels - Hyperscanning')
+
+        # Also plot using Plotly for interactive visualization
+        overlay_EEG_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
+                                              selected_channels_cg,
+                                              title='Filtered EEG Channels - Hyperscanning (Plotly)')
+
+        p_opt = 9  # force the model order to be 9, this is a good compromise between the model complexity and the estimation accuracy
+
+        DTF = DTF_multivariate(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='child')
+        S = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        mvar_plot_dense(S, DTF, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
+
+        DTF = DTF_multivariate(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='caregiver')
+        S = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        mvar_plot_dense(S, DTF, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
+        plt.show()
