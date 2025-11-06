@@ -235,29 +235,6 @@ def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filter
             save_figure_to_html(fig, title)
 
 
-def overlay_eeg_channels_hyperscanning(data_ch, data_cg, all_channels, event, selected_channels_ch,
-                                       selected_channels_cg, title='Filtered EEG Channels - Hyperscanning'):
-    """
-    Overlay EEG channels for child and caregiver during a specific event.
-    """
-    _, ax = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-    ax[0].set_title(f'Child EEG channels for {event}')
-    ax[1].set_title(f'Caregiver EEG channels for {event}')
-    for i, ch in enumerate(selected_channels_ch):
-        if ch in all_channels:
-            ax[0].plot(data_ch[i, :], label=ch)
-    for i, ch in enumerate(selected_channels_cg):
-        if ch in all_channels:
-            ax[1].plot(data_cg[i, :], label=ch)
-    ax[0].set_ylabel('Amplitude [uV]')
-    ax[1].set_ylabel('Amplitude [uV]')
-    ax[1].set_xlabel('Samples')
-    ax[0].legend(loc='upper right')
-    ax[1].legend(loc='upper right')
-    plt.suptitle(title)
-    plt.tight_layout()
-
-
 def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event, selected_channels_ch,
                                           selected_channels_cg, title='Filtered EEG Channels - Hyperscanning',
                                           renderer='auto'):
@@ -306,9 +283,9 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
                     y=data_ch[i, :],
                     mode='lines',
                     name=ch,
-                    line=dict(color=colors[color_idx], width=1.5),
+                    line={'color': colors[color_idx], 'width': 1.5},
                     legendgroup='child',
-                    legendgrouptitle_text="Child Channels"
+                    legendgrouptitle={'text': "Child Channels"}
                 ),
                 row=1, col=1
             )
@@ -571,11 +548,7 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
             data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
             data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
 
-        # plot the data for the child and caregiver EEG channels
-        overlay_eeg_channels_hyperscanning(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
-                                           selected_channels_cg, title='Filtered EEG Channels - Hyperscanning')
-
-        # Also plot using Plotly for interactive visualization
+        # plot data using Plotly for interactive visualization
         overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
                                               selected_channels_cg,
                                               title='Filtered EEG Channels - Hyperscanning (Plotly)')
