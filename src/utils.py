@@ -6,24 +6,22 @@ import plotly.express as px
 import os
 from plotly.subplots import make_subplots  # TODO czy trzeba mieszać plotly i matplotlib?
 from scipy.stats import zscore
+from sklearn.decomposition import FastICA
 
-from src.mtmvar import DTF_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense, graph_plot
+from src.mtmvar import dtf_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense, graph_plot
 
 
 def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
-    '''Get IBI signal from ECG data for a specific event.
+    """Get IBI signal from ECG data for a specific event.
     Args:
         filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
         events (dict): Dictionary containing the start and end time of detected events.
         selected_event (str): Name of the event to extract IBI signal for
-        Fs_IBI (int): Sampling frequency for the IBI signals.
-        plot (bool): Whether to plot the IBI signal.
-        label (str): Label for the plot.
     Returns:
         IBI_ch_interp (np.ndarray): Interpolated IBI signal for the child.
         IBI_cg_interp (np.ndarray): Interpolated IBI signal for the caregiver.
         t_ECG (np.ndarray): Time vector for the interpolated IBI signal.
-    '''
+    """
     if selected_event not in events:
         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
         # extract the ECG signal for the selected event
@@ -51,15 +49,15 @@ def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_e
 
 
 def get_data_for_selected_channel_and_event(filtered_data, selected_channels, events, selected_event):
-    '''Get data for selected channels and event from the filtered data.
+    """Get data for selected channels and event from the filtered data.
     Args:
-        data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
+        filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
         selected_channels (list): List of channel names to extract data for.
         events (dict): Dictionary containing the start and end time of detected events.
         selected_event (str): Name of the event to extract data for.
-    Returns:    
+    Returns:
         data_selected (np.ndarray): Data array with the shape (N_samples, N_channels) for the selected channels and event.
-    '''
+    """
     if selected_event not in events:
         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
     idx = events[selected_event]
@@ -78,32 +76,30 @@ def get_data_for_selected_channel_and_event(filtered_data, selected_channels, ev
     return data_selected
 
 
-def clean_data_with_ICA(data, selected_channels, event):
-    '''Clean data with ICA to remove artifacts.
+def clean_data_with_ica(data, selected_channels, event):
+    """Clean data with ICA to remove artifacts.
     Args:
         data (np.ndarray): Data array with the shape (N_channels, N_samples) for the selected channels and event.
         selected_channels (list): List of channel names to extract data for.
         event (str): Name of the event to extract data for.
-        plot (bool): Whether to plot the data before and after ICA.
     Returns:
         data_cleaned (np.ndarray): Cleaned data array with the shape (N_channels, N_samples) for the selected channels and event.
-    '''
-    from sklearn.decomposition import FastICA
+    """
     ica = FastICA(n_components=len(selected_channels), max_iter=1000, whiten="unit-variance")
-    S_ = ica.fit_transform(data.T)  # get components
+    ica_components = ica.fit_transform(data.T)  # get components
 
     _, ax = plt.subplots(len(selected_channels), 1, figsize=(12, 8), sharex=True)
     for i, ch in enumerate(selected_channels):
-        ax[i].plot(S_[:, i])
+        ax[i].plot(ica_components[:, i])
         ax[i].set_ylabel(ch)
     plt.tight_layout()
     plt.show()
     idx_to_remove = input(f'Event {event}: select components to remove and press Enter to continue...  ')
     if idx_to_remove != '':
         idx_to_remove = [int(i) for i in idx_to_remove.split(',')]
-        S_[:, idx_to_remove] = 0  # set the selected components to zero
+        ica_components[:, idx_to_remove] = 0  # set the selected components to zero
         print('Selected components to remove: ', idx_to_remove)
-    data_cleaned = ica.inverse_transform(S_).T  # reconstruct the data from the components   
+    data_cleaned = ica.inverse_transform(ica_components).T  # reconstruct the data from the components
     return data_cleaned
 
 
@@ -521,8 +517,8 @@ def hrv_dtf(filtered_data, events, selected_events):
             data[0, :] = ibi_ch_interp  # [start_idx:end_idx]
             data[1, :] = ibi_cg_interp  # [start_idx:end_idx]
 
-            dtf = DTF_multivariate(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-            spectra = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+            dtf = dtf_multivariate(data, f, filtered_data['Fs_IBI'], max_model_order=15, crit_type='AIC')
+            spectra = multivariate_spectra(data, f, filtered_data['Fs_IBI'], max_model_order=15, crit_type='AIC')
             """Let's  plot the results in the table form."""
             mvar_plot(spectra, dtf, f, 'From ', 'To ', ['Child', 'Caregiver'], 'DTF ' + event, 'sqrt')
     plt.show()
@@ -545,8 +541,8 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
         data_cg = get_data_for_selected_channel_and_event(filtered_data, selected_channels_cg, events, event)
 
         if clean_with_ica:  # clean EEG data with ICA separately for child and caregiver EEG channels
-            data_ch = clean_data_with_ICA(data_ch, selected_channels_ch, event)
-            data_cg = clean_data_with_ICA(data_cg, selected_channels_cg, event)
+            data_ch = clean_data_with_ica(data_ch, selected_channels_ch, event)
+            data_cg = clean_data_with_ica(data_cg, selected_channels_cg, event)
 
         # plot data using Plotly for interactive visualization
         overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, filtered_data['channels'], event, selected_channels_ch,
@@ -555,12 +551,12 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
 
         p_opt = 9  # force the model order to be 9, this is a good compromise between the model complexity and the estimation accuracy
 
-        dtf = DTF_multivariate(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='child')
-        spectra = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        dtf = dtf_multivariate(data_ch, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt, comment='child')
+        spectra = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt)
         mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
 
-        dtf = DTF_multivariate(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt, comment='caregiver')
-        spectra = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], p_opt=p_opt)
+        dtf = dtf_multivariate(data_cg, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt, comment='caregiver')
+        spectra = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt)
         mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
         plt.show()
 
@@ -579,8 +575,8 @@ def eeg_hrv_dtf(filtered_data, events, selected_events):
                                              selected_channels_cg, events, event)
 
         # estimate DTF for the system consisting of HRV and Fz theta amplitude of both child and caregiver
-        dtf = DTF_multivariate(dtf_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
-        spectra = multivariate_spectra(dtf_data, f, filtered_data['Fs_IBI'], max_p=15, crit_type='AIC')
+        dtf = dtf_multivariate(dtf_data, f, filtered_data['Fs_IBI'], max_model_order=15, crit_type='AIC')
+        spectra = multivariate_spectra(dtf_data, f, filtered_data['Fs_IBI'], max_model_order=15, crit_type='AIC')
         """Let's  plot the results in the table form."""
         chan_names = ['Child IBI', 'Caregiver IBI', 'Child Fz theta amp', 'Caregiver Fz_cg theta amp']
         mvar_plot(spectra, dtf, f, 'From ', 'To ', chan_names, 'DTF ' + event, 'sqrt')
@@ -588,6 +584,6 @@ def eeg_hrv_dtf(filtered_data, events, selected_events):
 
         # Finally let's plot the DTF results in the graph form using graph_plot  from mtmvar
         _, ax = plt.subplots(figsize=(10, 8))
-        graph_plot(connectivity_matrix=dtf, ax=ax, f=f, f_range=[0.2, 0.6], chan_names=chan_names,
+        graph_plot(connectivity_matrix=dtf, ax=ax, freqs=f, freq_range=[0.2, 0.6], chan_names=chan_names,
                    title='DTF ' + event)
         plt.show()

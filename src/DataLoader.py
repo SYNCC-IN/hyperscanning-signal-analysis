@@ -65,7 +65,7 @@ class DataLoader:
             channels[name] = i
         self.channels['EEG'] = channels
 
-        # if debug print N_chan, Fs_EEG, ChanNames
+        # if debug print N_chan, Fs_EEG, chan_names
         if self.plot_flag:
             print(f"N_chan: {N_ch},\n Fs_EEG: {Fs_EEG},\n ChanNames: {ChanNames}")
 

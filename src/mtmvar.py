@@ -14,7 +14,7 @@ Original MVAR methodology references:
 - Kamiński, M., & Blinowska, K. J. (1991). A new method of the description 
   of the information flow in the brain structures. Biological Cybernetics, 
   65(3), 203-210.
-- Kamiński, M., Ding, M., Truccolo, W. A., & Bressler, S. L. (2001). 
+- Kamiński, M., Ding, M., Truccolo, W. A., & Bressler, S. L. (2001).
   Evaluating causal relations in neural systems: Granger causality, directed 
   transfer function and statistical assessment of significance. Biological 
   Cybernetics, 85(2), 145-157.
@@ -86,19 +86,19 @@ def count_corr(x, ip, iwhat):
     return r_left_tot, r_right_tot, r_tot
 
 
-def ar_coeff(data, p=5):
+def ar_coeff(data, model_order=5):
     """
     Estimate MVAR coefficients for multivariate / multi-trial data.
 
     Parameters:
     data : np.ndarray
         Input time series with shape (channels, samples) or (channels, samples, trials).
-    p : int
+    model_order : int
         Model order.
 
     Returns:
-    coeffs : np.ndarray
-        AR coefficients with shape (channels, channels, p).
+    ar_coeffs : np.ndarray
+        AR coefficients with shape (channels, channels, model_order).
     variance : np.ndarray
         Residual covariance matrix with shape (channels, channels).
     """
@@ -109,7 +109,7 @@ def ar_coeff(data, p=5):
     n_channels = data.shape[0]
 
     # Compute correlation/block-correlation matrices
-    r_left, r_right, r_zero = count_corr(data, p, 1)
+    r_left, r_right, r_zero = count_corr(data, model_order, 1)
 
     # Solve for stacked AR coefficients (shape: (n_channels * p, n_channels))
     x = np.linalg.solve(r_left, r_right).T
@@ -118,17 +118,17 @@ def ar_coeff(data, p=5):
     variance = r_zero - x.dot(r_right)
 
     # Reshape coefficients into (channels, channels, p) to match previous behavior
-    coeffs = x.reshape(n_channels, p, n_channels).transpose((0, 2, 1))
-    return coeffs, variance
+    ar_coeffs = x.reshape(n_channels, model_order, n_channels).transpose((0, 2, 1))
+    return ar_coeffs, variance
 
 
-def mvar_transfer_function(Ar, freqs, fs):
+def mvar_transfer_function(ar_coeffs, freqs, fs):
     """
-    Calculate the transfer function H from multivariate autoregressive coefficients Ar.
+    Calculate the transfer function H from multivariate autoregressive coefficients AR
     
     Parameters:
-    Ar : numpy.ndarray
-        AR coefficient matrix with shape (chan, chan, p), where p is model order.
+    ar_coeffs : numpy.ndarray
+        AR coefficient matrix with shape (chan, chan, p), where p is the model order.
     freqs : numpy.ndarray
         Frequency vector.
     fs : float
@@ -137,31 +137,31 @@ def mvar_transfer_function(Ar, freqs, fs):
     Returns:
     transfer_function_matrix : numpy.ndarray
         Transfer function matrix with shape (chan, chan, len(freqs)).
-    A_out : numpy.ndarray
+    ar_matrix : numpy.ndarray
         Frequency-dependent AR matrix with shape (chan, chan, len(freqs)).
     """
-    p = Ar.shape[2]
-    Nf = len(freqs)
-    chan = Ar.shape[0]
+    model_order = ar_coeffs.shape[2]
+    n_freqs = len(freqs)
+    chan = ar_coeffs.shape[0]
 
-    transfer_function_matrix = np.zeros((chan, chan, Nf), dtype=complex)
-    A_out = np.zeros((chan, chan, Nf), dtype=complex)
+    transfer_function_matrix = np.zeros((chan, chan, n_freqs), dtype=complex)
+    ar_matrix = np.zeros((chan, chan, n_freqs), dtype=complex)
 
-    z = np.zeros((p, Nf), dtype=complex)
-    for m in range(1, p + 1):
+    z = np.zeros((model_order, n_freqs), dtype=complex)
+    for m in range(1, model_order + 1):
         z[m - 1, :] = np.exp(-m * 2 * np.pi * 1j * freqs / fs)
 
-    for fi in range(Nf):
-        A = np.eye(chan, dtype=complex)
-        for m in range(p):
-            A -= Ar[:, :, m] * z[m, fi].item()
-        transfer_function_matrix[:, :, fi] = np.linalg.inv(A)
-        A_out[:, :, fi] = A
+    for fi in range(n_freqs):
+        a = np.eye(chan, dtype=complex)
+        for m in range(model_order):
+            a -= ar_coeffs[:, :, m] * z[m, fi].item()
+        transfer_function_matrix[:, :, fi] = np.linalg.inv(a)
+        ar_matrix[:, :, fi] = a
 
-    return transfer_function_matrix, A_out
+    return transfer_function_matrix, ar_matrix
 
 
-def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
+def multivariate_spectra(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC'):
     """
     Compute the multivariate spectra for all channels in signals.
     
@@ -172,35 +172,35 @@ def multivariate_spectra(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Frequency vector.
     fs : float
         Sampling frequency.
-    max_p : int
+    max_model_order : int
         Maximum model order.
-    p_opt : int or None
+    optimal_model_order : int or None
         Optimal model order. If None, it will be computed.
     crit_type : str
         Criterion type for model order selection.
     
     Returns:
-    np.ndarray
+    spectra : np.ndarray
         Multivariate spectra of shape (N_chan, N_chan, N_f).
     """
-    if p_opt is None:
-        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, True)
-        print('Optimal model order for all channels: p = ', str(p_opt))
+    if optimal_model_order is None:
+        _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, True)
+        print('Optimal model order for all channels: p = ', str(optimal_model_order))
     else:
-        print('Using provided model order: p = ', str(p_opt))
+        print('Using provided model order: p = ', str(optimal_model_order))
     # Estimate AR coefficients and residual variance
-    Ar, V = ar_coeff(signals, p_opt)
-    H, _ = mvar_transfer_function(Ar, f, Fs)
-    N_chan = signals.shape[0]
-    N_f = f.shape[0]
-    S_multivariate = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)  # initialize the multivariate spectrum
-    for fi in range(N_f):  # compute spectrum for all channels
-        S_multivariate[:, :, fi] = H[:, :, fi].dot(V.dot(H[:, :, fi].T))
+    ar_coeffs, variance = ar_coeff(signals, optimal_model_order)
+    transfer_function_matrix, _ = mvar_transfer_function(ar_coeffs, freqs, fs)
+    n_chan = signals.shape[0]
+    n_freqs = freqs.shape[0]
+    spectra = np.zeros((n_chan, n_chan, n_freqs), dtype=np.complex128)  # initialize the multivariate spectrum
+    for fi in range(n_freqs):  # compute spectrum for all channels
+        spectra[:, :, fi] = transfer_function_matrix[:, :, fi].dot(variance.dot(transfer_function_matrix[:, :, fi].T))
 
-    return S_multivariate
+    return spectra
 
 
-def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comment=None):
+def dtf_multivariate(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC', comment=None):
     """
     Compute the directed transfer function (DTF) for the multivariate case.
     Parameters:
@@ -210,9 +210,9 @@ def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comm
         Frequency vector.
     fs : float
         Sampling frequency.
-    max_p : int
+    max_model_order : int
         Maximum model order.
-    p_opt : int or None
+    optimal_model_order : int or None
         Optimal model order. If None, it will be computed.
     crit_type : str
         Criterion type for model order selection.
@@ -220,19 +220,19 @@ def DTF_multivariate(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC', comm
     np.ndarray
         Multivariate DTF of shape (N_chan, N_chan, N_f).
     """
-    if p_opt is None:
-        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, False)
-        print(f'Optimal model order for all {'' if comment == None else comment + ' '}channels: p = {p_opt}')
+    if optimal_model_order is None:
+        _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, False)
+        print(f'Optimal model order for all {'' if comment is None else comment + ' '}channels: p = {optimal_model_order}')
     else:
-        print(f'Using provided model order: p = {p_opt}')
-    Ar, _ = ar_coeff(signals, p_opt)
-    H, _ = mvar_transfer_function(Ar, f, Fs)
-    DTF = np.abs(H) ** 2
+        print(f'Using provided model order: p = {optimal_model_order}')
+    ar_coeffs, _ = ar_coeff(signals, optimal_model_order)
+    transfer_function_matrix, _ = mvar_transfer_function(ar_coeffs, freqs, fs)
+    dtf = np.abs(transfer_function_matrix) ** 2
 
-    return DTF
+    return dtf
 
 
-def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
+def full_freq_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC'):
     """
     Compute the full-frequency directed transfer function (ffDTF) for the multivariate case.
     
@@ -241,14 +241,14 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     normalizes by frequency-specific inflows, ffDTF normalizes by the sum over all frequencies.
     
     Mathematical formula:
-    Standard DTF: DTF_ij(freqs) = |H_ij(freqs)|² / Σ_k |H_ik(freqs)|²
-    Full-frequency DTF: ffDTF_ij(freqs) = |H_ij(freqs)|² / Σ_f Σ_k |H_ik(freqs)|²
+    Standard DTF: DTF_ij(f) = |H_ij(f)|² / Σ_k |H_ik(f)|²
+    Full-frequency DTF: ffDTF_ij(f) = |H_ij(f)|² / Σ_f Σ_k |H_ik(f)|²
     
     The normalization takes into account inflows to channel i across the entire frequency range,
     allowing for more meaningful comparison of information flow at different frequencies.
     
     Reference:
-    Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003). 
+    Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003).
     Determination of information flow direction among brain structures by a modified directed transfer function (dDTF) method. 
     Journal of neuroscience methods, 125(1-2), 195-207.
     https://doi.org/10.1016/S0165-0270(03)00052-9
@@ -260,9 +260,9 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Frequency vector.
     fs : float
         Sampling frequency.
-    max_p : int
+    max_model_order : int
         Maximum model order.
-    p_opt : int or None
+    optimal_model_order : int or None
         Optimal model order. If None, it will be computed.
     crit_type : str
         Criterion type for model order selection.
@@ -271,63 +271,63 @@ def ffDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     np.ndarray
         Full-frequency DTF of shape (N_chan, N_chan, N_f).
     """
-    DTF = DTF_multivariate(signals, f, Fs, max_p, p_opt, crit_type)
+    dtf = dtf_multivariate(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
 
-    N_chan, _, N_f = DTF.shape
+    n_chan, _, n_freqs = dtf.shape
     # Normalize DTF to get full-frequency DTF (ffDTF)
-    ffDTF = np.zeros((N_chan, N_chan, N_f))
-    for i in range(N_chan):  # rows
-        for j in range(N_chan):  # columns
-            ffDTF[i, j, :] = DTF[i, j, :] / np.sum(DTF[i, :, :])
-    return ffDTF
+    ff_dtf = np.zeros((n_chan, n_chan, n_freqs))
+    for i in range(n_chan):  # rows
+        for j in range(n_chan):  # columns
+            ff_dtf[i, j, :] = dtf[i, j, :] / np.sum(dtf[i, :, :])
+    return ff_dtf
 
 
-def partial_coherence(S):
+def partial_coherence(spectra):
     """
     Compute the partial coherence using efficient boolean indexing for minors.
     
     Parameters:
-    S : np.ndarray
+    spectra : np.ndarray
         Spectral density matrix of shape (N_chan, N_chan, N_f).
 
     Returns:
     np.ndarray
         Partial coherence of shape (N_chan, N_chan, N_f).
     """
-    N_chan, _, N_f = S.shape
+    n_chan, _, n_f = spectra.shape
 
-    # Compute minors of S using boolean indexing (Method 2)
-    M = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)
+    # Compute minors of spectra using boolean indexing (Method 2)
+    spectra_minors = np.zeros((n_chan, n_chan, n_f), dtype=np.complex128)
 
-    for i in range(N_chan):  # rows to delete
-        for j in range(N_chan):  # columns to delete
-            for fi in range(N_f):  # for each frequency
+    for i in range(n_chan):  # rows to delete
+        for j in range(n_chan):  # columns to delete
+            for fi in range(n_f):  # for each frequency
                 # Extract the (N_chan x N_chan) matrix at frequency fi
-                S_freq = S[:, :, fi]
+                spectra_freq = spectra[:, :, fi]
 
                 # Create minor by deleting row i and column j using boolean indexing
-                if N_chan > 1:  # Only compute minor if matrix is larger than 1x1
+                if n_chan > 1:  # Only compute minor if matrix is larger than 1x1
                     # Create boolean masks
-                    row_mask = np.ones(N_chan, dtype=bool)
-                    col_mask = np.ones(N_chan, dtype=bool)
+                    row_mask = np.ones(n_chan, dtype=bool)
+                    col_mask = np.ones(n_chan, dtype=bool)
                     row_mask[i] = False
                     col_mask[j] = False
 
                     # Extract submatrix using boolean indexing
-                    minor_matrix = S_freq[np.ix_(row_mask, col_mask)]
-                    M[i, j, fi] = np.linalg.det(minor_matrix)
+                    minor_matrix = spectra_freq[np.ix_(row_mask, col_mask)]
+                    spectra_minors[i, j, fi] = np.linalg.det(minor_matrix)
                 else:
-                    M[i, j, fi] = 1.0  # For 1x1 matrix, minor is 1
+                    spectra_minors[i, j, fi] = 1.0  # For 1x1 matrix, minor is 1
 
     # Compute partial coherence
-    kappa = np.zeros((N_chan, N_chan, N_f), dtype=np.complex128)
-    for i in range(N_chan):
-        for j in range(N_chan):
+    kappa = np.zeros((n_chan, n_chan, n_f), dtype=np.complex128)
+    for i in range(n_chan):
+        for j in range(n_chan):
             if i != j:  # Only compute for off-diagonal elements
                 # Avoid division by zero
-                denominator = np.sqrt(M[i, i, :] * M[j, j, :])
+                denominator = np.sqrt(spectra_minors[i, i, :] * spectra_minors[j, j, :])
                 kappa[i, j, :] = np.where(denominator != 0,
-                                          M[i, j, :] / denominator,
+                                          spectra_minors[i, j, :] / denominator,
                                           0)
             # Diagonal elements are set to 1 (perfect coherence with itself)
             else:
@@ -336,7 +336,7 @@ def partial_coherence(S):
     return kappa
 
 
-def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
+def direct_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC'):
     """
     Compute the direct directed transfer function (dDTF) for the multivariate case.
     
@@ -345,10 +345,10 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     or indirect pathways.
     
     Mathematical formula:
-    dDTF_ij(freqs) = DTF_ij(freqs) × |partial_coherence_ij(freqs)|
+    dDTF_ij(f) = DTF_ij(f) × |partial_coherence_ij(f)|
     
     Reference:
-    Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003). 
+    Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003).
     Determination of information flow direction among brain structures by a modified 
     directed transfer function (dDTF) method. Journal of Neuroscience Methods, 125(1-2), 195-207.
     https://doi.org/10.1016/S0165-0270(03)00052-9
@@ -360,9 +360,9 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Frequency vector.
     fs : float
         Sampling frequency.
-    max_p : int
+    max_model_order : int
         Maximum model order.
-    p_opt : int, optional
+    optimal_model_order : int, optional
         Optimal model order (if known).
     crit_type : str
         Criterion type for model order selection (e.g., 'AIC', 'BIC').
@@ -372,18 +372,18 @@ def dDTF(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Direct directed transfer function (dDTF) of shape (N_chan, N_chan, N_f).
     """
     # compute spectral density matrix
-    S = multivariate_spectra(signals, f, Fs, max_p, p_opt, crit_type)
+    spectra = multivariate_spectra(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
     # Compute partial coherence
-    kappa = partial_coherence(S)
+    kappa = partial_coherence(spectra)
     # compute the ffDTF
-    ff_DTF = ffDTF(signals, f, Fs, max_p, p_opt, crit_type)
+    ff_dtf = full_freq_dtf(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
     # Compute dDTF using the formula: dDTF = ff_DTF * |kappa|
-    dDTF = ff_DTF * np.abs(kappa)
+    d_dtf = ff_dtf * np.abs(kappa)
 
-    return dDTF
+    return d_dtf
 
 
-def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
+def gen_partial_directed_coherence(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC'):
     """
     Compute the generalized partial directed coherence (GPDC) for the multivariate case.
     
@@ -394,11 +394,11 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     proper normalization using the noise covariance structure.
     
     Mathematical formula:
-    GPDC_ij(freqs) = |A_ij(freqs)|/σ_i / sqrt(Σ_k (|A_kj(freqs)|² / σ²_k))
+    GPDC_ij(f) = |A_ij(f)|/σ_i / sqrt(Σ_k (|A_kj(f)|² / σ²_k))
 
     Where:
-    - A(freqs) is the frequency domain AR coefficient matrix (inverse of H)
-    - |A_ij(freqs)| is the absolute value of the AR coefficient from source channel i to target channel j at frequency freqs
+    - A(f) is the frequency domain AR coefficient matrix (inverse of H)
+    - |A_ij(f)| is the absolute value of the AR coefficient from source channel i to target channel j at frequency f
     - σ_i is the noise standard deviation for source channel i (sqrt of diagonal elements of noise covariance matrix V)
     - σ²_k is the noise variance for source channel k (diagonal elements of noise covariance matrix V)
     
@@ -422,9 +422,9 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
         Frequency vector.
     fs : float
         Sampling frequency.
-    max_p : int
+    max_model_order : int
         Maximum model order.
-    p_opt : int or None
+    optimal_model_order : int or None
         Optimal model order. If None, it will be computed.
     crit_type : str
         Criterion type for model order selection.
@@ -433,127 +433,127 @@ def GPDC(signals, f, Fs, max_p=20, p_opt=None, crit_type='AIC'):
     np.ndarray
         Generalized partial directed coherence (GPDC) of shape (N_chan, N_chan, N_f).
     """
-    if p_opt is None:
-        _, _, p_opt = mvar_criterion(signals, max_p, crit_type, False)
-        print('Optimal model order for all channels: p = ', str(p_opt))
+    if optimal_model_order is None:
+        _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, False)
+        print('Optimal model order for all channels: p = ', str(optimal_model_order))
     else:
-        print('Using provided model order: p = ', str(p_opt))
+        print('Using provided model order: p = ', str(optimal_model_order))
 
     # Estimate AR coefficients and residual variance
-    Ar, V = ar_coeff(signals, p_opt)
-    _, A = mvar_transfer_function(Ar, f, Fs)  # A is the frequency domain AR matrix
+    ar_coeffs, variance = ar_coeff(signals, optimal_model_order)
+    _, ar_matrix = mvar_transfer_function(ar_coeffs, freqs, fs)  # A is the frequency domain AR matrix
 
-    N_chan, _, N_f = A.shape
-    GPDC = np.zeros((N_chan, N_chan, N_f))
+    n_chan, _, n_f = ar_matrix.shape
+    gpdc = np.zeros((n_chan, n_chan, n_f))
 
     # Extract noise variances (diagonal of V)
-    sigma_squared = np.diag(V)
+    sigma_squared = np.diag(variance)
 
     # Compute GPDC 
-    for i in range(N_chan):  # source
-        for j in range(N_chan):  # target
-            # Numerator: |A_ij(freqs)| / σ_i
-            numerator = np.abs(A[i, j, :]) / np.sqrt(sigma_squared[i])
+    for i in range(n_chan):  # source
+        for j in range(n_chan):  # target
+            # Numerator: |A_ij(f)| / σ_i
+            numerator = np.abs(ar_matrix[i, j, :]) / np.sqrt(sigma_squared[i])
 
-            # Denominator: sqrt(Σ_k (|A_kj(freqs)|² / σ²_k))
-            denominator = np.sqrt(np.sum(np.abs(A[:, j, :]) ** 2 / sigma_squared[:, np.newaxis], axis=0))
+            # Denominator: sqrt(Σ_k (|A_kj(f)|² / σ²_k))
+            denominator = np.sqrt(np.sum(np.abs(ar_matrix[:, j, :]) ** 2 / sigma_squared[:, np.newaxis], axis=0))
 
             # Avoid division by zero
-            GPDC[i, j, :] = np.where(denominator != 0,
+            gpdc[i, j, :] = np.where(denominator != 0,
                                      numerator / denominator,
                                      0)
 
-    return GPDC
+    return gpdc
 
 
 # Plotting function for graph visualization
-def mvar_plot(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linear'):
+def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear'):
     """
     Plot MVAR results using bar plots for diagonal (auto) and off-diagonal (cross) terms.
 
     Parameters:
-    onDiag : np.ndarray
+    on_diag : np.ndarray
         Auto components (shape: N_chan x N_chan x len(freqs))
-    offDiag : np.ndarray
+    off_diag : np.ndarray
         Cross components (shape: N_chan x N_chan x len(freqs))
     freqs : np.ndarray
         Frequency vector
-    xlab : str
+    x_label : str
         Label for x-axis
-    ylab : str
+    y_label : str
         Label for y-axis
-    ChanNames : list of str
+    chan_names : list of str
         Names of channels
-    Top_title : str
+    top_title : str
         Main plot title
     scale : str
         'linear', 'sqrt', or 'log'
     """
-    onDiag = np.abs(onDiag)
-    offDiag = np.abs(offDiag)
+    on_diag = np.abs(on_diag)
+    off_diag = np.abs(off_diag)
 
     if scale == 'sqrt':
-        onDiag = np.sqrt(onDiag)
-        offDiag = np.sqrt(offDiag)
+        on_diag = np.sqrt(on_diag)
+        off_diag = np.sqrt(off_diag)
     elif scale == 'log':
-        onDiag = np.log(onDiag + 1e-12)  # Avoid log(0)
-        offDiag = np.log(offDiag + 1e-12)
+        on_diag = np.log(on_diag + 1e-12)  # Avoid log(0)
+        off_diag = np.log(off_diag + 1e-12)
 
-    N_chan = onDiag.shape[0]
+    n_chan = on_diag.shape[0]
 
     # Zero-out irrelevant parts
-    for i in range(N_chan):
-        for j in range(N_chan):
+    for i in range(n_chan):
+        for j in range(n_chan):
             if i != j:
-                onDiag[i, j, :] = 0
+                on_diag[i, j, :] = 0
             else:
-                offDiag[i, i, :] = 0
+                off_diag[i, i, :] = 0
 
-    MaxonDiag = np.max(onDiag)
-    MaxoffDiag = np.max(offDiag)
+    max_on_diag = np.max(on_diag)
+    max_off_diag = np.max(off_diag)
 
-    fig, axs = plt.subplots(N_chan, N_chan, figsize=(6, 6), constrained_layout=True)
-    for i in range(N_chan):
-        for j in range(N_chan):
-            ax = axs[i, j] if N_chan > 1 else axs
+    _, axs = plt.subplots(n_chan, n_chan, figsize=(6, 6), constrained_layout=True)
+    for i in range(n_chan):
+        for j in range(n_chan):
+            ax = axs[i, j] if n_chan > 1 else axs
             if i != j:
-                y = np.real(offDiag[i, j, :])
-                ax.plot(f, offDiag[i, j, :])
-                ax.fill_between(f, y, 0, color='skyblue', alpha=0.4)
-                ax.set_ylim([0, MaxoffDiag])
+                y = np.real(off_diag[i, j, :])
+                ax.plot(freqs, off_diag[i, j, :])
+                ax.fill_between(freqs, y, 0, color='skyblue', alpha=0.4)
+                ax.set_ylim([0, max_off_diag])
             else:
-                y = np.real(onDiag[i, j, :])
-                ax.plot(f, y, color=[0.7, 0.7, 0.7])
-                ax.fill_between(f, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
-                ax.set_ylim([0, MaxonDiag])
+                y = np.real(on_diag[i, j, :])
+                ax.plot(freqs, y, color=[0.7, 0.7, 0.7])
+                ax.fill_between(freqs, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
+                ax.set_ylim([0, max_on_diag])
 
-            if i == N_chan - 1:
-                ax.set_xlabel(f"{xlab}{ChanNames[j]}")
+            if i == n_chan - 1:
+                ax.set_xlabel(f"{x_label}{chan_names[j]}")
             if j == 0:
-                ax.set_ylabel(f"{ylab}{ChanNames[i]}")
+                ax.set_ylabel(f"{y_label}{chan_names[i]}")
 
-    axs[0, 0].set_title(Top_title)
+    axs[0, 0].set_title(top_title)
     # plt.tight_layout()
 
 
-def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale='linear'):
+def mvar_plot_dense(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear'):
     """
     Plot MVAR results for diagonal (auto) and off-diagonal (cross) terms.
 
     Parameters:
-    onDiag : np.ndarray
+    on_diag : np.ndarray
         Auto components (shape: N_chan x N_chan x len(freqs))
-    offDiag : np.ndarray
+    off_diag : np.ndarray
         Cross components (shape: N_chan x N_chan x len(freqs))
     freqs : np.ndarray
         Frequency vector
-    xlab : str
+    x_label : str
         Label for x-axis
-    ylab : str
+    y_label : str
         Label for y-axis
-    ChanNames : list of str
+    chan_names : list of str
         Names of channels
-    Top_title : str
+    top_title : str
         Main plot title
     scale : str
         'linear', 'sqrt', or 'log'
@@ -561,112 +561,112 @@ def mvar_plot_dense(onDiag, offDiag, f, xlab, ylab, ChanNames, Top_title, scale=
     import numpy as np
     import matplotlib.pyplot as plt
 
-    onDiag = np.abs(onDiag)
-    offDiag = np.abs(offDiag)
+    on_diag = np.abs(on_diag)
+    off_diag = np.abs(off_diag)
 
     if scale == 'sqrt':
-        onDiag = np.sqrt(onDiag)
-        offDiag = np.sqrt(offDiag)
+        on_diag = np.sqrt(on_diag)
+        off_diag = np.sqrt(off_diag)
     elif scale == 'log':
-        onDiag = np.log(onDiag + 1e-12)  # Avoid log(0)
-        offDiag = np.log(offDiag + 1e-12)
+        on_diag = np.log(on_diag + 1e-12)  # Avoid log(0)
+        off_diag = np.log(off_diag + 1e-12)
 
-    N_chan = onDiag.shape[0]
+    n_chan = on_diag.shape[0]
 
     # Zero-out irrelevant parts
-    for i in range(N_chan):
-        for j in range(N_chan):
+    for i in range(n_chan):
+        for j in range(n_chan):
             if i != j:
-                onDiag[i, j, :] = 0
+                on_diag[i, j, :] = 0
             else:
-                offDiag[i, i, :] = 0
+                off_diag[i, i, :] = 0
 
-    MaxonDiag = np.max(onDiag)
-    MaxoffDiag = np.max(offDiag)
+    max_on_diag = np.max(on_diag)
+    max_off_diag = np.max(off_diag)
 
-    fig, axs = plt.subplots(N_chan, N_chan, figsize=(8, 8),
+    _, axs = plt.subplots(n_chan, n_chan, figsize=(8, 8),
                             gridspec_kw={'wspace': 0, 'hspace': 0})
 
-    for i in range(N_chan):
-        for j in range(N_chan):
-            ax = axs[i, j] if N_chan > 1 else axs
+    for i in range(n_chan):
+        for j in range(n_chan):
+            ax = axs[i, j] if n_chan > 1 else axs
             if i != j:
-                y = np.real(offDiag[i, j, :])
-                ax.plot(f, offDiag[i, j, :])
-                ax.fill_between(f, y, 0, color='skyblue', alpha=0.4)
-                ax.set_ylim([0, MaxoffDiag])
-                ax.set_yticks([0, MaxoffDiag // 2])
+                y = np.real(off_diag[i, j, :])
+                ax.plot(freqs, off_diag[i, j, :])
+                ax.fill_between(freqs, y, 0, color='skyblue', alpha=0.4)
+                ax.set_ylim([0, max_off_diag])
+                ax.set_yticks([0, max_off_diag // 2])
             else:
-                y = np.real(onDiag[i, j, :])
-                ax.plot(f, y, color=[0.7, 0.7, 0.7])
-                ax.fill_between(f, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
-                ax.set_ylim([0, MaxonDiag])
-                ax.set_yticks([0, MaxonDiag // 2])
+                y = np.real(on_diag[i, j, :])
+                ax.plot(freqs, y, color=[0.7, 0.7, 0.7])
+                ax.fill_between(freqs, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
+                ax.set_ylim([0, max_on_diag])
+                ax.set_yticks([0, max_on_diag // 2])
 
-            ax.set_xticks([f[0], int(f[len(f) // 2])])
-            ax.tick_params(labelleft=(j == 0), labelbottom=(i == N_chan - 1))
+            ax.set_xticks([freqs[0], int(freqs[len(freqs) // 2])])
+            ax.tick_params(labelleft=(j == 0), labelbottom=(i == n_chan - 1))
 
-            if i == N_chan - 1:
-                ax.set_xlabel(f"{xlab}{ChanNames[j]}")
+            if i == n_chan - 1:
+                ax.set_xlabel(f"{x_label}{chan_names[j]}")
             if j == 0:
-                ax.set_ylabel(f"{ylab}{ChanNames[i]}")
+                ax.set_ylabel(f"{y_label}{chan_names[i]}")
 
-    if N_chan > 1:
-        axs[0, 0].set_title(Top_title)
+    if n_chan > 1:
+        axs[0, 0].set_title(top_title)
     else:
-        axs.set_title(Top_title)
+        axs.set_title(top_title)
     # plt.tight_layout()
 
 
-def mvar_criterion(dat, max_p, crit_type='AIC', do_plot=False):
+def mvar_criterion(data, max_model_order, crit_type='AIC', plot=False):
     """
     Compute model order selection criteria (AIC, HQ, SC) for MVAR modeling.
 
     Parameters:
-    dat : np.ndarray
+    data : np.ndarray
         Input data of shape (channels, samples).
-    max_p : int
+    max_model_order : int
         Maximum model order to evaluate.
     crit_type : str
         Criterion type: 'AIC', 'HQ', or 'SC'.
-    do_plot : bool
+    plot : bool
         Whether to plot the criterion values.
 
     Returns:
     crit : np.ndarray
         Criterion values for each model order.
     p_range : np.ndarray
-        Evaluated model order range (1:max_p).
-    p_opt : int
+        Evaluated model order range (1:max_model_order).
+    optimal_model_order : int
         Optimal model order (minimizing the criterion).
     """
-    k, N = dat.shape
-    p_range = np.arange(1, max_p + 1)
-    crit = np.zeros(max_p)
+    n_channels, n_samples = data.shape
+    model_order_range = np.arange(1, max_model_order + 1)
+    crit = np.zeros(max_model_order)
 
-    for p in p_range:
-        _, Vr = ar_coeff(dat, p)  # You must define or import AR_coeff
+    for model_order in model_order_range:
+        _, variance = ar_coeff(data, model_order)  # You must define or import AR_coeff
         if crit_type == 'AIC':
-            crit[p - 1] = np.log(np.linalg.det(Vr)) + 2 * p * k ** 2 / N
+            crit[model_order - 1] = np.log(np.linalg.det(variance)) + 2 * model_order * n_channels ** 2 / n_samples
         elif crit_type == 'HQ':
-            crit[p - 1] = np.log(np.linalg.det(Vr)) + 2 * np.log(np.log(N)) * p * k ** 2 / N
+            crit[model_order - 1] = np.log(np.linalg.det(variance)) + 2 * np.log(np.log(n_samples)) * model_order * n_channels ** 2 / n_samples
         elif crit_type == 'SC':
-            crit[p - 1] = np.log(np.linalg.det(Vr)) + np.log(N) * p * k ** 2 / N
+            crit[model_order - 1] = np.log(np.linalg.det(variance)) + np.log(n_samples) * model_order * n_channels ** 2 / n_samples
         else:
             raise ValueError("Invalid criterion type. Choose from 'AIC', 'HQ', 'SC'.")
 
-    p_opt = p_range[np.argmin(crit)]
-    if do_plot:
+    optimal_model_range = model_order_range[np.argmin(crit)]
+    if plot:
         plt.figure()
-        plt.plot(p_range, crit, marker='o')
-        plt.plot(p_opt, np.min(crit), 'ro')
+        plt.plot(model_order_range, crit, marker='o')
+        plt.plot(optimal_model_range, np.min(crit), 'ro')
         plt.xlabel('Model order p')
         plt.ylabel(f'{crit_type} criterion')
-        plt.title(f'MVAR Model Order Selection ({crit_type}). The best order = {p_opt}')
+        plt.title(f'MVAR Model Order Selection ({crit_type}). The best order = {optimal_model_range}')
         plt.grid(True)
         plt.show()
 
-    return crit, p_range, p_opt
+    return crit, model_order_range, optimal_model_range
 
 
 # Compute linewidths
@@ -675,7 +675,7 @@ def get_linewidths(graph):
     return 5 * weights / weights.max()
 
 
-def graph_plot(connectivity_matrix, ax, f, f_range, chan_names, title):
+def graph_plot(connectivity_matrix, ax, freqs, freq_range, chan_names, title):
     """
     Plot connectivity matrix as a graph.
     Parameters:
@@ -687,7 +687,7 @@ def graph_plot(connectivity_matrix, ax, f, f_range, chan_names, title):
         Frequency vector.
     f_range : tuple
         Frequency range for the plot (min, max).
-    ChanNames : list
+    chan_names : list
         List of channel names.
     title : str
         Title for the plot. 
@@ -700,7 +700,7 @@ def graph_plot(connectivity_matrix, ax, f, f_range, chan_names, title):
     connectivity = connectivity_matrix.real
     # Sum over the frequencies in f_range and transpose to match the directionality of edges (from row to column) in the directed graph
     # find the indices of the frequency range
-    f_indices = np.where((f >= f_range[0]) & (f <= f_range[1]))[0]
+    f_indices = np.where((freqs >= freq_range[0]) & (freqs <= freq_range[1]))[0]
     if len(f_indices) == 0:
         raise ValueError("No frequencies found in the specified range.")
     adj = np.sum(connectivity[:, :, f_indices], axis=2).T
