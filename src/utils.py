@@ -69,6 +69,8 @@ def get_data_for_selected_channel_and_event(filtered_data, selected_channels, ev
         # check if the start and end indices are within the bounds of the data
         if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
             raise ValueError(f"Event '{selected_event}' is out of bounds.")
+    else:
+        raise ValueError(f"Event '{selected_event}' is None.")
     for i, ch in enumerate(selected_channels):
         if ch in filtered_data['channels']:
             idx_ch = filtered_data['channels'][ch]

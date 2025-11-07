@@ -222,7 +222,8 @@ def dtf_multivariate(signals, freqs, fs, max_model_order=20, optimal_model_order
     """
     if optimal_model_order is None:
         _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, False)
-        print(f'Optimal model order for all {'' if comment is None else comment + ' '}channels: p = {optimal_model_order}')
+        print(
+            f'Optimal model order for all {'' if comment is None else comment + ' '}channels: p = {optimal_model_order}')
     else:
         print(f'Using provided model order: p = {optimal_model_order}')
     ar_coeffs, _ = ar_coeff(signals, optimal_model_order)
@@ -569,7 +570,7 @@ def mvar_criterion(data, max_model_order, crit_type='AIC', plot=False):
         Optimal model order (minimizing the criterion).
     """
     n_channels, n_samples = data.shape
-    model_order_range = np.arange(1, max_model_order + 1)
+    model_order_range = np.arange(1, max_model_order + 1, dtype=int)
     crit = np.zeros(max_model_order)
 
     for model_order in model_order_range:
@@ -577,9 +578,11 @@ def mvar_criterion(data, max_model_order, crit_type='AIC', plot=False):
         if crit_type == 'AIC':
             crit[model_order - 1] = np.log(np.linalg.det(variance)) + 2 * model_order * n_channels ** 2 / n_samples
         elif crit_type == 'HQ':
-            crit[model_order - 1] = np.log(np.linalg.det(variance)) + 2 * np.log(np.log(n_samples)) * model_order * n_channels ** 2 / n_samples
+            crit[model_order - 1] = np.log(np.linalg.det(variance)) + 2 * np.log(
+                np.log(n_samples)) * model_order * n_channels ** 2 / n_samples
         elif crit_type == 'SC':
-            crit[model_order - 1] = np.log(np.linalg.det(variance)) + np.log(n_samples) * model_order * n_channels ** 2 / n_samples
+            crit[model_order - 1] = np.log(np.linalg.det(variance)) + np.log(
+                n_samples) * model_order * n_channels ** 2 / n_samples
         else:
             raise ValueError("Invalid criterion type. Choose from 'AIC', 'HQ', 'SC'.")
 
