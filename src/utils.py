@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots  # TODO czy trzeba mieszać plotly i m
 from scipy.stats import zscore
 from sklearn.decomposition import FastICA
 
-from src.mtmvar import dtf_multivariate, mvar_plot, multivariate_spectra, mvar_plot_dense, graph_plot
+from src.mtmvar import dtf_multivariate, mvar_plot, multivariate_spectra, graph_plot
 
 
 def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
@@ -553,11 +553,11 @@ def eeg_dtf(filtered_data, events, selected_events, clean_with_ica=True):
 
         dtf = dtf_multivariate(data_ch, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt, comment='child')
         spectra = multivariate_spectra(data_ch, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt)
-        mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
+        mvar_plot(spectra, dtf, f, 'From ', 'To ', selected_channels_ch, 'DTF ch ' + event, 'sqrt')
 
         dtf = dtf_multivariate(data_cg, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt, comment='caregiver')
         spectra = multivariate_spectra(data_cg, f, filtered_data['Fs_EEG'], optimal_model_order=p_opt)
-        mvar_plot_dense(spectra, dtf, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
+        mvar_plot(spectra, dtf, f, 'From ', 'To ', selected_channels_cg, 'DTF cg ' + event, 'sqrt')
         plt.show()
 
 

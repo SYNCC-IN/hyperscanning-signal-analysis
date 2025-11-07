@@ -512,80 +512,8 @@ def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title,
     max_on_diag = np.max(on_diag)
     max_off_diag = np.max(off_diag)
 
-    _, axs = plt.subplots(n_chan, n_chan, figsize=(6, 6), constrained_layout=True)
-    for i in range(n_chan):
-        for j in range(n_chan):
-            ax = axs[i, j] if n_chan > 1 else axs
-            if i != j:
-                y = np.real(off_diag[i, j, :])
-                ax.plot(freqs, off_diag[i, j, :])
-                ax.fill_between(freqs, y, 0, color='skyblue', alpha=0.4)
-                ax.set_ylim([0, max_off_diag])
-            else:
-                y = np.real(on_diag[i, j, :])
-                ax.plot(freqs, y, color=[0.7, 0.7, 0.7])
-                ax.fill_between(freqs, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
-                ax.set_ylim([0, max_on_diag])
-
-            if i == n_chan - 1:
-                ax.set_xlabel(f"{x_label}{chan_names[j]}")
-            if j == 0:
-                ax.set_ylabel(f"{y_label}{chan_names[i]}")
-
-    axs[0, 0].set_title(top_title)
-    # plt.tight_layout()
-
-
-def mvar_plot_dense(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear'):
-    """
-    Plot MVAR results for diagonal (auto) and off-diagonal (cross) terms.
-
-    Parameters:
-    on_diag : np.ndarray
-        Auto components (shape: N_chan x N_chan x len(freqs))
-    off_diag : np.ndarray
-        Cross components (shape: N_chan x N_chan x len(freqs))
-    freqs : np.ndarray
-        Frequency vector
-    x_label : str
-        Label for x-axis
-    y_label : str
-        Label for y-axis
-    chan_names : list of str
-        Names of channels
-    top_title : str
-        Main plot title
-    scale : str
-        'linear', 'sqrt', or 'log'
-    """
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    on_diag = np.abs(on_diag)
-    off_diag = np.abs(off_diag)
-
-    if scale == 'sqrt':
-        on_diag = np.sqrt(on_diag)
-        off_diag = np.sqrt(off_diag)
-    elif scale == 'log':
-        on_diag = np.log(on_diag + 1e-12)  # Avoid log(0)
-        off_diag = np.log(off_diag + 1e-12)
-
-    n_chan = on_diag.shape[0]
-
-    # Zero-out irrelevant parts
-    for i in range(n_chan):
-        for j in range(n_chan):
-            if i != j:
-                on_diag[i, j, :] = 0
-            else:
-                off_diag[i, i, :] = 0
-
-    max_on_diag = np.max(on_diag)
-    max_off_diag = np.max(off_diag)
-
     _, axs = plt.subplots(n_chan, n_chan, figsize=(8, 8),
-                            gridspec_kw={'wspace': 0, 'hspace': 0})
+                          gridspec_kw={'wspace': 0, 'hspace': 0})
 
     for i in range(n_chan):
         for j in range(n_chan):
