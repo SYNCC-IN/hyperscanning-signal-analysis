@@ -369,7 +369,7 @@ def direct_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None,
         Criterion type for model order selection (e.g., 'AIC', 'BIC').
         
     Returns:
-    np.ndarray
+    d_dtf : np.ndarray
         Direct directed transfer function (dDTF) of shape (N_chan, N_chan, N_f).
     """
     # compute spectral density matrix
@@ -431,7 +431,7 @@ def gen_partial_directed_coherence(signals, freqs, fs, max_model_order=20, optim
         Criterion type for model order selection.
         
     Returns:
-    np.ndarray
+    gpdc : np.ndarray
         Generalized partial directed coherence (GPDC) of shape (N_chan, N_chan, N_f).
     """
     if optimal_model_order is None:

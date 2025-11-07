@@ -213,7 +213,7 @@ class DataLoader:
         pass
 
     def _scan_for_events(self, threshold=20000):
-        '''Scan for events in the diode signal and plot them if required.
+        """Scan for events in the diode signal and plot them if required.
         Args:
             threshold
         Returns:
@@ -222,7 +222,7 @@ class DataLoader:
                 - Movie_2
                 - Movie_3
                 - Talk_1
-                - Talk_2'''
+                - Talk_2"""
         events = {'Talk_1': None, 'Talk_2': None, 'Movie_1': None, 'Movie_2': None, 'Movie_3': None}
 
         fs_eeg = self.fs['EEG']

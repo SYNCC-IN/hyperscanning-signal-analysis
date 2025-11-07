@@ -4,7 +4,7 @@ from scipy.signal import butter, sosfiltfilt, decimate, hilbert, welch
 import plotly.graph_objects as go
 import plotly.express as px
 import os
-from plotly.subplots import make_subplots  # TODO czy trzeba mieszać plotly i matplotlib?
+from plotly.subplots import make_subplots
 from scipy.stats import zscore
 from sklearn.decomposition import FastICA
 
