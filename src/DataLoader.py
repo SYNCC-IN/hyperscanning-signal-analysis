@@ -92,7 +92,7 @@ class DataLoader:
         self._extract_ecg_data(data, channels)
 
         # set the IBI modality computed from Porti ECG signals; IBIs are  interpolated to Fs_IBI [Hz]
-        # DO SPRAWDZENIA
+        # TODO DO SPRAWDZENIA
         # self._compute_IBI(self.data['ECG'])
         self._compute_ibi()
 
@@ -197,7 +197,7 @@ class DataLoader:
         r_peaks = info_ecg["ECG_R_Peaks"]
         ibi = np.diff(r_peaks) / self.fs['ECG'] * 1000  # IBI in ms
         t = np.cumsum(ibi) / 1000  # time vector for the IBI signals [s]
-        # DO SPRAWDZENIA
+        # TODO  DO SPRAWDZENIA
         t_ecg = np.arange(0, t[-1], 1 / self.fs['IBI'])  # time vector for the interpolated IBI signals
         cs = CubicSpline(t, ibi)
         ibi_interp = cs(t_ecg)

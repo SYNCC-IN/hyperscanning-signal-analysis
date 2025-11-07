@@ -7,7 +7,7 @@ and Directed Transfer Function (DTF) analysis of EEG data.
 ACKNOWLEDGMENTS:
 Some functions in this module are based on algorithms and code originally 
 developed by Prof. Maciej Kamiński from the Department of Biomedical Physics 
-at the University of Warsaw. These contributions form part of the theoretical 
+at the University of Warsaw. These contributions form part of the theoretical
 and methodological foundation for MVAR-based connectivity analysis.
 
 Original MVAR methodology references:
