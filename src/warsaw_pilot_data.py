@@ -10,6 +10,8 @@ from src.mtmvar import graph_plot, mvar_plot, multivariate_spectra, dtf_multivar
 from utils import plot_eeg_channels_pl, overlay_eeg_channels_hyperscanning_pl, clean_data_with_ica, \
     get_data_for_selected_channel_and_event, get_ibi_signal_from_ecg_for_selected_event
 
+# WARNING: this code is incompatible with refactored DataLoader class
+# FIXME: update the code to use the new DataLoader structure
 
 def main(plot_debug=False, analyze_hrv_dtf=False, analyze_eeg_dtf=False, analyze_eeg_hrv_dtf=False):
     selected_events = ['Movie_1', 'Movie_2',
