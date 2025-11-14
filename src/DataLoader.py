@@ -1,4 +1,6 @@
 import os
+from collections import deque
+
 import numpy as np
 import xmltodict
 from matplotlib import pyplot as plt
@@ -78,21 +80,22 @@ class DataLoader:
         # extract diode signal for event detection before any scaling and filtering
         self.diode = data[channels['Diode'], :]
         # scan for events
-        self.events = self._scan_for_events(threshold=20000)
-        # scale the signal to microvolts
-        data *= 0.0715
-
-        # mount EEG data to M1 and M2 channels and filter the data
-        data = self._mount_eeg_data(data, channels)
-
-        # filter and decimate the EEG modality data
-        self._filter_decimate_and_set_eeg_signals(data, lowcut=lowcut, highcut=highcut, q=q)
-
-        # set the ECG modality with ECG signals
-        self._extract_ecg_data(data, channels)
-
-        # set the IBI modality computed from Porti ECG signals; IBIs are  interpolated to Fs_IBI [Hz]
-        # self._compute_IBI(self.data['ECG'])
+        self.events = self._scan_for_events(threshold=0.75)
+        print(f"Detected events: {self.events}")
+        # # scale the signal to microvolts
+        # data *= 0.0715
+        #
+        # # mount EEG data to M1 and M2 channels and filter the data
+        # data = self._mount_eeg_data(data, channels)
+        #
+        # # filter and decimate the EEG modality data
+        # self._filter_decimate_and_set_eeg_signals(data, lowcut=lowcut, highcut=highcut, q=q)
+        #
+        # # set the ECG modality with ECG signals
+        # self._extract_ecg_data(data, channels)
+        #
+        # # set the IBI modality computed from Porti ECG signals; IBIs are  interpolated to Fs_IBI [Hz]
+        # # self._compute_IBI(self.data['ECG'])
         # self._compute_ibi()
 
     def _mount_eeg_data(self, data, channels):
@@ -264,6 +267,7 @@ class DataLoader:
     def _load_csv_data(self, csv_file):
         pass
 
+
     def _scan_for_events(self, threshold=20000):
         """Scan for events in the diode signal and plot them if required.
         Args:
@@ -280,8 +284,10 @@ class DataLoader:
         fs_eeg = self.fs['EEG']
         x = np.zeros(self.diode.shape)
         d = self.diode.copy()
-        d /= threshold
+        # 3/4 of max signal in diode
+        d /= (threshold * np.max(d))
         x[d > 1] = 1
+
         if self.plot_flag:
             plt.figure(figsize=(12, 6))
             plt.plot(d, 'b', label='Diode Signal normalized by threshold')
@@ -296,55 +302,56 @@ class DataLoader:
         down = np.zeros(y.shape, dtype=int)
         up[y == 1] = 1
         down[y == -1] = 1
+
         if self.plot_flag:
             plt.plot(up, 'g', label='Up Events')
             plt.plot(down, 'm', label='Down Events')
             plt.legend()
 
-        dt = 17  # ms between frames
-        i = 0
-        while i < len(down):
-            if down[i] == 1:
-                s1 = int(np.sum(up[i + int(0.5 * fs_eeg) - 2 * dt: i + int(0.5 * fs_eeg) + 2 * dt]))
-                s2 = int(np.sum(up[i + int(1.0 * fs_eeg) - 3 * dt: i + int(1.0 * fs_eeg) + 3 * dt]))
-                s3 = int(np.sum(up[i + int(1.5 * fs_eeg) - 4 * dt: i + int(1.5 * fs_eeg) + 4 * dt]))
-                s4 = int(np.sum(up[i + int(2.0 * fs_eeg) - 5 * dt: i + int(2.0 * fs_eeg) + 5 * dt]))
-                s5 = int(np.sum(up[i + int(2.5 * fs_eeg) - 6 * dt: i + int(2.5 * fs_eeg) + 6 * dt]))
-                # plt.plot(x, 'b'), plt.plot(i,x[i],'bo')
-                if s1 == 1 and s2 == 0 and s3 == 0 and s4 == 0 and s5 == 0:
-                    print(f"Movie 1 starts at {i / fs_eeg:.2f} seconds")
-                    events['Movie_1'] = i / fs_eeg
-                    if self.plot_flag:
-                        plt.plot(x, 'b'), plt.plot(i, x[i], 'ro')
-                    i += int(2.5 * fs_eeg)
-                elif s1 == 1 and s2 == 0 and s3 == 1 and s4 == 0 and s5 == 0:
-                    print(f"Movie 2 starts at {i / fs_eeg:.2f} seconds")
-                    events['Movie_2'] = i / fs_eeg
-                    if self.plot_flag:
-                        plt.plot(x, 'b'), plt.plot(i, x[i], 'go')
-                    i += int(2.5 * fs_eeg)
-                elif s1 == 1 and s2 == 0 and s3 == 1 and s4 == 0 and s5 == 1:
-                    print(f"Movie 3 starts at {i / fs_eeg:.2f} seconds")
-                    events['Movie_3'] = i / fs_eeg
-                    if self.plot_flag:
-                        plt.plot(x, 'b'), plt.plot(i, x[i], 'yo')
-                    i += int(2.5 * fs_eeg)
-                elif s1 == 0 and s2 == 1 and s3 == 0 and s4 == 0 and s5 == 0:
-                    if events['Talk_1'] is None:
-                        print(f"Talk 1 starts at {i / fs_eeg:.2f} seconds")
-                        events['Talk_1'] = i / fs_eeg
-                        if self.plot_flag:
-                            plt.plot(x, 'b'), plt.plot(i, x[i], 'co')
-                        i += int(2.5 * fs_eeg)
-                    else:
-                        print(f"Talk 2 starts at {i / fs_eeg:.2f} seconds")
-                        events['Talk_2'] = i / fs_eeg
-                        if self.plot_flag:
-                            plt.plot(x, 'b'), plt.plot(i, x[i], 'mo')
-                            plt.show()
-                        i = len(down)  # talk 2 is the last event so finish scaning for events
-            i += 1
-        return events
+        up_down_events = []
+        for i in range(len(y)):
+            if up[i] == 1 or down[i] == 1:
+                up_down_events.append(i)
+
+        events = []
+        movies = [{}, {}, {}, {}, {}]
+        found_movies = 0
+        queue = deque(maxlen=100)
+
+        for i in range(len(up_down_events) // 2):
+            start = up_down_events[2 * i]
+            duration = up_down_events[2 * i + 1] - up_down_events[2 * i]
+            following_space = up_down_events[2 * i + 2] - up_down_events[2 * i + 1] if (2 * i + 2) < len(up_down_events) else len(self.diode) - up_down_events[2 * i + 1]
+            events.append({'start': start, 'duration': duration})
+            queue.append(start)
+            while queue[0] < start - 4 * fs_eeg:
+                queue.popleft()
+            if duration > 55 * fs_eeg and len(queue) > 1:
+                movies[len(queue) - 2]['start'] = queue[0] / fs_eeg
+                movies[len(queue) - 2]['duration'] = (up_down_events[2 * i + 1] - queue[0]) / fs_eeg
+                found_movies += 1
+            if found_movies > 3:
+                raise ValueError("More than 3 movies detected, something is wrong.")
+            if found_movies == 3 and duration < 2 * fs_eeg and following_space > 175 * fs_eeg:
+                if movies[3].get('start') is None:
+                    movies[3]['start'] = up_down_events[2 * i + 1] / fs_eeg
+                    movies[3]['duration'] = following_space / fs_eeg
+                elif movies[4].get('start') is None:
+                    movies[4]['start'] = up_down_events[2 * i + 1] / fs_eeg
+                    movies[4]['duration'] = following_space / fs_eeg
+                else:
+                    raise ValueError("More than 2 talks detected, something is wrong.")
+
+
+        # TODO plot event start times on diode signal if self.plot_flag is True
+
+        movies[0]['name'] = 'Merida'
+        movies[1]['name'] = 'Peppa'
+        movies[2]['name'] = 'Iniemamocni'
+        movies[3]['name'] = 'Talk_1'
+        movies[4]['name'] = 'Talk_2'
+
+        return movies
 
     @staticmethod
     def load_output_data(filename):
