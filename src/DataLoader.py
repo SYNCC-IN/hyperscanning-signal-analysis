@@ -93,7 +93,7 @@ class DataLoader:
 
         # set the IBI modality computed from Porti ECG signals; IBIs are  interpolated to Fs_IBI [Hz]
         # self._compute_IBI(self.data['ECG'])
-        self._compute_ibi()
+        # self._compute_ibi()
 
     def _mount_eeg_data(self, data, channels):
         # mount EEG data to M1 and M2 channels; do it separately for caregiver and child as they have different references
@@ -117,26 +117,59 @@ class DataLoader:
         return data
 
     def _filter_decimate_and_set_eeg_signals(self, data, lowcut=4.0, highcut=40.0, q=8):
+        """
+        Coordinates the full EEG processing pipeline: filtering, separating,
+        decimating, and updating the object state.
+        """
+        # Task 1: Design filters
+        filters = self._design_eeg_filters(lowcut, highcut)
 
-        # design EEG filters
-        b_notch, a_notch = iirnotch(50, 30, fs=self.fs['EEG'])
-        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=self.fs['EEG'])
-        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=self.fs['EEG'])
+        # Task 2: Apply filters and separate signals
+        (eeg_cg, channels_cg), (eeg_ch, channels_ch) = self._apply_filters_and_separate(data, filters)
 
-        #  arrays for filtered EEG signals
+        # Task 3: Decimate signals
+        signal_cg, signal_ch = self._decimate_signals(eeg_cg, eeg_ch, q)
+
+        # Task 4: Update object state
+        self._update_eeg_state(signal_cg, signal_ch, channels_cg, channels_ch, q)
+
+    # --- HELPER METHODS ---
+
+    def _design_eeg_filters(self, lowcut, highcut):
+        """
+        Task 1: Designs notch, low-pass, and high-pass filters.
+        Returns a tuple of filter coefficients.
+        """
+        fs = self.fs['EEG']
+        b_notch, a_notch = iirnotch(50, 30, fs=fs)
+        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
+        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
+
+        return (b_notch, a_notch), (b_low, a_low), (b_high, a_high)
+
+    def _apply_filters_and_separate(self, data, filters):
+        """
+        Task 2: Applies filters to raw data and separates into 'cg' and 'ch' groups.
+        Returns filtered data and channel mappings for both groups.
+        """
+        (b_notch, a_notch), (b_low, a_low), (b_high, a_high) = filters
+
+        # Initialize arrays for filtered EEG signals
         eeg_cg = np.zeros((len(self.channel_names['EEG']['cg']), data.shape[1]))
         channels_cg = {}
         eeg_ch = np.zeros((len(self.channel_names['EEG']['ch']), data.shape[1]))
         channels_ch = {}
 
-        # filter the caregiver EEG data
         chan_counter_cg = 0
         chan_counter_ch = 0
+
+        # Filter and separate each channel
         for idx, ch in enumerate(self.channels['EEG']):
             signal = data[idx, :].copy()
             signal = filtfilt(b_notch, a_notch, signal, axis=0)
             signal = filtfilt(b_low, a_low, signal, axis=0)
             signal = filtfilt(b_high, a_high, signal, axis=0)
+
             if ch in self.channel_names['EEG']['cg']:
                 eeg_cg[chan_counter_cg, :] = signal
                 channels_cg[ch] = chan_counter_cg
@@ -146,17 +179,36 @@ class DataLoader:
                 channels_ch[ch] = chan_counter_ch
                 chan_counter_ch += 1
 
-        # decimate the data to reduce the sampling frequency q times
+        return (eeg_cg, channels_cg), (eeg_ch, channels_ch)
+
+    def _decimate_signals(self, eeg_cg, eeg_ch, q):
+        """
+        Task 3: Decimates the filtered 'cg' and 'ch' signals.
+        Returns the decimated signals.
+        """
         signal_cg = decimate(eeg_cg, q, axis=-1)
         signal_ch = decimate(eeg_ch, q, axis=-1)
+        return signal_cg, signal_ch
 
-        # set the filtered and decimated EEG data
+    def _update_eeg_state(self, signal_cg, signal_ch, channels_cg, channels_ch, q):
+        """
+        Task 4: Updates the object's state (self) with the processed data,
+        new sampling frequency, and new time vector.
+        """
         self.channels['EEG'] = {'cg': channels_cg, 'ch': channels_ch}
         self.data['EEG'] = {'cg': signal_cg, 'ch': signal_ch}
-        self.fs['EEG'] = self.fs['EEG'] // q  # new sampling frequency for the EEG data after decimation
-        # time vector for the EEG data after decimation
-        self.time['EEG'] = np.arange(0, signal_cg.shape[1] / self.fs['EEG'], 1 / self.fs['EEG'])
-        self.modalities.append('EEG')
+
+        # Calculate and set new sampling frequency
+        new_fs = self.fs['EEG'] // q
+        self.fs['EEG'] = new_fs
+
+        # Calculate and set new time vector
+        num_samples = signal_cg.shape[1]
+        self.time['EEG'] = np.arange(0, num_samples / new_fs, 1 / new_fs)
+
+        # Add modality if it's not already listed
+        if 'EEG' not in self.modalities:
+            self.modalities.append('EEG')
 
     def _extract_ecg_data(self, data, channels):
         t_ecg = np.arange(0, data.shape[1] / self.fs['ECG'],
