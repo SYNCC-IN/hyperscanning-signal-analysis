@@ -291,37 +291,16 @@ class DataLoader:
                   beginning of the recording.
                 - 'duration' (float): The duration of the event in seconds.
         """
-        fs_eeg = self.fs['EEG']
         # Binarize the diode signal: values above the threshold become 1, others 0.
-        x = ((self.diode / (threshold * np.max(self.diode))) > 1).astype(float)
+        thresholded_diode = ((self.diode / (threshold * np.max(self.diode))) > 1).astype(float)
             
         # Find rising (1) and falling (-1) edges in the binarized signal.
-        y = np.diff(x)
-        up = np.zeros(y.shape, dtype=int)
-        down = np.zeros(y.shape, dtype=int)
-        up[y == 1] = 1
-        down[y == -1] = 1
-
-        if self.plot_flag:
-            plt.figure(figsize=(12, 6))
-            plt.plot(self.diode / (threshold * np.max(self.diode)), 'b', label='Diode Signal normalized by threshold')
-            plt.plot(x, 'r', label='Diode Signal Thresholded')
-            plt.title('Diode Signal with events')
-            plt.xlabel('Samples')
-            plt.ylabel('Signal Value')
-            plt.legend()
-            plt.plot(up, 'g', label='Up Events')
-            plt.plot(down, 'm', label='Down Events')
-            plt.legend()
-
         # Collect the sample indices of all rising and falling edges.
-        up_down_events = []
-        for i in range(len(y)):
-            if up[i] == 1 or down[i] == 1:
-                up_down_events.append(i)
+        up_down_events = np.where(np.abs(np.diff(thresholded_diode)) == 1)[0].tolist() + [len(self.diode)]
 
-        events = [{}, {}, {}, {}, {}]
-        found_movies = 0
+        events = [{'name': name} for name in ['Brave', 'Peppa', 'Incredibles', 'Talk_1', 'Talk_2']]
+
+        found_movies = found_talks = 0
         queue = deque(maxlen=100)
 
         # Process pairs of up/down events to identify event durations and intervals.
@@ -329,40 +308,47 @@ class DataLoader:
             start = up_down_events[2 * i]
             duration = up_down_events[2 * i + 1] - up_down_events[2 * i]
             # Calculate the time until the next event starts.
-            following_space = up_down_events[2 * i + 2] - up_down_events[2 * i + 1]\
-                if (2 * i + 2) < len(up_down_events) else len(self.diode) - up_down_events[2 * i + 1]
+            following_space = up_down_events[2 * i + 2] - up_down_events[2 * i + 1]
             queue.append(start)
             # Maintain a queue of recent event start times
-            while queue[0] < start - 4 * fs_eeg:
+            while queue[0] < start - 4 * self.fs['EEG']: # last 4 seconds
                 queue.popleft()
             # Detect movie events based on their duration and number of recent spikes
-            if duration > 55 * fs_eeg and len(queue) > 1:
-                events[len(queue) - 2]['start'] = queue[0] / fs_eeg
-                events[len(queue) - 2]['duration'] = (up_down_events[2 * i + 1] - queue[0]) / fs_eeg
+            if duration > 55 * self.fs['EEG'] and len(queue) > 1: # movie events longer than 0:55
+                events[len(queue) - 2]['start'] = queue[0] / self.fs['EEG']
+                events[len(queue) - 2]['duration'] = (up_down_events[2 * i + 1] - queue[0]) / self.fs['EEG']
                 found_movies += 1
             if found_movies > 3:
                 raise ValueError("More than 3 events detected, something is wrong.")
             # Detect talk events based on their position relative to movie events
-            if found_movies == 3 and duration < 2 * fs_eeg and following_space > 175 * fs_eeg:
-                if events[3].get('start') is None:
-                    events[3]['start'] = up_down_events[2 * i + 1] / fs_eeg
-                    events[3]['duration'] = following_space / fs_eeg
-                elif events[4].get('start') is None:
-                    events[4]['start'] = up_down_events[2 * i + 1] / fs_eeg
-                    events[4]['duration'] = following_space / fs_eeg
+            if found_movies == 3 and duration < 2 * self.fs['EEG'] and following_space > 175 * self.fs['EEG'] :# talk events longer than 2:55
+                if found_talks < 2:
+                    event_index = found_movies + found_talks
+                    events[event_index]['start'] = up_down_events[2 * i + 1] / self.fs['EEG']
+                    events[event_index]['duration'] = following_space / self.fs['EEG']
+                    found_talks += 1
                 else:
                     raise ValueError("More than 2 talks detected, something is wrong.")
 
-        # TODO plot event start times on diode signal if self.plot_flag is True
-
-        # Assign names to the detected events in their expected order.
-        events[0]['name'] = 'Brave'
-        events[1]['name'] = 'Peppa'
-        events[2]['name'] = 'Incredibles'
-        events[3]['name'] = 'Talk_1'
-        events[4]['name'] = 'Talk_2'
+        if self.plot_flag:
+            self.plot_scanned_events(threshold, thresholded_diode, np.diff(thresholded_diode), events, self.fs['EEG'])
 
         return events
+
+    def plot_scanned_events(self, threshold, thresholded_diode, derivative, events, fs_eeg):
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.diode / (threshold * np.max(self.diode)), 'b', label='Diode Signal normalized by threshold')
+        plt.plot(thresholded_diode, 'r', label='Diode Signal Thresholded')
+        plt.title('Diode Signal with events')
+        plt.xlabel('Samples')
+        plt.ylabel('Signal Value')
+        plt.plot((derivative == 1).astype(int), 'g', label='Up Events')
+        plt.plot((derivative == -1).astype(int), 'm', label='Down Events')
+        for event in events:
+            if 'start' in event:
+                plt.plot(event['start'] * fs_eeg, 1.2, 'ko', markersize=10)
+                plt.text(event['start'] * fs_eeg, 1.25, event['name'], rotation=45)
+        plt.legend()
 
     @staticmethod
     def load_output_data(filename):
