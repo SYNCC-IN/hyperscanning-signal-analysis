@@ -21,75 +21,75 @@ The data are stored as a single Python object, named `data`.
 
 ```python
 data = {
-    "ID": str,                        # Dyad ID
-    "data_EEG": np.ndarray,           # EEG data [n_channels x n_samples]
-    "Fs_EEG": float,                  # EEG sampling rate (Hz)
-    "times_EEG": np.ndarray,          # time vector (s) [1 x n_samples]
-    "chanNames_EEG": list[str],       # list of channel names in order
-    "channels_EEG": dict[str, int],   # mapping: channel name → index in 'data'
+    "id": str,                              # Dyad ID
+    "eeg_data": np.ndarray,                 # EEG data [n_channels x n_samples]
+    "eeg_fs": float,                        # EEG sampling rate (Hz)
+    "eeg_times": np.ndarray,                # time vector (s) [1 x n_samples]
+    "eeg_channel_names_all()": list[str],   # list of channel names in order
+    "eeg_channel_mapping": dict[str, int],  # mapping: channel name → index in 'data'
 
-    "references": str,                # Information about reference electrodes or common average
+    "references": str,                      # Information about reference electrodes or common average
 
-    "filtration": {                   # Information about filtering
-        "notch": bool,                # If True, notch filter applied
-        "low_pass": float,            # Low-pass filter cutoff frequency (Hz)
-        "high_pass": float,           # High-pass filter cutoff frequency (Hz)
-        "type": str                   # Type of filter (e.g., 'FIR', 'IIR')
+    "filtration": {                         # Information about filtering
+        "notch": bool,                      # If True, notch filter applied
+        "low_pass": float,                  # Low-pass filter cutoff frequency (Hz)
+        "high_pass": float,                 # High-pass filter cutoff frequency (Hz)
+        "type": str                         # Type of filter (e.g., 'FIR', 'IIR')
     }
 
-    'EEG_channels_ch': list[str],     # child EEG channels after montage
-    'EEG_channels_cg': list[str],     # caregiver EEG channels after montage
+    'eeg_channel_names_ch': list[str],      # child EEG channels after montage
+    'eeg_channel_names_cg': list[str],      # caregiver EEG channels after montage
 
-    'ECG_ch': np.ndarray,             # filtered ECG (child)
-    'ECG_cg': np.ndarray,             # filtered ECG (caregiver)
-    'Fs_ECG': int,                    # ECG sampling frequency
-    't_ECG': np.ndarray,              # time vector for ECG
+    'ecg_ch': np.ndarray,                   # filtered ECG (child)
+    'ecg_cg': np.ndarray,                   # filtered ECG (caregiver)
+    'ecg_fs': int,                          # ECG sampling frequency
+    'ecg_times': np.ndarray,                # time vector for ECG
 
-    'IBI_ch_interp': np.ndarray,      # interpolated IBI (child)
-    'IBI_cg_interp': np.ndarray,      # interpolated IBI (caregiver)
-    'Fs_IBI': int,                    # IBI sampling frequency (default: 4 Hz)
-    't_IBI': np.ndarray               # time vector for interpolated IBI
+    'ibi_ch_interp': np.ndarray,            # interpolated IBI (child)
+    'ibi_cg_interp': np.ndarray,            # interpolated IBI (caregiver)
+    'ibi_fs': int,                          # IBI sampling frequency (default: 4 Hz)
+    'ibi_times': np.ndarray                 # time vector for interpolated IBI
 
-    'ET_ch: np.ndarray,               # ET (child)
-    'ET_cg': np.ndarray,              # ET (caregiver)
-    'Fs_ET': int,                     # ET sampling frequency 
-    't_ET': np.ndarray                # time vector for interpolated IBI
+    'eyetracker_ch': np.ndarray,            # ET (child)
+    'eyetracker_cg': np.ndarray,            # ET (caregiver)
+    'eyetracker_Fs': int,                   # ET sampling frequency 
+    'eyetracker_times': np.ndarray          # time vector for interpolated IBI
 
-    "event": list,                    # list of event markers (stimuli, triggers, etc.) 
-    "epoch": list or None,            # 
+    "events": list,                         # list of event markers (stimuli, triggers, etc.) 
+    "epoch": list or None,                  # 
 
     "paths": {
-        "directory_EEG": str,         # path to EEG data raw
-        "directory_ET": str,          # path to eye-tracking files
-        "directory_HRV": str,         # path to HRV -> IBI files
-        "output_dir": str,            # path where to save results/figures
+        "eeg_directory": str,               # path to EEG data raw
+        "et_directory": str,                # path to eye-tracking files
+        "hrv_directory": str,               # path to HRV -> IBI files
+        "output_dir": str,                  # path where to save results/figures
     },
 
    "tasks": {
         "dual_HRV": {
-            "SECORE": bool,           # True if active HRV during SECORE was recorded
-            "movies": bool,           # True if passive HRV recorded
-            "conversation": bool      # True if active HRV recorded
+            "SECORE": bool,                 # True if active HRV during SECORE was recorded
+            "movies": bool,                 # True if passive HRV recorded
+            "conversation": bool            # True if active HRV recorded
         },
         "dual_EEG": {
-            "movies": bool,           # True if passive EEG recorded
-            "conversation": bool,     # True if active EEG recorded
+            "movies": bool,                 # True if passive EEG recorded
+            "conversation": bool,           # True if active EEG recorded
         }
         "dual_ET": {
-            "movies": bool,           # True if passive ET recorded
-            "conversation": bool      # True if active ET recorded
+            "movies": bool,                 # True if passive ET recorded
+            "conversation": bool            # True if active ET recorded
         }
     }
 
-   "child_info": {                    # Information about child
-        "birth_date": datetime.date,  # Child birth date
-        "age_years": int,             # Child age in months at the time of recording
-        "age_months": int,            # Child age in months at the time of recording
-        "age_days": int,              # Additional days beyond months
-        "rec_date: datetime.date,     # Date when recording was done
-        "group": str,                 # Child group: 'T' (Typical),  'ASD' (Autism Spectrum Disorder), 'P' (Premature)
-        "sex": str                    # Child sex: 'M' (male), 'F' (female)
+   "child_info": {                          # Information about child
+        "birth_date": datetime.date,        # Child birth date
+        "age_years": int,                   # Child age in months at the time of recording
+        "age_months": int,                  # Child age in months at the time of recording
+        "age_days": int,                    # Additional days beyond months
+        "rec_date: datetime.date,           # Date when recording was done
+        "group": str,                       # Child group: 'T' (Typical),  'ASD' (Autism Spectrum Disorder), 'P' (Premature)
+        "sex": str                          # Child sex: 'M' (male), 'F' (female)
     }
 
-    "notes": str or None,    # notes from experiment
+    "notes": str or None,                   # notes from experiment
 }

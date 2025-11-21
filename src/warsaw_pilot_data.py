@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from scipy.signal import decimate, hilbert, sosfiltfilt, welch, butter
 from scipy.stats import zscore
 
-from src.DataLoader import DataLoader
+from src.dataloader import DataLoader
 from src.mtmvar import graph_plot, mvar_plot, multivariate_spectra, dtf_multivariate
 from utils import plot_eeg_channels_pl, overlay_eeg_channels_hyperscanning_pl, clean_data_with_ica, \
     get_data_for_selected_channel_and_event, get_ibi_signal_from_ecg_for_selected_event
@@ -19,7 +19,7 @@ def main(plot_debug=False, analyze_hrv_dtf=False, analyze_eeg_dtf=False, analyze
 
 
     data = DataLoader("W_010", False)
-    data.set_eeg_data("../DATA/W_010/")
+    data.load_eeg_data("../DATA/W_010/")
     events = data.events
 
     if plot_debug:
@@ -69,7 +69,7 @@ def eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_chan
     # filter the data in the theta band
     data_ch_theta = sosfiltfilt(sos_theta, data_ch[0, :])
     data_cg_theta = sosfiltfilt(sos_theta, data_cg[0, :])
-    # get the instantaneous amplitude (envelpe) of the filtered signal using Hilbert transform
+    # get the instantaneous amplitude (envelope) of the filtered signal using Hilbert transform
     data_ch_theta_amp = np.abs(hilbert(data_ch_theta))
     data_cg_theta_amp = np.abs(hilbert(data_cg_theta))
 
