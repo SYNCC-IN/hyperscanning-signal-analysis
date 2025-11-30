@@ -76,6 +76,7 @@ class MultimodalData:
     This class is based on the EEGLAB-style multimodal data structure specification.
     """
     def __init__(self):
+        self.diode = None  # normalized diode signal
         # Core EEG data
         self.id: Optional[str] = None  # Dyad ID
         self.eeg_data: Optional[np.ndarray] = None  # EEG data [n_channels x n_samples]
@@ -126,6 +127,8 @@ class MultimodalData:
 
         # Notes
         self.notes: Optional[str] = None  # notes from experiment
+
+
 
     def eeg_channel_names_all(self) -> List[str]:
         """Returns a combined list of child and caregiver EEG channel names."""
