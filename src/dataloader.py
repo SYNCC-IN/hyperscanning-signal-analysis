@@ -6,8 +6,7 @@ import xmltodict
 from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
 import joblib
-
-from src.data_structures import MultimodalData
+from .data_structures import MultimodalData
 
 
 def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
@@ -37,7 +36,7 @@ def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
     diode = raw_eeg_data[multimodal_data.eeg_channel_mapping['Diode'], :]
 
     # scan for events
-    multimodal_data.events = _scan_for_events(diode, multimodal_data.eeg_fs, plot_flag, threshold=0.75)
+    multimodal_data.events, multimodal_data.diode = _scan_for_events(diode, multimodal_data.eeg_fs, plot_flag, threshold=0.75)
     print(f"Detected events: {multimodal_data.events}")
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
@@ -228,7 +227,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
     if plot_flag:
         _plot_scanned_events(threshold, diode, thresholded_diode, np.diff(thresholded_diode), events, eeg_fs)
 
-    return events
+    return events,thresholded_diode
 
 
 def _plot_scanned_events(threshold, diode, thresholded_diode, derivative, events, eeg_fs):
