@@ -74,28 +74,80 @@ class MultiModalDataPd:
     This is a class for storing data in pandas DataFrame format.
     It mirrors the MultimodalData class but uses DataFrames for easier data manipulation.
     '''
-def __init__(self, id: str, plot_flag: bool = False ):
-    self.id = id  # Dyad ID
-    self.plot_flag = plot_flag
-    self.data = None  # Placeholder for DataFrame storage
-    self.fs = None  # Placeholder for sampling frequency
-    self.info = {}  # Placeholder for metadata storage
-    self.history = None  # Placeholder for processing history storage
+    def __init__(self, id: str):
+        self.id = id  # Dyad ID
+        self.data = None  # Placeholder for DataFrame storage
+        self.fs = None  # Placeholder for sampling frequency
+        self.info = {}  # Placeholder for metadata storage
+        self.history = None  # Placeholder for processing history storage
 
-def add_data(self, eeg_path: str = None, et_path: str = None, ibi_path: str = None ):
-    if eeg_path:
-        eeg_ecg_data = dataloader.load_eeg_data(self.id, eeg_path, self.plot_flag)
-        self.data = pd.DataFrame(data=eeg_ecg_data.eeg_data.T, columns=eeg_ecg_data.eeg_channel_names)
-        self.fs = eeg_ecg_data.eeg_fs
-        self.info['modalities'].append('eeg')    
+    def add_data(self, eeg_path: str = None, et_path: str = None, ibi_path: str = None, plot_flag = False ):
+        if eeg_path:
+            EEG_CHANS = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 
+                         'M1',  'T3', 'C3', 'Cz', 'C4', 'T4', 'M2',
+                        'T5',  'P3', 'Pz', 'P4', 'T6', 'O1', 'O2']
+            eeg_ecg_data = dataloader.load_eeg_data(self.id, eeg_path, plot_flag)
+            eeg_ecg_df = pd.DataFrame()
+            if self.fs is None:
+                self.fs = eeg_ecg_data.eeg_fs
+            # construct time column in seconds
+            time = np.arange(0, eeg_ecg_data.eeg_data.shape[1],1 )
+            eeg_ecg_df['time'] = time/self.fs # convert to  seconds
+            eeg_ecg_df['time_idx'] = time # this column keeps integer indexes for merging with other modalities
+            # construct the events column
+            # Initialize events column with empty strings
+            eeg_ecg_df['events'] = ''
+            # Populate events column based on event timing and duration
+            for ev in eeg_ecg_data.events:
+                if 'start' in ev:
+                    print('event:', ev['name'], ev['start'])
+                    eeg_ecg_df[(eeg_ecg_df['time']>=ev['start']) & (eeg_ecg_df['time']<=ev['start']+60) ]['events'] = ev['name']
+
+            # find the time of the first event
+            min_start_time = float('inf')
+            for ev in eeg_ecg_data.events:
+                if 'start' in ev:
+                    min_start_time = min(min_start_time, ev['start'])
+            if min_start_time == float('inf'):
+                min_start_time = 0
+            # reset the time to the first event
+            eeg_ecg_df['time'] = eeg_ecg_df['time'] - min_start_time
+            eeg_ecg_df['time_idx'] = eeg_ecg_df['time_idx'] - min_start_time*self.fs
         
-    
-    pass
-def save_to_file(self, folder_path: str):
-    pass
+            
 
-def load_from_file(folder_path: str):
-    pass
+
+            # copy EEG data of child and caregiver to columns in the dataframe 
+            for chan in eeg_ecg_data.eeg_channel_mapping:
+                chan_parts = chan.split('_')
+                if chan_parts[0] in EEG_CHANS:
+                    if len(chan_parts)==2:
+                        col_name = f'EEG_cg_{chan_parts[0]}'
+                    else:
+                        col_name = f'EEG_ch_{chan_parts[0]}'
+                    eeg_ecg_df[col_name] = eeg_ecg_data.eeg_data[eeg_ecg_data.eeg_channel_mapping[chan]]
+            self.info['modalities'].append('EEG')    
+            # copy ECG data of child and caregiver to columns in the dataframe
+            eeg_ecg_df['ECG_cg'] = eeg_ecg_data.ecg_data_cg
+            eeg_ecg_df['ECG_ch'] = eeg_ecg_data.ecg_data_ch
+            self.info['modalities'].append('ECG') 
+            # copy Diode data to dataframe
+            eeg_ecg_df['DIODE'] = eeg_ecg_data.diode
+            self.info['modalities'].append('DIODE')
+            if self.data is None:
+                self.data = eeg_ecg_df.copy()
+            else:    
+                self.data = pd.merge(self.data, eeg_ecg_df, how = 'outer', on = 'time_idx')
+
+            
+            
+        
+        pass
+    def save_to_file(self, folder_path: str):
+        pass
+
+    def load_from_file(folder_path: str):
+        pass
 
 
 class MultimodalData:
