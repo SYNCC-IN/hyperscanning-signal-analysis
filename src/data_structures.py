@@ -5,8 +5,9 @@ from scipy.interpolate import CubicSpline
 from datetime import date
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
-
+import dataloader
 from scipy.signal import decimate
+import pandas as pd
 
 
 @dataclass
@@ -67,6 +68,34 @@ class ChildInfo:
     rec_date: Optional[date] = None
     group: Optional[str] = None
     sex: Optional[str] = None
+
+class MultiModalDataPd:
+    '''
+    This is a class for storing data in pandas DataFrame format.
+    It mirrors the MultimodalData class but uses DataFrames for easier data manipulation.
+    '''
+def __init__(self, id: str, plot_flag: bool = False ):
+    self.id = id  # Dyad ID
+    self.plot_flag = plot_flag
+    self.data = None  # Placeholder for DataFrame storage
+    self.fs = None  # Placeholder for sampling frequency
+    self.info = {}  # Placeholder for metadata storage
+    self.history = None  # Placeholder for processing history storage
+
+def add_data(self, eeg_path: str = None, et_path: str = None, ibi_path: str = None ):
+    if eeg_path:
+        eeg_ecg_data = dataloader.load_eeg_data(self.id, eeg_path, self.plot_flag)
+        self.data = pd.DataFrame(data=eeg_ecg_data.eeg_data.T, columns=eeg_ecg_data.eeg_channel_names)
+        self.fs = eeg_ecg_data.eeg_fs
+        self.info['modalities'].append('eeg')    
+        
+    
+    pass
+def save_to_file(self, folder_path: str):
+    pass
+
+def load_from_file(folder_path: str):
+    pass
 
 
 class MultimodalData:
