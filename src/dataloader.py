@@ -6,7 +6,7 @@ import xmltodict
 from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
 import joblib
-from .data_structures import MultimodalData
+from data_structures import MultimodalData
 
 
 def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
