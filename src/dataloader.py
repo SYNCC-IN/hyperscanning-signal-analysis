@@ -8,7 +8,8 @@ import xmltodict
 from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
 import joblib
-from data_structures import MultimodalData
+from data_structures import MultimodalData, MultiModalDataPd
+
 
 # --- EEG Data Loading and Processing Functions -- #
 
