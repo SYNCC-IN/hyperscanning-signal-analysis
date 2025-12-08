@@ -259,6 +259,8 @@ class MultiModalDataPd:
                 self.data = eeg_ecg_df.copy()
             else:    
                 self.data = pd.merge(self.data, eeg_ecg_df, how = 'outer', on = 'time_idx')
+                self.data['time'] = self.data['time_idx'] / self.fs
+                self.data = self.data.drop(columns=['time_x','time_y'])
 
 
         if et_path:
@@ -327,6 +329,8 @@ class MultiModalDataPd:
                 self.data = et_df.copy()
             else:    
                 self.data = pd.merge(self.data, et_df, how = 'outer', on = 'time_idx')  
+                self.data['time'] = self.data['time_idx'] / self.fs
+                self.data = self.data.drop(columns=['time_x','time_y'])
 
             self.info['modalities'].append('ET')
             
