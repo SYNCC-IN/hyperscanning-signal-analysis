@@ -302,7 +302,7 @@ def process_time_et(ch_pos_df_0, cg_pos_df_0, ch_pupil_df_0, cg_pupil_df_0,ch_pu
     t = np.arange(min_t, max_t, 1 / Fs)
     return t
 
-def process_pos(pos_df, time):
+def process_pos(pos_df, df, who):
     '''
     Process gaze position dataframe to get interpolated x and y gaze positions on common time vector.
     :param pos_df: gaze_positions_on_surface_Surface dataframe
@@ -314,10 +314,17 @@ def process_pos(pos_df, time):
     y_result = pos_df.groupby('gaze_timestamp')['y_norm'].mean().reset_index()
     # the camera samples with different frame rates during the experiments, and sometimes loses the eye,
     # so we need to interpolate the gaze positions to the common time vector
-    x_interp = np.interp(time, x_result['gaze_timestamp'], x_result['x_norm'])
-    y_interp = np.interp(time, y_result['gaze_timestamp'], y_result['y_norm'])
-
-    return x_interp, y_interp
+    x_interp = np.interp(df['time'], x_result['gaze_timestamp'], x_result['x_norm'])
+    y_interp = np.interp(df['time'], y_result['gaze_timestamp'], y_result['y_norm'])
+    col_name_x = f'ET_{who}_x'
+    col_name_y = f'ET_{who}_y'
+    if col_name_x not in df.columns:
+        df[col_name_x] = None
+    if col_name_y not in df.columns:
+        df[col_name_y] = None
+    df[col_name_x] = x_interp
+    df[col_name_y] = y_interp
+    return
 
 def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10, order=351, cutoff=1, Fs=1000, plot_flag=False):
     '''
@@ -328,13 +335,13 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10, order
     :param time: common time for all signals
     :param model_confidence: confidence level for 3D pupil model
     :param median_size: size of median filter
-    :param order: order of low pass filter 
+    :param order: order of low pass filter
     :param cutoff: frequency cutoff for low pass filter
     :param Fs: sampling frequency
     :param plot_flag: debug plot
     :return: array of filtered pupil diameters
     '''
-    
+
     filtr_3d = pupil_df[pupil_df['model_confidence'] > model_confidence]
     filtr_3d = filtr_3d.copy()
     minimum =  min(filtr_3d['pupil_timestamp'])
@@ -350,7 +357,7 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10, order
 
     # Delay correction
     diameter3d_interp_filtred_aligned = np.roll(diameter3d_interp_filtred, -delay)
-    # Fix last samples 
+    # Fix last samples
     diameter3d_interp_filtred_aligned[-delay:] = np.nan
     # Fix the level
     diameter3d_interp_filtred_aligned += miu
@@ -363,17 +370,17 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10, order
         plt.plot(df['time'], diameter3d_interp, label='Interpolated')
         plt.plot(df['time'], diameter3d_interp_filtred_aligned)
         plt.show()
-    col_name = f'{who}_diameter3d'
+    col_name = f'ET_{who}_diameter3d'
     if col_name not in df.columns:
         df[col_name] = None
-        
-    df.loc[mask, col_name] = diameter3d_interp_filtred_aligned[mask]
-    return df[col_name]
 
-def process_event_et(annotations, df, event_name='none'):
+    df.loc[mask, col_name] = diameter3d_interp_filtred_aligned[mask]
+    return
+
+def process_event_et(annotations, df, event_name= None):
     '''
     Process event annotations from eye-tracking to mark events in the common dataframe.
-    Add column 'event' to df, if not present, with event names based on annotations. 
+    Add column 'event' to df, if not present, with event names based on annotations.
     :param annotations: dataframe with event annotations
     :param df: common dataframe to store the results
     :param event_name: optional name to assign to all events
@@ -387,21 +394,24 @@ def process_event_et(annotations, df, event_name='none'):
 
     starts = starts.rename(columns={'timestamp': 't_start'})
     stops  = stops.rename(columns={'timestamp': 't_stop'})
-    if 'event' not in df.columns:
-        df['event'] = 'none'
     intervals = starts.merge(stops, on='event')
+
+    if 'ET_event' not in df.columns:
+        df['ET_event'] = None
+
     for _, row in intervals.iterrows():
         mask = (df['time'] >= row['t_start']) & (df['time'] <= row['t_stop'])
-        if event_name == 'none':
-            df.loc[mask, 'event'] = row['event']
-        #else:
-        #    df.loc[mask, 'event'] = event_name
-    return df['event']   
+        if event_name is None:
+            df.loc[mask, 'ET_event'] = row['event']
+        else:
+            df.loc[mask, 'ET_event'] = event_name
+
+    return
 
 def process_blinks(blinks,df,who):
     '''
     Process blink annotations from eye-tracking to mark blinks in the common dataframe.
-    Add column '{who}_blinks' to df, if not present, with blink confidence values based on annotations. 
+    Add column '{who}_blinks' to df, if not present, with blink confidence values based on annotations.
     :param blinks: dataframe with blink annotations
     :param df: common dataframe to store the results
     :param who: identifier for the subject (e.g., 'ch' or 'cg')
@@ -409,11 +419,11 @@ def process_blinks(blinks,df,who):
     '''
     cols = ['start_timestamp','end_timestamp','confidence']
     blinks = blinks[cols]
-    col_name = f'{who}_blinks'
+    col_name = f'ET_{who}_blinks'
     if col_name not in df.columns:
         df[col_name] = 0.0
-        
+
     for _, row in blinks.iterrows():
         mask = (df['time'] >= row['start_timestamp']) & (df['time'] <= row['end_timestamp'])
         df.loc[mask, col_name] = row['confidence']
-    return df[col_name] 
+    return
