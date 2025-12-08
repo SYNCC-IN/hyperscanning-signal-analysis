@@ -370,7 +370,7 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10, order
     df.loc[mask, col_name] = diameter3d_interp_filtred_aligned[mask]
     return df[col_name]
 
-def process_event_et(annotations, df, event_name=None):
+def process_event_et(annotations, df, event_name='none'):
     '''
     Process event annotations from eye-tracking to mark events in the common dataframe.
     Add column 'event' to df, if not present, with event names based on annotations. 
@@ -388,14 +388,14 @@ def process_event_et(annotations, df, event_name=None):
     starts = starts.rename(columns={'timestamp': 't_start'})
     stops  = stops.rename(columns={'timestamp': 't_stop'})
     if 'event' not in df.columns:
-        df['event'] = None
+        df['event'] = 'none'
     intervals = starts.merge(stops, on='event')
     for _, row in intervals.iterrows():
         mask = (df['time'] >= row['t_start']) & (df['time'] <= row['t_stop'])
-        if event_name is None:
+        if event_name == 'none':
             df.loc[mask, 'event'] = row['event']
-        else:
-            df.loc[mask, 'event'] = event_name
+        #else:
+        #    df.loc[mask, 'event'] = event_name
     return df['event']   
 
 def process_blinks(blinks,df,who):

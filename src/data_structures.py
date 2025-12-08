@@ -220,7 +220,7 @@ class MultiModalDataPd:
             eeg_ecg_df['time'] = time/self.fs # convert to  seconds
             eeg_ecg_df['time_idx'] = time # this column keeps integer indexes for merging with other modalities
             # construct the events column
-            eeg_ecg_df['events'] = ''
+            eeg_ecg_df['events'] = 'none'
             # Populate events column based on event timing and duration
             for ev in eeg_ecg_data.events:
                 if 'start' in ev:
@@ -260,9 +260,77 @@ class MultiModalDataPd:
             else:    
                 self.data = pd.merge(self.data, eeg_ecg_df, how = 'outer', on = 'time_idx')
 
+
+        if et_path:
+            # Load eye-tracking data from CSV files: THIS PART TO BE UPDATED AFTER THE STRUCTURE OF DATA in UW IS CLARIFIED
+            # For now, we will load data from hardcoded paths for testing purposes
+            # movies task 000
+            ch_pos_df_0 = pd.read_csv(et_path+'000/ch_gaze_positions_on_surface_Surface 1.csv')
+            cg_pos_df_0 = pd.read_csv(et_path+'000/cg_gaze_positions_on_surface_Surface 1.csv')
+            ch_pupil_df_0 = pd.read_csv(et_path+'000/ch_pupil_positions.csv')
+            cg_pupil_df_0 = pd.read_csv(et_path+'000/cg_pupil_positions.csv')
+            annotations_0 = pd.read_csv(et_path+'000/annotations.csv')
+            cg_blinks_0 = pd.read_csv(et_path+'000/cg_blinks.csv')
+            ch_blinks_0 = pd.read_csv(et_path+'000/ch_blinks.csv') 
+            # conversation task 001
+            ch_pupil_df_1 = pd.read_csv(et_path+'001/ch_pupil_positions.csv')
+            cg_pupil_df_1 = pd.read_csv(et_path+'001/cg_pupil_positions.csv')
+            annotations_1 = pd.read_csv(et_path+'001/annotations.csv')
+            cg_blinks_1 = pd.read_csv(et_path+'001/cg_blinks.csv')
+            ch_blinks_1 = pd.read_csv(et_path+'001/ch_blinks.csv')
+            # conversation task 002
+            ch_pupil_df_2 = pd.read_csv(et_path+'002/ch_pupil_positions.csv')
+            cg_pupil_df_2 = pd.read_csv(et_path+'002/cg_pupil_positions.csv')
+            annotations_2 = pd.read_csv(et_path+'002/annotations.csv')
+            cg_blinks_2 = pd.read_csv(et_path+'002/cg_blinks.csv')
+            ch_blinks_2 = pd.read_csv(et_path+'002/ch_blinks.csv')
+
+            # construct dataframe for ET data
+            et_df = pd.DataFrame()
+            # prepare the time column
+            if self.fs is None:
+                self.fs = 1024  # default sampling rate for UW EEG data; we want to keep all time series at the same sampling rate
+                print('setting fs to the default Fs of EEG:', self.fs) 
+            et_df['time'] = dataloader.process_time_et(ch_pos_df_0, cg_pos_df_0, ch_pupil_df_0, cg_pupil_df_0, ch_pupil_df_1, cg_pupil_df_1, ch_pupil_df_2, cg_pupil_df_2, Fs=self.fs)
+            et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
+            
+            # process position, pupil, blink, and event data
+            et_df['ET_ch_x'],et_df['ET_ch_y'] = dataloader.process_pos(ch_pos_df_0, et_df['time'])
+            et_df['ET_cg_x'],et_df['ET_cg_y'] = dataloader.process_pos(cg_pos_df_0, et_df['time'])
+
+            et_df['ET_ch_diameter3d'] = dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
+            et_df['ET_ch_diameter3d'] = dataloader.process_pupil(ch_pupil_df_1, et_df,'ch')
+            et_df['ET_ch_diameter3d'] = dataloader.process_pupil(ch_pupil_df_2, et_df,'ch')
+
+            et_df['ET_cg_diameter3d'] = dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
+            et_df['ET_cg_diameter3d'] = dataloader.process_pupil(cg_pupil_df_1, et_df,'cg')
+            et_df['ET_cg_diameter3d'] = dataloader.process_pupil(cg_pupil_df_2, et_df,'cg')
+
+            et_df['ET_cg_blinks'] = dataloader.process_blinks(cg_blinks_0, et_df,'cg')
+            et_df['ET_cg_blinks'] = dataloader.process_blinks(cg_blinks_1, et_df,'cg')
+            et_df['ET_cg_blinks'] = dataloader.process_blinks(cg_blinks_2, et_df,'cg')
+            et_df['ET_ch_blinks'] = dataloader.process_blinks(ch_blinks_0, et_df,'ch')
+            et_df['ET_ch_blinks'] = dataloader.process_blinks(ch_blinks_1, et_df,'ch')
+            et_df['ET_ch_blinks'] = dataloader.process_blinks(ch_blinks_2, et_df,'ch')
+
+            et_df['ET_event'] = dataloader.process_event_et(annotations_0, et_df)
+            et_df['ET_event'] = dataloader.process_event_et(annotations_1, et_df, 'talk1')
+            et_df['ET_event'] = dataloader.process_event_et(annotations_2, et_df, 'talk2')
+
+            # align ET time to EEG time by subtracting the time of the first event; find the time of the first event in ET data
+            min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
+            et_df['time'] = et_df['time'] - min_start_time_et
+            et_df['time_idx'] = et_df['time_idx'] - (min_start_time_et*self.fs).astype(int)
+
+            #  merging ET data into the main dataframe
+            if self.data is None:
+                self.data = et_df.copy()
+            else:    
+                self.data = pd.merge(self.data, et_df, how = 'outer', on = 'time_idx')  
+
+            self.info['modalities'].append('ET')
             
             
-        
         pass
     def save_to_file(self, folder_path: str):
         pass
