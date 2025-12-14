@@ -5,6 +5,7 @@ import plotly.express as px
 import os
 from plotly.subplots import make_subplots
 from sklearn.decomposition import FastICA
+import scipy.signal as signal   
 
 def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
     """Get IBI signal from ECG data for a specific event.
@@ -344,6 +345,79 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 
 
 # ==================================
+
+def charkterystyki(b, a, f, T, Fs, f_lim=None, db_lim=None):
+    if f_lim == None:
+      f_lim = (0, Fs / 2)
+    # przyda nam się oś czasu od -T do T sekund
+    t = np.arange(-T, T, 1 / Fs)
+
+    # obliczamy transmitancję;
+    f, h = signal.freqz(b, a, f, fs=Fs)
+
+    # obliczamy moduł transmitancji
+    m = np.abs(h)
+
+
+    # obliczamy fazę i "rozwijamy" ją
+    faza = np.unwrap(np.angle(h))
+
+
+    # obliczamy opóźnienie grupowe
+    ff, grupowe = signal.group_delay((b, a), f, fs=Fs)
+
+    # obliczamy odpowiedź impulsową
+    x = np.zeros(len(t))
+    x[len(t) // 2] = 1 # impuls
+    y = signal.lfilter(b, a, x) # przepuszczamy impuls przez filtr i obserwujemy odpowiedź impulsową
+
+    # obliczamy odpowiedź schodkową
+    s = np.zeros(len(t))
+    s[len(t) // 2:] = 1 # schodek
+    ys = signal.lfilter(b, a, s) # przepuszczamy schodek przez filtr i obserwujemy odpowiedź schodkową
+
+    # rysujemy
+    fig = plt.figure(figsize=(15, 10))
+    plt.subplot(2, 2, 1)
+    plt.title('moduł transmitancji')
+    M = 20 * np.log10(m)
+    plt.plot(f, M)
+    plt.ylabel('[dB]')
+    plt.grid('on')
+    plt.xlim(f_lim)
+    if db_lim == None:
+      M_zoom = M[np.logical_and(f_lim[0] < f, f < f_lim[1])]
+      plt.ylim((np.min(M_zoom), np.max(M_zoom)))
+    else:
+      plt.ylim((db_lim[0], db_lim[1]))
+
+    plt.subplot(2, 2, 3)
+    plt.title('opóźnienie grupowe')
+    plt.plot(f,grupowe)
+    plt.ylabel('probki')
+    plt.xlabel('Częstość [Hz]')
+    plt.grid('on')
+    plt.xlim(f_lim)
+    plt.ylim([np.min(grupowe) - 1, np.max(grupowe) + 1])
+    
+    
+    plt.subplot(2, 2, 2)
+    plt.title('odpowiedź impulsowa')
+    plt.stem(t, x)
+    plt.plot(t, y, 'r')
+    plt.xlim([-T / 4, T])
+    plt.grid('on')
+
+    plt.subplot(2, 2, 4)
+    plt.title('odpowiedź schodkowa')
+    plt.plot(t, s)
+    plt.plot(t, ys, 'r')
+    plt.xlim([-T / 4, T])
+    plt.xlabel('Czas [s]')
+    plt.grid('on')
+
+    fig.subplots_adjust(hspace=.5)
+    plt.show()
 # ==================================
 # ==================================
 # ==================================

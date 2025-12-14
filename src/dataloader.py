@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
 import joblib
 from data_structures import MultimodalData, MultiModalDataPd
+from utils import charkterystyki
 
 
 # --- EEG Data Loading and Processing Functions -- #
@@ -111,23 +112,32 @@ def _mount_eeg_data(multimodal_data, raw_eeg_data):
     multimodal_data.eeg_data = raw_eeg_data
 
 
-def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, type = 'iir'):
+def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, type = 'iir', plot_flag=False):
     """
     Task 1: Designs notch, low-pass, and high-pass filters.
     Returns a tuple of filter coefficients.
     """
     if type == 'fir':
         # FIR filter design
-        numtaps = 101  # Number of filter taps (order + 1)
-        b_notch = firwin(numtaps, [notch_freq - 1, notch_freq + 1], pass_zero='bandstop', fs=fs)
-        b_low = firwin(numtaps, highcut, pass_zero='lowpass', fs=fs)
-        b_high = firwin(numtaps, lowcut, pass_zero='highpass', fs=fs)
-        a_notch = a_low = a_high = [1.0]  # FIR filters have a=1
+        b_notch, a_notch = iirnotch(notch_freq, Q=30, fs=fs)  # for notch we stay with iir design, anyway this filter introduces groupdelay below 1 sample below 40Hz
+        numtaps_low = 201  # Number of filter taps (order + 1)
+        b_low = firwin(numtaps_low, highcut, pass_zero='lowpass', fs=fs)
+        numtaps_high = 1025  # Number of filter taps (order + 1)
+        b_high = firwin(numtaps_high, lowcut, pass_zero='highpass', fs=fs)
+        a_low = a_high = [1.0]  # FIR filters have a=1
     else:
         # IIR filter design (Butterworth and Notch)     
         b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=fs)
         b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
         b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
+    if plot_flag:
+        print("---- Notch filter characteristics: --------")
+        f_max = 60.0
+        charkterystyki(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=fs, f_lim=(30, f_max), db_lim=(-300, 0.1))
+        print("---- Low-pass filter characteristics: --------")
+        charkterystyki(b_low, a = [1], f=np.arange(0, fs/2, 0.1), T=0.5, Fs=fs, f_lim=(0, 50), db_lim=(-60, 0.1))
+        print("---- High-pass filter characteristics: --------")
+        charkterystyki(b_high, a = [1] , f=np.arange(0, fs/2, 0.01), T=0.5, Fs=fs, f_lim=(0, 10), db_lim=(-60, 0.1))
     return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), type
 
 
@@ -137,21 +147,21 @@ def _apply_filters(multimodal_data: MultimodalData, filters):
     Returns filtered data.
     """
     (b_notch, a_notch), (b_low, a_low), (b_high, a_high), type= filters
-
+    print('Applying filters to EEG data. Using', type, 'filtering method.')
     # Filter and separate each channel
     for idx, ch in enumerate(multimodal_data.eeg_channel_names_all()):
-        if type == 'iir':
-            signal = multimodal_data.eeg_data[idx, :]  
+        signal = multimodal_data.eeg_data[idx, :] 
+        if type == 'iir':  # IIR filtering using filtfilt        
             signal = filtfilt(b_notch, a_notch, signal, axis=0)
             signal = filtfilt(b_low, a_low, signal, axis=0)
             signal = filtfilt(b_high, a_high, signal, axis=0)
         else:  # FIR filtering using lfilter
             signal = multimodal_data.eeg_data[idx, :] 
-            signal = lfilter(b_notch, a_notch, signal, axis=0)
+            signal = lfilter(b_notch, a_notch, signal, axis=0) # notch filter is IIR, but introduces very small group delay, so we can use lfilter here and not correct for delay
             signal = lfilter(b_low, a_low, signal, axis=0)
             signal = lfilter(b_high, a_high, signal, axis=0)
             # Compensate for the delay introduced by FIR filtering
-            delay = (len(b_notch) - 1) // 2 + (len(b_low) - 1) // 2 + (len(b_high) - 1) // 2    
+            delay = (len(b_low) - 1) // 2 + (len(b_high) - 1) // 2    
             signal = np.roll(signal, -delay)
             # Fix the end of the signal after delay compensation
             signal[-delay:] = 0.0   
