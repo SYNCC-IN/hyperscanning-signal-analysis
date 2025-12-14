@@ -45,7 +45,7 @@ def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
     _mount_eeg_data(multimodal_data, raw_eeg_data)
-    filters = _design_eeg_filters(multimodal_data.eeg_fs, lowcut, highcut)
+    filters = _design_eeg_filters(multimodal_data.eeg_fs, lowcut, highcut, type='fir')
     _apply_filters(multimodal_data, filters)
 
     if 'EEG' not in multimodal_data.modalities:
@@ -111,16 +111,24 @@ def _mount_eeg_data(multimodal_data, raw_eeg_data):
     multimodal_data.eeg_data = raw_eeg_data
 
 
-def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30):
+def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, type = 'iir'):
     """
     Task 1: Designs notch, low-pass, and high-pass filters.
     Returns a tuple of filter coefficients.
     """
-    b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=fs)
-    b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
-    b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
-
-    return (b_notch, a_notch), (b_low, a_low), (b_high, a_high)
+    if type == 'fir':
+        # FIR filter design
+        numtaps = 101  # Number of filter taps (order + 1)
+        b_notch = firwin(numtaps, [notch_freq - 1, notch_freq + 1], pass_zero='bandstop', fs=fs)
+        b_low = firwin(numtaps, highcut, pass_zero='lowpass', fs=fs)
+        b_high = firwin(numtaps, lowcut, pass_zero='highpass', fs=fs)
+        a_notch = a_low = a_high = [1.0]  # FIR filters have a=1
+    else:
+        # IIR filter design (Butterworth and Notch)     
+        b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=fs)
+        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
+        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
+    return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), type
 
 
 def _apply_filters(multimodal_data: MultimodalData, filters):
@@ -128,15 +136,25 @@ def _apply_filters(multimodal_data: MultimodalData, filters):
     Applies filters to raw data.
     Returns filtered data.
     """
-    (b_notch, a_notch), (b_low, a_low), (b_high, a_high) = filters
+    (b_notch, a_notch), (b_low, a_low), (b_high, a_high), type= filters
 
     # Filter and separate each channel
     for idx, ch in enumerate(multimodal_data.eeg_channel_names_all()):
-        signal = multimodal_data.eeg_data[idx, :]  # .copy()
-        signal = filtfilt(b_notch, a_notch, signal, axis=0)
-        signal = filtfilt(b_low, a_low, signal, axis=0)
-        signal = filtfilt(b_high, a_high, signal, axis=0)
-
+        if type == 'iir':
+            signal = multimodal_data.eeg_data[idx, :]  
+            signal = filtfilt(b_notch, a_notch, signal, axis=0)
+            signal = filtfilt(b_low, a_low, signal, axis=0)
+            signal = filtfilt(b_high, a_high, signal, axis=0)
+        else:  # FIR filtering using lfilter
+            signal = multimodal_data.eeg_data[idx, :] 
+            signal = lfilter(b_notch, a_notch, signal, axis=0)
+            signal = lfilter(b_low, a_low, signal, axis=0)
+            signal = lfilter(b_high, a_high, signal, axis=0)
+            # Compensate for the delay introduced by FIR filtering
+            delay = (len(b_notch) - 1) // 2 + (len(b_low) - 1) // 2 + (len(b_high) - 1) // 2    
+            signal = np.roll(signal, -delay)
+            # Fix the end of the signal after delay compensation
+            signal[-delay:] = 0.0   
         multimodal_data.eeg_data[idx, :] = signal
 
 
