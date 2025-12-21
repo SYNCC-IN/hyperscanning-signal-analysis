@@ -5,6 +5,7 @@ import plotly.express as px
 import os
 from plotly.subplots import make_subplots
 from sklearn.decomposition import FastICA
+import scipy.signal as signal   
 
 def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
     """Get IBI signal from ECG data for a specific event.
@@ -344,10 +345,218 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 
 
 # ==================================
-# ==================================
-# ==================================
-# ==================================
-# ==================================
+
+def plot_filter_characteristics(b, a, f, T, Fs, f_lim=None, db_lim=None):
+    """
+    Plot comprehensive filter characteristics including magnitude response, 
+    group delay, impulse response, and step response.
+    
+    Parameters
+    ----------
+    b : array_like
+        Numerator polynomial coefficients of the filter
+    a : array_like
+        Denominator polynomial coefficients of the filter
+    f : array_like
+        Frequency vector for frequency response computation (Hz)
+    T : float
+        Time duration for impulse and step response plots (seconds)
+    Fs : float
+        Sampling frequency (Hz)
+    f_lim : tuple of float, optional
+        Frequency axis limits (f_min, f_max) in Hz. Default is (0, Fs/2)
+    db_lim : tuple of float, optional
+        Magnitude axis limits (db_min, db_max) in dB. Default is auto-scaled
+    
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The created figure object
+    """
+    # Set default frequency limits
+    if f_lim is None:
+        f_lim = (0, Fs / 2)
+    else:
+        f_lim = (max(f_lim[0], 0), min(f_lim[1], Fs / 2))   
+        f = f[np.logical_and(f >= f_lim[0], f <= f_lim[1])]
+    
+    # Create time vector
+    time_vector = np.arange(-T, T, 1 / Fs)
+
+    # Compute frequency response
+    frequencies, frequency_response = signal.freqz(b, a, f, fs=Fs)
+    magnitude = np.abs(frequency_response)
+    magnitude_db = 20 * np.log10(magnitude)
+
+    # Compute group delay
+    _, group_delay = signal.group_delay((b, a), f, fs=Fs)
+
+    # Compute impulse response
+    impulse_signal = np.zeros(len(time_vector))
+    impulse_signal[len(time_vector) // 2] = 1
+    impulse_response = signal.lfilter(b, a, impulse_signal)
+
+    # Compute step response
+    step_signal = np.zeros(len(time_vector))
+    step_signal[len(time_vector) // 2:] = 1
+    step_response = signal.lfilter(b, a, step_signal)
+
+    # Create figure with subplots
+    fig = plt.figure(figsize=(15, 10))
+    
+    # Plot magnitude response (top left)
+    _plot_magnitude_response(frequencies, magnitude_db, f_lim, db_lim)
+    
+    # Plot group delay (bottom left)
+    _plot_group_delay(frequencies, group_delay, f_lim)
+    
+    # Plot impulse response (top right)
+    _plot_impulse_response(time_vector, impulse_signal, impulse_response, T)
+    
+    # Plot step response (bottom right)
+    _plot_step_response(time_vector, step_signal, step_response, T)
+    
+    fig.subplots_adjust(hspace=0.5)
+    plt.show()
+    
+    return fig
+
+
+def _find_db_crossings(frequencies, magnitude_db, target_db):
+    """
+    Find frequencies where magnitude response crosses a target dB value.
+    
+    Parameters
+    ----------
+    frequencies : array_like
+        Frequency vector (Hz)
+    magnitude_db : array_like
+        Magnitude response in dB
+    target_db : float
+        Target dB value to find crossings
+    
+    Returns
+    -------
+    list
+        List of frequencies where crossings occur
+    """
+    crossings = []
+    for i in range(len(magnitude_db) - 1):
+        # Check if the line segment crosses the target
+        if (magnitude_db[i] >= target_db and magnitude_db[i + 1] < target_db) or \
+           (magnitude_db[i] < target_db and magnitude_db[i + 1] >= target_db):
+            # Linear interpolation to find exact crossing frequency
+            freq_crossing = frequencies[i] + (target_db - magnitude_db[i]) * \
+                           (frequencies[i + 1] - frequencies[i]) / \
+                           (magnitude_db[i + 1] - magnitude_db[i])
+            crossings.append(freq_crossing)
+    return crossings
+
+
+def _plot_magnitude_response(frequencies, magnitude_db, f_lim, db_lim):
+    """
+    Plot magnitude response of the filter in dB.
+    
+    Parameters
+    ----------
+    frequencies : array_like
+        Frequency vector (Hz)
+    magnitude_db : array_like
+        Magnitude response in dB
+    f_lim : tuple of float
+        Frequency axis limits (f_min, f_max)
+    db_lim : tuple of float or None
+        Magnitude axis limits (db_min, db_max)
+    """
+    plt.subplot(2, 2, 1)
+    plt.title('Magnitude Response')
+    plt.plot(frequencies, magnitude_db)
+    plt.ylabel('Magnitude [dB]')
+    plt.grid(True)
+    plt.xlim(f_lim)
+    
+    # Find and mark -6dB crossing points
+    crossing_freqs = _find_db_crossings(frequencies, magnitude_db, -6.0)
+    for freq in crossing_freqs:
+        plt.axvline(x=freq, color='r', linestyle='--', linewidth=1.5, alpha=0.7)
+    
+    if db_lim is None:
+        # Auto-scale to show only the zoomed frequency range
+        magnitude_zoom = magnitude_db[np.logical_and(f_lim[0] < frequencies, frequencies < f_lim[1])]
+        plt.ylim((np.min(magnitude_zoom), np.max(magnitude_zoom)))
+    else:
+        plt.ylim((db_lim[0], db_lim[1]))
+
+
+def _plot_group_delay(frequencies, group_delay, f_lim):
+    """
+    Plot group delay of the filter.
+    
+    Parameters
+    ----------
+    frequencies : array_like
+        Frequency vector (Hz)
+    group_delay : array_like
+        Group delay in samples
+    f_lim : tuple of float
+        Frequency axis limits (f_min, f_max)
+    """
+    plt.subplot(2, 2, 3)
+    plt.title('Group Delay')
+    plt.plot(frequencies, group_delay)
+    plt.ylabel('Samples')
+    plt.xlabel('Frequency [Hz]')
+    plt.grid(True)
+    plt.xlim(f_lim)
+    plt.ylim([np.min(group_delay) - 1, np.max(group_delay) + 1])
+
+
+def _plot_impulse_response(time_vector, impulse_signal, impulse_response, T):
+    """
+    Plot impulse response of the filter.
+    
+    Parameters
+    ----------
+    time_vector : array_like
+        Time vector (seconds)
+    impulse_signal : array_like
+        Input impulse signal
+    impulse_response : array_like
+        Filter's impulse response
+    T : float
+        Time duration (seconds)
+    """
+    plt.subplot(2, 2, 2)
+    plt.title('Impulse Response')
+    plt.stem(time_vector, impulse_signal)
+    plt.plot(time_vector, impulse_response, 'r')
+    plt.xlim([-T / 4, T])
+    plt.grid(True)
+
+
+def _plot_step_response(time_vector, step_signal, step_response, T):
+    """
+    Plot step response of the filter.
+    
+    Parameters
+    ----------
+    time_vector : array_like
+        Time vector (seconds)
+    step_signal : array_like
+        Input step signal
+    step_response : array_like
+        Filter's step response
+    T : float
+        Time duration (seconds)
+    """
+    plt.subplot(2, 2, 4)
+    plt.title('Step Response')
+    plt.plot(time_vector, step_signal)
+    plt.plot(time_vector, step_response, 'r')
+    plt.xlim([-T / 4, T])
+    plt.xlabel('Time [s]')
+    plt.grid(True)
+
 # ==================================
 
 def save_figure_to_html(fig, title, event=None):
