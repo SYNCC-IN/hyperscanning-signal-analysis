@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import neurokit2 as nk
 from matplotlib import pyplot as plt
 from scipy.interpolate import CubicSpline
@@ -74,40 +75,38 @@ class MultimodalData:
     Represents multimodal child-caregiver data, including EEG, ET, and IBI signals.
 
     This class is based on the EEGLAB-style multimodal data structure specification.
+    All signal data is stored in a single pandas DataFrame called 'data',
+    where each EEG channel, ECG signal, etc. becomes its own column.
+
+    Column naming conventions:
+    - EEG channels: 'EEG_ch_{channel}' for child, 'EEG_cg_{channel}' for caregiver
+    - ECG: 'ECG_ch', 'ECG_cg'
+    - IBI: 'IBI_ch', 'IBI_cg'
+    - ET: 'ET_ch', 'ET_cg'
+    - Diode: 'diode'
+    - Time: 'time', 'time_idx'
+    - Events: 'events'
     """
     def __init__(self):
-        # Core EEG data
-        self.id: Optional[str] = None  # Dyad ID
-        self.eeg_data: Optional[np.ndarray] = None  # EEG data [n_channels x n_samples]
-        self.eeg_decimated_data_ch: Optional[np.ndarray] = None
-        self.eeg_decimated_data_cg: Optional[np.ndarray] = None
+        # Core data stored in DataFrame - all signal data combined here
+        self.data: pd.DataFrame = pd.DataFrame()
+
+        # Sampling frequencies
         self.eeg_fs: Optional[float] = None  # EEG sampling rate (Hz)
-        self.eeg_times: Optional[np.ndarray] = None  # time vector (s) [1 x n_samples]
+        self.ecg_fs: Optional[int] = None  # ECG sampling frequency
+        self.ibi_fs: Optional[int] = None  # IBI sampling frequency (default: 4 Hz)
+        self.eyetracker_fs: Optional[int] = None  # ET sampling frequency
+
+        # Core metadata
+        self.id: Optional[str] = None  # Dyad ID
         self.eeg_channel_names: List[str] = []  # list of channel names in order
-        self.eeg_channel_mapping: Dict[str, int] = {}  # mapping: channel name → index in 'data'
-        self.diode: Optional[np.ndarray] = None  # diode channel data
+        self.eeg_channel_mapping: Dict[str, int] = {}  # mapping: channel name → index
 
         # EEG metadata
         self.references: Optional[str] = None  # Information about reference electrodes or common average
         self.filtration: Filtration = Filtration()
         self.eeg_channel_names_ch: List[str] = []  # child EEG channels after montage
         self.eeg_channel_names_cg: List[str] = []  # caregiver EEG channels after montage
-
-        # ECG and IBI data
-        self.ecg_data_ch: Optional[np.ndarray] = None  # filtered ECG (child)
-        self.ecg_data_cg: Optional[np.ndarray] = None  # filtered ECG (caregiver)
-        self.ecg_fs: Optional[int] = None  # ECG sampling frequency
-        self.ecg_times: Optional[np.ndarray] = None  # time vector for ECG
-        self.ibi_ch_interp: Optional[np.ndarray] = None  # interpolated IBI (child)
-        self.ibi_cg_interp: Optional[np.ndarray] = None  # interpolated IBI (caregiver)
-        self.ibi_fs: Optional[int] = None  # IBI sampling frequency (default: 4 Hz)
-        self.ibi_times: Optional[np.ndarray] = None  # time vector for interpolated IBI
-
-        # Eye-tracking data
-        self.eyetracker_ch: Optional[np.ndarray] = None  # ET (child)
-        self.eyetracker_cg: Optional[np.ndarray] = None  # ET (caregiver)
-        self.eyetracker_fs: Optional[int] = None  # ET sampling frequency
-        self.eyetracker_times: Optional[np.ndarray] = None  # time vector for interpolated IBI
 
         # Events and epochs
         self.events: List[Any] = []  # list of event markers (stimuli, triggers, etc.)
@@ -128,26 +127,105 @@ class MultimodalData:
         # Notes
         self.notes: Optional[str] = None  # notes from experiment
 
+    # -------------------------------------------------------------------------
+    # Methods for managing data in DataFrame
+    # -------------------------------------------------------------------------
+
+    def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
+        """
+        Store EEG data in DataFrame with each channel as a separate column.
+
+        Args:
+            eeg_data: 2D array [n_channels x n_samples]
+            channel_mapping: Dict mapping channel names to indices in eeg_data
+        """
+        # Initialize DataFrame with time columns if empty
+        n_samples = eeg_data.shape[1]
+        if len(self.data) == 0:
+            self.data = pd.DataFrame(index=range(n_samples))
+            if self.eeg_fs is not None:
+                self.data['time'] = np.arange(n_samples) / self.eeg_fs
+                self.data['time_idx'] = np.arange(n_samples)
+
+        # Add each channel as a column
+        for chan_name, chan_idx in channel_mapping.items():
+            chan_parts = chan_name.split('_')
+            if len(chan_parts) == 2 and chan_parts[1] == 'cg':
+                col_name = f'EEG_cg_{chan_parts[0]}'
+            else:
+                col_name = f'EEG_ch_{chan_name}'
+            self.data[col_name] = eeg_data[chan_idx, :]
+
+    def get_eeg_data_ch(self) -> Optional[np.ndarray]:
+        """Returns EEG data for child channels only as 2D array."""
+        ch_cols = [col for col in self.data.columns if col.startswith('EEG_ch_')]
+        if not ch_cols:
+            return None
+        return self.data[ch_cols].values.T
+
+    def get_eeg_data_cg(self) -> Optional[np.ndarray]:
+        """Returns EEG data for caregiver channels only as 2D array."""
+        cg_cols = [col for col in self.data.columns if col.startswith('EEG_cg_')]
+        if not cg_cols:
+            return None
+        return self.data[cg_cols].values.T
+
+    def set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
+        """Store ECG data in DataFrame."""
+        self._ensure_data_length(len(ecg_ch))
+        self.data['ECG_ch'] = ecg_ch
+        self.data['ECG_cg'] = ecg_cg
+
+    def set_ibi_data(self, ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray):
+        """Store interpolated IBI data in DataFrame."""
+        self._ensure_data_length(len(ibi_ch))
+        self.data['IBI_ch'] = ibi_ch
+        self.data['IBI_cg'] = ibi_cg
+        self.data['IBI_times'] = ibi_times
+
+    def set_diode(self, diode: np.ndarray):
+        """Store diode data in DataFrame."""
+        self._ensure_data_length(len(diode))
+        self.data['diode'] = diode
+
+    def set_events_column(self, events: List[dict]):
+        """Populate events column based on event timing and duration."""
+        if 'events' not in self.data.columns:
+            self.data['events'] = None
+
+        for ev in events:
+            if 'start' in ev and 'duration' in ev:
+                mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
+                self.data.loc[mask, 'events'] = ev['name']
+
+    def align_time_to_first_event(self):
+        """Align time columns so that first event starts at t=0."""
+        if 'events' not in self.data.columns or 'time' not in self.data.columns:
+            return
+
+        min_start_time = self.data[self.data['events'].notna()]['time'].min()
+        if pd.isna(min_start_time):
+            min_start_time = 0
+
+        self.data['time'] = self.data['time'] - min_start_time
+        if 'time_idx' in self.data.columns:
+            self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.eeg_fs)
+
+    def _ensure_data_length(self, length: int):
+        """Ensure DataFrame has enough rows to hold data of given length."""
+        if len(self.data) == 0:
+            self.data = pd.DataFrame(index=range(length))
+        elif len(self.data) < length:
+            # Extend DataFrame with NaN rows
+            extra_rows = pd.DataFrame(index=range(len(self.data), length))
+            self.data = pd.concat([self.data, extra_rows], ignore_index=True)
+
     def eeg_channel_names_all(self) -> List[str]:
         """Returns a combined list of child and caregiver EEG channel names."""
         return self.eeg_channel_names_ch + self.eeg_channel_names_cg
 
-    def eeg_data_ch(self) -> Optional[np.ndarray]:
-        """Returns EEG data for child channels only."""
-        if self.eeg_data is None:
-            return None
-        ch_indices = [self.eeg_channel_mapping[name] for name in self.eeg_channel_names_ch]
-        return self.eeg_data[ch_indices, :]
-
-    def eeg_data_cg(self) -> Optional[np.ndarray]:
-        """Returns EEG data for caregiver channels only."""
-        if self.eeg_data is None:
-            return None
-        cg_indices = [self.eeg_channel_mapping[name] for name in self.eeg_channel_names_cg]
-        return self.eeg_data[cg_indices, :]
-
     def interpolate_ibi_signals(self, ecg, label='', plot_flag=False):
-        # Extract R-peaks location
+        """Extract R-peaks and interpolate IBI signals from ECG data."""
         _, info_ecg = nk.ecg_process(ecg, sampling_rate=self.ecg_fs, method='neurokit')
         r_peaks = info_ecg["ECG_R_Peaks"]
         ibi = np.diff(r_peaks) / self.ecg_fs * 1000  # IBI in ms
@@ -165,25 +243,35 @@ class MultimodalData:
         return ibi_interp, ecg_times
 
     def compute_ibi(self, ibi_fs=4):
-        # interpolate IBI signals from ECG data
+        """Interpolate IBI signals from ECG data and store in DataFrame."""
         self.ibi_fs = ibi_fs
-        self.ibi_ch_interp, t_ibi_ch = self.interpolate_ibi_signals(self.ecg_data_ch)
-        self.ibi_cg_interp, _ = self.interpolate_ibi_signals(self.ecg_data_cg)
+        ecg_ch = self.data['ECG_ch'].values
+        ecg_cg = self.data['ECG_cg'].values
+
+        ibi_ch_interp, t_ibi_ch = self.interpolate_ibi_signals(ecg_ch)
+        ibi_cg_interp, _ = self.interpolate_ibi_signals(ecg_cg)
 
         if 'IBI' not in self.modalities:
             self.modalities.append('IBI')
 
-        # truncate the IBI signals are of the same length
-        min_length = min(len(self.ibi_ch_interp), len(self.ibi_cg_interp))
-        self.ibi_times = t_ibi_ch[:min_length]
-        self.ibi_ch_interp = self.ibi_ch_interp[min_length:]
-        self.ibi_cg_interp = self.ibi_cg_interp[min_length:]
+        # truncate the IBI signals to the same length
+        min_length = min(len(ibi_ch_interp), len(ibi_cg_interp))
+        self.set_ibi_data(
+            ibi_ch_interp[:min_length],
+            ibi_cg_interp[:min_length],
+            t_ibi_ch[:min_length]
+        )
 
-    def decimate_signals(self, eeg_cg, eeg_ch, q=8):
+    def decimate_signals(self, q=8):
         """
-        Task 3: Decimates the filtered 'cg' and 'ch' signals.
-        Returns the decimated signals.
+        Decimates the EEG signals by factor q.
+        Creates new columns with '_dec' suffix.
         """
-        self.eeg_decimated_data_cg = decimate(eeg_cg, q, axis=-1)
-        self.eeg_decimated_data_ch = decimate(eeg_ch, q, axis=-1)
+        eeg_ch_cols = [col for col in self.data.columns if col.startswith('EEG_ch_')]
+        eeg_cg_cols = [col for col in self.data.columns if col.startswith('EEG_cg_')]
+
+        for col in eeg_ch_cols + eeg_cg_cols:
+            decimated = decimate(self.data[col].values, q)
+            self.data[f'{col}_dec'] = np.nan
+            self.data.loc[:len(decimated)-1, f'{col}_dec'] = decimated
 
