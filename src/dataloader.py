@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
 import joblib
 from data_structures import MultimodalData, MultiModalDataPd
-from utils import charkterystyki
+from utils import plot_filter_characteristics
 
 
 # --- EEG Data Loading and Processing Functions -- #
@@ -133,11 +133,11 @@ def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, type = '
     if plot_flag:
         print("---- Notch filter characteristics: --------")
         f_max = 60.0
-        charkterystyki(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=fs, f_lim=(30, f_max), db_lim=(-300, 0.1))
+        plot_filter_characteristics(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=fs, f_lim=(30, f_max), db_lim=(-300, 0.1))
         print("---- Low-pass filter characteristics: --------")
-        charkterystyki(b_low, a = [1], f=np.arange(0, fs/2, 0.1), T=0.5, Fs=fs, f_lim=(0, 50), db_lim=(-60, 0.1))
+        plot_filter_characteristics(b_low, a = [1], f=np.arange(0, fs/2, 0.1), T=0.5, Fs=fs, f_lim=(0, 50), db_lim=(-60, 0.1))
         print("---- High-pass filter characteristics: --------")
-        charkterystyki(b_high, a = [1] , f=np.arange(0, fs/2, 0.01), T=0.5, Fs=fs, f_lim=(0, 10), db_lim=(-60, 0.1))
+        plot_filter_characteristics(b_high, a = [1] , f=np.arange(0, fs/2, 0.01), T=0.5, Fs=fs, f_lim=(0, 10), db_lim=(-60, 0.1))
     return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), type
 
 
@@ -290,7 +290,9 @@ def save_to_file(multimodal_data: MultimodalData, output_dir):
     joblib.dump(multimodal_data, output_dir + f"/{multimodal_data.id}.joblib")
 
 # --- ET Data Loading and Processing Functions -- #
-def process_time_et(ch_pos_df_0, cg_pos_df_0, ch_pupil_df_0, cg_pupil_df_0,ch_pupil_df_1, cg_pupil_df_1, ch_pupil_df_2, cg_pupil_df_2, Fs=1024):
+def process_time_et(ch_pos_df_0=None, cg_pos_df_0=None, ch_pupil_df_0=None, cg_pupil_df_0=None,
+                    ch_pupil_df_1 = None, cg_pupil_df_1 = None, ch_pupil_df_2 = None, cg_pupil_df_2 = None, 
+                    Fs=1024):
     '''
     Create common time vector based on min and max timestamps from gaze position and pupil dataframes for child and caregiver.
     The indexes 0, 1, 2 refer to: watching movies, talk 1 and talk2 parts of the experiment.
@@ -302,29 +304,37 @@ def process_time_et(ch_pos_df_0, cg_pos_df_0, ch_pupil_df_0, cg_pupil_df_0,ch_pu
     :return: common time
     '''
     #pupil 000: watching movies
-    min_ch_pupil_0 = min(ch_pupil_df_0['pupil_timestamp'])
-    max_ch_pupil_0 = max(ch_pupil_df_0['pupil_timestamp'])
-    min_cg_pupil_0= min(cg_pupil_df_0['pupil_timestamp'])
-    max_cg_pupil_0 = max(cg_pupil_df_0['pupil_timestamp'])
+    min_ch_pupil_0 = min(ch_pupil_df_0['pupil_timestamp']) if ch_pupil_df_0 is not None else None
+    max_ch_pupil_0 = max(ch_pupil_df_0['pupil_timestamp']) if ch_pupil_df_0 is not None else None
+    min_cg_pupil_0= min(cg_pupil_df_0['pupil_timestamp']) if cg_pupil_df_0 is not None else None
+    max_cg_pupil_0 = max(cg_pupil_df_0['pupil_timestamp']) if cg_pupil_df_0 is not None else None
     #pupil 001: talk 1
-    min_ch_pupil_1 = min(ch_pupil_df_1['pupil_timestamp'])
-    max_ch_pupil_1 = max(ch_pupil_df_1['pupil_timestamp'])
-    min_cg_pupil_1 = min(cg_pupil_df_1['pupil_timestamp'])
-    max_cg_pupil_1 = max(cg_pupil_df_1['pupil_timestamp'])
+    min_ch_pupil_1 = min(ch_pupil_df_1['pupil_timestamp']) if ch_pupil_df_1 is not None else None   
+    max_ch_pupil_1 = max(ch_pupil_df_1['pupil_timestamp']) if ch_pupil_df_1 is not None else None
+    min_cg_pupil_1 = min(cg_pupil_df_1['pupil_timestamp']) if cg_pupil_df_1 is not None else None
+    max_cg_pupil_1 = max(cg_pupil_df_1['pupil_timestamp']) if cg_pupil_df_1 is not None else None
     #pupil 002: talk 2
-    min_ch_pupil_2 = min(ch_pupil_df_2['pupil_timestamp'])
-    max_ch_pupil_2 = max(ch_pupil_df_2['pupil_timestamp'])
-    min_cg_pupil_2 = min(cg_pupil_df_2['pupil_timestamp'])
-    max_cg_pupil_2 = max(cg_pupil_df_2['pupil_timestamp'])
+    min_ch_pupil_2 = min(ch_pupil_df_2['pupil_timestamp']) if ch_pupil_df_2 is not None else None
+    max_ch_pupil_2 = max(ch_pupil_df_2['pupil_timestamp']) if ch_pupil_df_2 is not None else None
+    min_cg_pupil_2 = min(cg_pupil_df_2['pupil_timestamp']) if cg_pupil_df_2 is not None else None
+    max_cg_pupil_2 = max(cg_pupil_df_2['pupil_timestamp']) if cg_pupil_df_2 is not None else None
     #pos 000: watching movies - only during watching movies we have gaze positions on the screen
-    min_cg_pos = min(cg_pos_df_0['gaze_timestamp'])
-    min_ch_pos = min(ch_pos_df_0['gaze_timestamp'])
-    max_ch_pos = max(ch_pos_df_0['gaze_timestamp'])
-    max_cg_pos = max(cg_pos_df_0['gaze_timestamp'])
+    min_cg_pos = min(cg_pos_df_0['gaze_timestamp']) if cg_pos_df_0 is not None else None
+    min_ch_pos = min(ch_pos_df_0['gaze_timestamp']) if ch_pos_df_0 is not None else None
+    max_ch_pos = max(ch_pos_df_0['gaze_timestamp']) if ch_pos_df_0 is not None else None
+    max_cg_pos = max(cg_pos_df_0['gaze_timestamp']) if cg_pos_df_0 is not None else None
     
+    # Filter out None values before computing min and max
+    min_values = [v for v in [min_cg_pos, min_ch_pos, min_cg_pupil_0, min_ch_pupil_0, 
+                              min_cg_pupil_1, min_ch_pupil_1, min_cg_pupil_2, min_ch_pupil_2] 
+                  if v is not None]
+    max_values = [v for v in [max_cg_pos, max_ch_pos, max_cg_pupil_0, max_ch_pupil_0,
+                              max_cg_pupil_1, max_ch_pupil_1, max_cg_pupil_2, max_ch_pupil_2] 
+                  if v is not None]
     
-    min_t = min(min_cg_pos, min_ch_pos, min_cg_pupil_0, min_ch_pupil_0, min_cg_pupil_1, min_ch_pupil_1, min_cg_pupil_2, min_ch_pupil_2)
-    max_t = max(max_cg_pos, max_ch_pos, max_cg_pupil_0, max_ch_pupil_0, max_cg_pupil_1, max_ch_pupil_1, max_cg_pupil_2, max_ch_pupil_2)
+    min_t = min(min_values) if min_values else 0
+    max_t = max(max_values) if max_values else 0
+
     print("min", min_t)
     print("max", max_t)
     t = np.arange(min_t, max_t, 1 / Fs)
