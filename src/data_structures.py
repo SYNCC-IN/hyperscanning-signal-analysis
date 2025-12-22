@@ -205,6 +205,25 @@ class MultiModalDataPd:
     def add_data(self, eeg_path: str = None, et_path: str = None, ibi_path: str = None, plot_flag = False ):
         '''
         Docstring for add_data
+        This method loads data from specified paths and adds them to the DataFrame.
+        It supports EEG, ET, and IBI data modalities.
+        1. Loads EEG data if eeg_path is provided.
+        2. Loads ET data if et_path is provided.
+        3. Merges the loaded data into a single DataFrame.
+        4. Updates metadata about the modalities present in the data.
+        5. Aligns time vectors across modalities based on the first event time.
+        6. Optionally plots the loaded data if plot_flag is set to True.
+        7. Handles missing files gracefully by printing warnings.
+        8. Ensures that the sampling frequency (fs) is set based on the EEG data if not already specified.
+        9. Uses helper functions from the dataloader module for data processing.
+        10. Returns None.
+
+        TODO: handle cases where some files are missing.
+        - we need to make sure that if some files are missing, 
+            we still load the available data and print warnings for the missing files.
+        - if a file form a cretain task of a certaiin member of the dyad is missing, 
+            we skip loading data for that task only for that member; we fill the missing data with NaNs.
+        11. Currently, IBI loading is not implemented.
 
         '''
         if eeg_path:
@@ -270,86 +289,106 @@ class MultiModalDataPd:
             # movies task 000
             # Check if files exist before loading. If any file is missing, print a warning and skip loading ET data for that task.
             
-            base_paths_movies = {
+
+            base_paths_movies_ch = {
                 'annotations_0': et_path + 'child/000/exports/000/annotations.csv',
-                'ch_pos_0': et_path + 'child/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
-                'cg_pos_0': et_path + 'caregiver/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
-                'ch_pupil_0': et_path + 'child/000/exports/000/pupil_positions.csv',
-                'cg_pupil_0': et_path + 'caregiver/000/exports/000/pupil_positions.csv',
-                'ch_blinks_0': et_path + 'child/000/exports/000/blinks.csv',
-                'cg_blinks_0': et_path + 'caregiver/000/exports/000/blinks.csv'
+                'ch_pos_0':      et_path + 'child/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
+                'ch_pupil_0':    et_path + 'child/000/exports/000/pupil_positions.csv',
+                'ch_blinks_0':   et_path + 'child/000/exports/000/blinks.csv'
             }
-            base_paths_talk1 = {
+            base_paths_movies_cg = {
+                'annotations_0': et_path + 'caregiver/000/exports/000/annotations.csv',
+                'cg_pos_0':      et_path + 'caregiver/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
+                'cg_pupil_0':    et_path + 'caregiver/000/exports/000/pupil_positions.csv',
+                'cg_blinks_0':   et_path + 'caregiver/000/exports/000/blinks.csv'
+            }
+            base_paths_talk1_ch = {
                 'annotations_1': et_path + 'child/001/exports/000/annotations.csv',
                 'ch_pupil_1': et_path + 'child/001/exports/000/pupil_positions.csv',
-                'cg_pupil_1': et_path + 'caregiver/001/exports/000/pupil_positions.csv'
             }
-            base_paths_talk2 = {
+            base_paths_talk1_cg = {
+                'annotations_1': et_path + 'caregiver/001/exports/000/annotations.csv',
+                'cg_pupil_1':    et_path + 'caregiver/001/exports/000/pupil_positions.csv'
+            }
+            base_paths_talk2_ch = {
                 'annotations_2': et_path + 'child/002/exports/000/annotations.csv',
-                'ch_pupil_2': et_path + 'child/002/exports/000/pupil_positions.csv',
-                'cg_pupil_2': et_path + 'caregiver/002/exports/000/pupil_positions.csv'
+                'ch_pupil_2':    et_path + 'child/002/exports/000/pupil_positions.csv'
             }   
+            base_paths_talk2_cg = {
+                'annotations_2': et_path + 'caregiver/002/exports/000/annotations.csv',
+                'cg_pupil_2':    et_path + 'caregiver/002/exports/000/pupil_positions.csv'
+            } 
             
             # Check for missing files in movies task
-            movies_flag = True
-            missing_files = [name for name, path in base_paths_movies.items() if not os.path.exists(path)]
+            movies_flag_ch = True
+            missing_files = [name for name, path in base_paths_movies_ch.items() if not os.path.exists(path)]
             if missing_files:
                 print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                movies_flag = False
+                movies_flag_ch = False
+            movies_flag_cg = True
+            missing_files = [name for name, path in base_paths_movies_cg.items() if not os.path.exists(path)]
+            if missing_files:
+                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
+                movies_flag_cg = False
             # Check for missing files in talk1 task
-            talk1_flag = True
-            missing_files = [name for name, path in base_paths_talk1.items() if not os.path.exists(path)]
+            talk1_flag_ch = True
+            missing_files = [name for name, path in base_paths_talk1_ch.items() if not os.path.exists(path)]
             if missing_files:
                 print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk1_flag = False
+                talk1_flag_ch = False
+            talk1_flag_cg = True
+            missing_files = [name for name, path in base_paths_talk1_cg.items() if not os.path.exists(path)]
+            if missing_files:
+                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
+                talk1_flag_cg = False
             # Check for missing files in talk2 task
-            talk2_flag = True
-            missing_files = [name for name, path in base_paths_talk2.items() if not os.path.exists(path)]
+            talk2_flag_ch = True
+            missing_files = [name for name, path in base_paths_talk2_ch.items() if not os.path.exists(path)]
             if missing_files:
                 print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk2_flag = False
+                talk2_flag_ch = False
+            talk2_flag_cg = True
+            missing_files = [name for name, path in base_paths_talk2_cg.items() if not os.path.exists(path)]
+            if missing_files:
+                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
+                talk2_flag_cg = False
+            # Prepare list of min and max times for each task to align time vectors later
+            min_max_times = []
 
             # Load the data from CSV files
-            if movies_flag:
-                annotations_0 = pd.read_csv(base_paths_movies['annotations_0'])
-                ch_pos_df_0 = pd.read_csv(base_paths_movies['ch_pos_0'])
-                cg_pos_df_0 = pd.read_csv(base_paths_movies['cg_pos_0'])
-                ch_pupil_df_0 = pd.read_csv(base_paths_movies['ch_pupil_0'])
-                cg_pupil_df_0 = pd.read_csv(base_paths_movies['cg_pupil_0'])
-                ch_blinks_0 = pd.read_csv(base_paths_movies['ch_blinks_0'])
-                cg_blinks_0 = pd.read_csv(base_paths_movies['cg_blinks_0'])
-            if talk1_flag:
-                annotations_1 = pd.read_csv(base_paths_talk1['annotations_1'])
-                ch_pupil_df_1 = pd.read_csv(base_paths_talk1['ch_pupil_1'])
-                cg_pupil_df_1 = pd.read_csv(base_paths_talk1['cg_pupil_1'])
-            if talk2_flag:
-                annotations_2 = pd.read_csv(base_paths_talk2['annotations_2'])
-                ch_pupil_df_2 = pd.read_csv(base_paths_talk2['ch_pupil_2'])
-                cg_pupil_df_2 = pd.read_csv(base_paths_talk2['cg_pupil_2'])
-       
+            if movies_flag_ch:
+                annotations_0 = pd.read_csv(base_paths_movies_ch['annotations_0'])
+                ch_pos_df_0 =   pd.read_csv(base_paths_movies_ch['ch_pos_0'])
+                min_max_times.append( (ch_pos_df_0['gaze_timestamp'].min(), ch_pos_df_0['gaze_timestamp'].max()) )
+                ch_pupil_df_0 = pd.read_csv(base_paths_movies_ch['ch_pupil_0'])
+                min_max_times.append( (ch_pupil_df_0['pupil_timestamp'].min(), ch_pupil_df_0['pupil_timestamp'].max()) )
+                ch_blinks_0 =   pd.read_csv(base_paths_movies_ch['ch_blinks_0']) # we assume blinks are within the range of pupil timestamps
+               
 
+            if movies_flag_cg:
+                annotations_0 = pd.read_csv(base_paths_movies_cg['annotations_0'])  # we assume annotations are the same for both members of the dyad
+                cg_pos_df_0 =   pd.read_csv(base_paths_movies_cg['cg_pos_0'])
+                min_max_times.append( (cg_pos_df_0['gaze_timestamp'].min(), cg_pos_df_0['gaze_timestamp'].max()) )
+                cg_pupil_df_0 = pd.read_csv(base_paths_movies_cg['cg_pupil_0'])
+                min_max_times.append( (cg_pupil_df_0['pupil_timestamp'].min(), cg_pupil_df_0['pupil_timestamp'].max()) )
+                cg_blinks_0 =   pd.read_csv(base_paths_movies_cg['cg_blinks_0'])
+            if talk1_flag_ch:
+                annotations_1 = pd.read_csv(base_paths_talk1_ch['annotations_1'])
+                ch_pupil_df_1 = pd.read_csv(base_paths_talk1_ch['ch_pupil_1'])
+                min_max_times.append( (ch_pupil_df_1['pupil_timestamp'].min(), ch_pupil_df_1['pupil_timestamp'].max()) )
+            if talk1_flag_cg:   
+                annotations_1 = pd.read_csv(base_paths_talk1_cg['annotations_1'])
+                cg_pupil_df_1 = pd.read_csv(base_paths_talk1_cg['cg_pupil_1'])  
+                min_max_times.append( (cg_pupil_df_1['pupil_timestamp'].min(), cg_pupil_df_1['pupil_timestamp'].max()) )
+            if talk2_flag_ch:
+                annotations_2 = pd.read_csv(base_paths_talk2_ch['annotations_2'])
+                ch_pupil_df_2 = pd.read_csv(base_paths_talk2_ch['ch_pupil_2'])
+                min_max_times.append( (ch_pupil_df_2['pupil_timestamp'].min(), ch_pupil_df_2['pupil_timestamp'].max()) )
+            if talk2_flag_cg:   
+                annotations_2 = pd.read_csv(base_paths_talk2_cg['annotations_2'])
+                cg_pupil_df_2 = pd.read_csv(base_paths_talk2_cg['cg_pupil_2'])      
+                min_max_times.append( (cg_pupil_df_2['pupil_timestamp'].min(), cg_pupil_df_2['pupil_timestamp'].max()) )
 
-            # backup code for reading the ET data
-            # # movies task 000
-            # ch_pos_df_0 = pd.read_csv(et_path+'000/ch_gaze_positions_on_surface_Surface 1.csv')
-            # cg_pos_df_0 = pd.read_csv(et_path+'000/cg_gaze_positions_on_surface_Surface 1.csv')
-            # ch_pupil_df_0 = pd.read_csv(et_path+'000/ch_pupil_positions.csv')
-            # cg_pupil_df_0 = pd.read_csv(et_path+'000/cg_pupil_positions.csv')
-            # annotations_0 = pd.read_csv(et_path+'000/annotations.csv')
-            # cg_blinks_0 = pd.read_csv(et_path+'000/cg_blinks.csv')
-            # ch_blinks_0 = pd.read_csv(et_path+'000/ch_blinks.csv')
-            # # conversation task 001
-            # ch_pupil_df_1 = pd.read_csv(et_path+'001/ch_pupil_positions.csv')
-            # cg_pupil_df_1 = pd.read_csv(et_path+'001/cg_pupil_positions.csv')
-            # annotations_1 = pd.read_csv(et_path+'001/annotations.csv')
-            # cg_blinks_1 = pd.read_csv(et_path+'001/cg_blinks.csv')
-            # ch_blinks_1 = pd.read_csv(et_path+'001/ch_blinks.csv')
-            # # conversation task 002
-            # ch_pupil_df_2 = pd.read_csv(et_path+'002/ch_pupil_positions.csv')
-            # cg_pupil_df_2 = pd.read_csv(et_path+'002/cg_pupil_positions.csv')
-            # annotations_2 = pd.read_csv(et_path+'002/annotations.csv')
-            # cg_blinks_2 = pd.read_csv(et_path+'002/cg_blinks.csv')
-            # ch_blinks_2 = pd.read_csv(et_path+'002/ch_blinks.csv')
 
             # construct dataframe for ET data
             et_df = pd.DataFrame()
@@ -357,59 +396,37 @@ class MultiModalDataPd:
             if self.fs is None:
                 self.fs = 1024  # default sampling rate for UW EEG data; we want to keep all time series at the same sampling rate
                 print('setting fs to the default Fs of EEG:', self.fs)
-            if movies_flag and talk1_flag and talk2_flag:
-                et_df['time'] = dataloader.process_time_et(ch_pos_df_0, cg_pos_df_0, 
-                                                       ch_pupil_df_0, cg_pupil_df_0, 
-                                                       ch_pupil_df_1, cg_pupil_df_1, 
-                                                       ch_pupil_df_2, cg_pupil_df_2, 
-                                                       Fs=self.fs)
-                et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
-                # process position, pupil, blink, and event data
-                dataloader.process_pos(ch_pos_df_0, et_df, 'ch')
-                dataloader.process_pos(cg_pos_df_0, et_df, 'cg')
-                dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
-                dataloader.process_pupil(ch_pupil_df_1, et_df,'ch')
-                dataloader.process_pupil(ch_pupil_df_2, et_df,'ch')
-                dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
-                dataloader.process_pupil(cg_pupil_df_1, et_df,'cg')
-                dataloader.process_pupil(cg_pupil_df_2, et_df,'cg')
-                dataloader.process_blinks(ch_blinks_0, et_df,'ch')
-                dataloader.process_blinks(cg_blinks_0, et_df,'cg')
-                dataloader.process_event_et(annotations_0, et_df)
-                dataloader.process_event_et(annotations_1, et_df, 'talk1')
-                dataloader.process_event_et(annotations_2, et_df, 'talk2')
-            elif movies_flag and talk1_flag and not talk2_flag:
-                et_df['time'] = dataloader.process_time_et(ch_pos_df_0, cg_pos_df_0, 
-                                                       ch_pupil_df_0, cg_pupil_df_0, 
-                                                       ch_pupil_df_1, cg_pupil_df_1,
-                                                       Fs=self.fs)
-                et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
-                # process position, pupil, blink, and event data
-                dataloader.process_pos(ch_pos_df_0, et_df, 'ch')
-                dataloader.process_pos(cg_pos_df_0, et_df, 'cg')
-                dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
-                dataloader.process_pupil(ch_pupil_df_1, et_df,'ch')                
-                dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
-                dataloader.process_pupil(cg_pupil_df_1, et_df,'cg')
-                dataloader.process_blinks(ch_blinks_0, et_df,'ch')
-                dataloader.process_blinks(cg_blinks_0, et_df,'cg')
-                dataloader.process_event_et(annotations_0, et_df)
-                dataloader.process_event_et(annotations_1, et_df, 'talk1')
-                
-            elif movies_flag and not talk1_flag and not talk2_flag:
-                et_df['time'] = dataloader.process_time_et(ch_pos_df_0, cg_pos_df_0, 
-                                                       ch_pupil_df_0, cg_pupil_df_0, 
-                                                        Fs=self.fs)    
-                et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
-                # process position, pupil, blink, and event data
-                dataloader.process_pos(ch_pos_df_0, et_df, 'ch')
-                dataloader.process_pos(cg_pos_df_0, et_df, 'cg')
-                dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
-                dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
-                dataloader.process_blinks(ch_blinks_0, et_df,'ch')
-                dataloader.process_blinks(cg_blinks_0, et_df,'cg')
-                dataloader.process_event_et(annotations_0, et_df)
+            # find the overall min and max times across all tasks and members of the dyad
+            overall_min_time = min([t[0] for t in min_max_times])
+            overall_max_time = max([t[1] for t in min_max_times])
 
+            print("min", overall_min_time)
+            print("max", overall_max_time)
+            et_df['time'] = np.arange(overall_min_time, overall_max_time, 1 / self.fs)
+            et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
+            if movies_flag_ch or movies_flag_cg:
+                dataloader.process_event_et(annotations_0, et_df)
+            if movies_flag_ch: 
+                dataloader.process_pos(ch_pos_df_0, et_df, 'ch')
+                dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
+                dataloader.process_blinks(ch_blinks_0, et_df,'ch')
+            if movies_flag_cg:
+                dataloader.process_pos(cg_pos_df_0, et_df, 'cg')
+                dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
+                dataloader.process_blinks(cg_blinks_0, et_df,'cg')
+            if talk1_flag_ch or talk1_flag_cg:
+                dataloader.process_event_et(annotations_1, et_df, 'talk1')
+            if talk1_flag_ch:
+                dataloader.process_pupil(ch_pupil_df_1, et_df,'ch')
+            if talk1_flag_cg:
+                dataloader.process_pupil(cg_pupil_df_1, et_df,'cg')
+            if talk2_flag_ch or talk2_flag_cg:
+                dataloader.process_event_et(annotations_2, et_df, 'talk2')
+            if talk2_flag_ch:   
+                dataloader.process_pupil(ch_pupil_df_2, et_df,'ch') 
+            if talk2_flag_cg:
+                dataloader.process_pupil(cg_pupil_df_2, et_df,'cg')
+                
             # align ET time to EEG time by subtracting the time of the first event; find the time of the first event in ET data
             min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
             et_df['time'] = et_df['time'] - min_start_time_et
