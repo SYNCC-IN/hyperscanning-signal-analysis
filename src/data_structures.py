@@ -85,6 +85,7 @@ class MultimodalData:
         self.eeg_times: Optional[np.ndarray] = None  # time vector (s) [1 x n_samples]
         self.eeg_channel_names: List[str] = []  # list of channel names in order
         self.eeg_channel_mapping: Dict[str, int] = {}  # mapping: channel name → index in 'data'
+        self.diode: Optional[np.ndarray] = None  # diode channel data
 
         # EEG metadata
         self.references: Optional[str] = None  # Information about reference electrodes or common average

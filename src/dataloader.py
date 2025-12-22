@@ -4,10 +4,11 @@ from collections import deque
 import numpy as np
 import xmltodict
 from matplotlib import pyplot as plt
-from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch
+from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch, firwin, lfilter
 import joblib
 
 from src.data_structures import MultimodalData
+from src.utils import plot_filter_characteristics
 
 
 def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
@@ -37,7 +38,7 @@ def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
     diode = raw_eeg_data[multimodal_data.eeg_channel_mapping['Diode'], :]
 
     # scan for events
-    multimodal_data.events = _scan_for_events(diode, multimodal_data.eeg_fs, plot_flag, threshold=0.75)
+    multimodal_data.events, multimodal_data.diode = _scan_for_events(diode, multimodal_data.eeg_fs, plot_flag, threshold=0.75)
     print(f"Detected events: {multimodal_data.events}")
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
@@ -108,16 +109,33 @@ def _mount_eeg_data(multimodal_data, raw_eeg_data):
     multimodal_data.eeg_data = raw_eeg_data
 
 
-def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30):
+def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, filter_type='iir', plot_flag=False):
     """
     Task 1: Designs notch, low-pass, and high-pass filters.
     Returns a tuple of filter coefficients.
     """
     b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=fs)
-    b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
-    b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
 
-    return (b_notch, a_notch), (b_low, a_low), (b_high, a_high)
+    if filter_type == 'fir':
+        numtaps_low = 201
+        b_low = firwin(numtaps_low, highcut, fs=fs, pass_zero='lowpass')
+        numtaps_high = 1025
+        b_high = firwin(numtaps_high, lowcut, fs=fs, pass_zero='highpass')
+        a_low = a_high = 1.0
+    else:
+        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
+        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
+
+    if plot_flag:
+        print("---- Notch filter characteristics: --------")
+        f_max = 60.0
+        plot_filter_characteristics(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=fs, f_lim=(30, f_max), db_lim=(-300, 0.1))
+        print("---- Low-pass filter characteristics: --------")
+        plot_filter_characteristics(b_low, a = [1], f=np.arange(0, fs/2, 0.1), T=0.5, Fs=fs, f_lim=(0, 50), db_lim=(-60, 0.1))
+        print("---- High-pass filter characteristics: --------")
+        plot_filter_characteristics(b_high, a = [1] , f=np.arange(0, fs/2, 0.01), T=0.5, Fs=fs, f_lim=(0, 10), db_lim=(-60, 0.1))
+
+    return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), filter_type
 
 
 def _apply_filters(multimodal_data: MultimodalData, filters):
@@ -125,14 +143,25 @@ def _apply_filters(multimodal_data: MultimodalData, filters):
     Applies filters to raw data.
     Returns filtered data.
     """
-    (b_notch, a_notch), (b_low, a_low), (b_high, a_high) = filters
+    (b_notch, a_notch), (b_low, a_low), (b_high, a_high), filter_type = filters
+    print(f"Applying {filter_type} filters to EEG data.")
 
     # Filter and separate each channel
     for idx, ch in enumerate(multimodal_data.eeg_channel_names_all()):
-        signal = multimodal_data.eeg_data[idx, :]  # .copy()
-        signal = filtfilt(b_notch, a_notch, signal, axis=0)
-        signal = filtfilt(b_low, a_low, signal, axis=0)
-        signal = filtfilt(b_high, a_high, signal, axis=0)
+        signal = multimodal_data.eeg_data[idx, :]
+
+        if filter_type == 'iir':
+            signal = filtfilt(b_notch, a_notch, signal, axis=0)
+            signal = filtfilt(b_low, a_low, signal, axis=0)
+            signal = filtfilt(b_high, a_high, signal, axis=0)
+        else:
+            signal = lfilter(b_notch, a_notch, signal, axis=0)
+            signal = lfilter(b_low, a_low, signal, axis=0)
+            signal = lfilter(b_high, a_high, signal, axis=0)
+
+            delay = (len(b_low) - 1) // 2 + (len(b_high) - 1) // 2
+            signal = np.roll(signal, -delay)
+            signal[-delay:] = 0.0  # zero-pad the end to account for the delay introduced by filtering
 
         multimodal_data.eeg_data[idx, :] = signal
 
@@ -228,7 +257,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
     if plot_flag:
         _plot_scanned_events(threshold, diode, thresholded_diode, np.diff(thresholded_diode), events, eeg_fs)
 
-    return events
+    return events, thresholded_diode
 
 
 def _plot_scanned_events(threshold, diode, thresholded_diode, derivative, events, eeg_fs):
