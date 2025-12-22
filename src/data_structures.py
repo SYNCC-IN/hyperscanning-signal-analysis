@@ -202,6 +202,145 @@ class MultiModalDataPd:
         self.info = {'modalities': []  }  # Placeholder for metadata storage
         self.history = None  # Placeholder for processing history storage
 
+    def _build_et_file_paths(self, et_path: str, task_id: str, member: str) -> dict:
+        """
+        Build file paths for eye-tracker data for a specific task and dyad member.
+        
+        Args:
+            et_path: Base path to ET data directory
+            task_id: Task identifier ('000', '001', '002')
+            member: Dyad member ('child' or 'caregiver')
+            
+        Returns:
+            Dictionary mapping data types to file paths
+        """
+        base_export_path = f"{et_path}{member}/{task_id}/exports/000/"
+        prefix = 'ch' if member == 'child' else 'cg'
+        
+        paths = {
+            f'annotations_{task_id}': f"{base_export_path}annotations.csv",
+            f'{prefix}_pupil_{task_id}': f"{base_export_path}pupil_positions.csv"
+        }
+        
+        # Movies task (000) has additional gaze position and blinks data
+        if task_id == '000':
+            paths[f'{prefix}_pos_{task_id}'] = f"{base_export_path}surfaces/gaze_positions_on_surface_Surface 1.csv"
+            paths[f'{prefix}_blinks_{task_id}'] = f"{base_export_path}blinks.csv"
+        
+        return paths
+
+    def _check_et_files_exist(self, file_paths: dict) -> tuple[bool, list]:
+        """
+        Check if ET data files exist.
+        
+        Args:
+            file_paths: Dictionary mapping data types to file paths
+            
+        Returns:
+            Tuple of (all_exist: bool, missing_files: list)
+        """
+        missing_files = [name for name, path in file_paths.items() if not os.path.exists(path)]
+        return len(missing_files) == 0, missing_files
+
+    def _load_et_task_data(self, file_paths: dict, task_id: str, member: str, min_max_times: list) -> dict:
+        """
+        Load ET data files for a specific task and dyad member.
+        
+        Args:
+            file_paths: Dictionary mapping data types to file paths
+            task_id: Task identifier ('000', '001', '002')
+            member: Dyad member ('child' or 'caregiver')
+            min_max_times: List to append (min_time, max_time) tuples for time alignment
+            
+        Returns:
+            Dictionary containing loaded DataFrames
+        """
+        prefix = 'ch' if member == 'child' else 'cg'
+        loaded_data = {}
+        
+        # Load annotations
+        ann_key = f'annotations_{task_id}'
+        if ann_key in file_paths:
+            loaded_data[ann_key] = pd.read_csv(file_paths[ann_key])
+        
+        # Load pupil data
+        pupil_key = f'{prefix}_pupil_{task_id}'
+        if pupil_key in file_paths:
+            pupil_df = pd.read_csv(file_paths[pupil_key])
+            loaded_data[pupil_key] = pupil_df
+            min_max_times.append((pupil_df['pupil_timestamp'].min(), pupil_df['pupil_timestamp'].max()))
+        
+        # Load gaze position data (movies task only)
+        pos_key = f'{prefix}_pos_{task_id}'
+        if pos_key in file_paths:
+            pos_df = pd.read_csv(file_paths[pos_key])
+            loaded_data[pos_key] = pos_df
+            min_max_times.append((pos_df['gaze_timestamp'].min(), pos_df['gaze_timestamp'].max()))
+        
+        # Load blinks data (movies task only)
+        blinks_key = f'{prefix}_blinks_{task_id}'
+        if blinks_key in file_paths:
+            loaded_data[blinks_key] = pd.read_csv(file_paths[blinks_key])
+        
+        return loaded_data
+
+    def _process_et_data_to_dataframe(self, et_df: pd.DataFrame, loaded_data: dict, 
+                                     task_flags: dict, task_names: list) -> None:
+        """
+        Process loaded ET data into the main ET dataframe.
+        
+        Args:
+            et_df: DataFrame to populate with ET data
+            loaded_data: Dictionary containing all loaded ET DataFrames
+            task_flags: Dictionary with flags indicating which tasks/members have data
+            task_names: List of task identifiers ['000', '001', '002']
+        """
+        # Process movies task (000) if available
+        if task_flags.get('movies_ch') or task_flags.get('movies_cg'):
+            if 'annotations_000' in loaded_data:
+                dataloader.process_event_et(loaded_data['annotations_000'], et_df)
+        
+        if task_flags.get('movies_ch'):
+            if 'ch_pos_000' in loaded_data:
+                dataloader.process_pos(loaded_data['ch_pos_000'], et_df, 'ch')
+            if 'ch_pupil_000' in loaded_data:
+                dataloader.process_pupil(loaded_data['ch_pupil_000'], et_df, 'ch')
+            if 'ch_blinks_000' in loaded_data:
+                dataloader.process_blinks(loaded_data['ch_blinks_000'], et_df, 'ch')
+        
+        if task_flags.get('movies_cg'):
+            if 'cg_pos_000' in loaded_data:
+                dataloader.process_pos(loaded_data['cg_pos_000'], et_df, 'cg')
+            if 'cg_pupil_000' in loaded_data:
+                dataloader.process_pupil(loaded_data['cg_pupil_000'], et_df, 'cg')
+            if 'cg_blinks_000' in loaded_data:
+                dataloader.process_blinks(loaded_data['cg_blinks_000'], et_df, 'cg')
+        
+        # Process talk1 task (001)
+        if task_flags.get('talk1_ch') or task_flags.get('talk1_cg'):
+            if 'annotations_001' in loaded_data:
+                dataloader.process_event_et(loaded_data['annotations_001'], et_df, 'talk1')
+        
+        if task_flags.get('talk1_ch'):
+            if 'ch_pupil_001' in loaded_data:
+                dataloader.process_pupil(loaded_data['ch_pupil_001'], et_df, 'ch')
+        
+        if task_flags.get('talk1_cg'):
+            if 'cg_pupil_001' in loaded_data:
+                dataloader.process_pupil(loaded_data['cg_pupil_001'], et_df, 'cg')
+        
+        # Process talk2 task (002)
+        if task_flags.get('talk2_ch') or task_flags.get('talk2_cg'):
+            if 'annotations_002' in loaded_data:
+                dataloader.process_event_et(loaded_data['annotations_002'], et_df, 'talk2')
+        
+        if task_flags.get('talk2_ch'):
+            if 'ch_pupil_002' in loaded_data:
+                dataloader.process_pupil(loaded_data['ch_pupil_002'], et_df, 'ch')
+        
+        if task_flags.get('talk2_cg'):
+            if 'cg_pupil_002' in loaded_data:
+                dataloader.process_pupil(loaded_data['cg_pupil_002'], et_df, 'cg')
     def add_data(self, eeg_path: str = None, et_path: str = None, ibi_path: str = None, plot_flag = False ):
         '''
         Docstring for add_data
@@ -284,150 +423,67 @@ class MultiModalDataPd:
 
 
         if et_path:
-            # Load eye-tracking data from CSV files: THIS PART TO BE UPDATED AFTER THE STRUCTURE OF DATA in UW IS CLARIFIED
-            # For now, we will load data from hardcoded paths for testing purposes
-            # movies task 000
-            # Check if files exist before loading. If any file is missing, print a warning and skip loading ET data for that task.
+            # Load eye-tracking data from CSV files
+            # Configuration for tasks: 000=movies, 001=talk1, 002=talk2
+            tasks = [
+                {'id': '000', 'name': 'movies'},
+                {'id': '001', 'name': 'talk1'}, 
+                {'id': '002', 'name': 'talk2'}
+            ]
+            members = ['child', 'caregiver']
             
-
-            base_paths_movies_ch = {
-                'annotations_0': et_path + 'child/000/exports/000/annotations.csv',
-                'ch_pos_0':      et_path + 'child/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
-                'ch_pupil_0':    et_path + 'child/000/exports/000/pupil_positions.csv',
-                'ch_blinks_0':   et_path + 'child/000/exports/000/blinks.csv'
-            }
-            base_paths_movies_cg = {
-                'annotations_0': et_path + 'caregiver/000/exports/000/annotations.csv',
-                'cg_pos_0':      et_path + 'caregiver/000/exports/000/surfaces/gaze_positions_on_surface_Surface 1.csv',
-                'cg_pupil_0':    et_path + 'caregiver/000/exports/000/pupil_positions.csv',
-                'cg_blinks_0':   et_path + 'caregiver/000/exports/000/blinks.csv'
-            }
-            base_paths_talk1_ch = {
-                'annotations_1': et_path + 'child/001/exports/000/annotations.csv',
-                'ch_pupil_1': et_path + 'child/001/exports/000/pupil_positions.csv',
-            }
-            base_paths_talk1_cg = {
-                'annotations_1': et_path + 'caregiver/001/exports/000/annotations.csv',
-                'cg_pupil_1':    et_path + 'caregiver/001/exports/000/pupil_positions.csv'
-            }
-            base_paths_talk2_ch = {
-                'annotations_2': et_path + 'child/002/exports/000/annotations.csv',
-                'ch_pupil_2':    et_path + 'child/002/exports/000/pupil_positions.csv'
-            }   
-            base_paths_talk2_cg = {
-                'annotations_2': et_path + 'caregiver/002/exports/000/annotations.csv',
-                'cg_pupil_2':    et_path + 'caregiver/002/exports/000/pupil_positions.csv'
-            } 
-            
-            # Check for missing files in movies task
-            movies_flag_ch = True
-            missing_files = [name for name, path in base_paths_movies_ch.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                movies_flag_ch = False
-            movies_flag_cg = True
-            missing_files = [name for name, path in base_paths_movies_cg.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                movies_flag_cg = False
-            # Check for missing files in talk1 task
-            talk1_flag_ch = True
-            missing_files = [name for name, path in base_paths_talk1_ch.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk1_flag_ch = False
-            talk1_flag_cg = True
-            missing_files = [name for name, path in base_paths_talk1_cg.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk1_flag_cg = False
-            # Check for missing files in talk2 task
-            talk2_flag_ch = True
-            missing_files = [name for name, path in base_paths_talk2_ch.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk2_flag_ch = False
-            talk2_flag_cg = True
-            missing_files = [name for name, path in base_paths_talk2_cg.items() if not os.path.exists(path)]
-            if missing_files:
-                print(f"Warning: Missing ET files for {self.id}: {missing_files}")
-                talk2_flag_cg = False
-            # Prepare list of min and max times for each task to align time vectors later
+            # Build file paths and check availability for each task and member
+            task_flags = {}
+            all_file_paths = {}
             min_max_times = []
-
-            # Load the data from CSV files
-            if movies_flag_ch:
-                annotations_0 = pd.read_csv(base_paths_movies_ch['annotations_0'])
-                ch_pos_df_0 =   pd.read_csv(base_paths_movies_ch['ch_pos_0'])
-                min_max_times.append( (ch_pos_df_0['gaze_timestamp'].min(), ch_pos_df_0['gaze_timestamp'].max()) )
-                ch_pupil_df_0 = pd.read_csv(base_paths_movies_ch['ch_pupil_0'])
-                min_max_times.append( (ch_pupil_df_0['pupil_timestamp'].min(), ch_pupil_df_0['pupil_timestamp'].max()) )
-                ch_blinks_0 =   pd.read_csv(base_paths_movies_ch['ch_blinks_0']) # we assume blinks are within the range of pupil timestamps
-               
-
-            if movies_flag_cg:
-                annotations_0 = pd.read_csv(base_paths_movies_cg['annotations_0'])  # we assume annotations are the same for both members of the dyad
-                cg_pos_df_0 =   pd.read_csv(base_paths_movies_cg['cg_pos_0'])
-                min_max_times.append( (cg_pos_df_0['gaze_timestamp'].min(), cg_pos_df_0['gaze_timestamp'].max()) )
-                cg_pupil_df_0 = pd.read_csv(base_paths_movies_cg['cg_pupil_0'])
-                min_max_times.append( (cg_pupil_df_0['pupil_timestamp'].min(), cg_pupil_df_0['pupil_timestamp'].max()) )
-                cg_blinks_0 =   pd.read_csv(base_paths_movies_cg['cg_blinks_0'])
-            if talk1_flag_ch:
-                annotations_1 = pd.read_csv(base_paths_talk1_ch['annotations_1'])
-                ch_pupil_df_1 = pd.read_csv(base_paths_talk1_ch['ch_pupil_1'])
-                min_max_times.append( (ch_pupil_df_1['pupil_timestamp'].min(), ch_pupil_df_1['pupil_timestamp'].max()) )
-            if talk1_flag_cg:   
-                annotations_1 = pd.read_csv(base_paths_talk1_cg['annotations_1'])
-                cg_pupil_df_1 = pd.read_csv(base_paths_talk1_cg['cg_pupil_1'])  
-                min_max_times.append( (cg_pupil_df_1['pupil_timestamp'].min(), cg_pupil_df_1['pupil_timestamp'].max()) )
-            if talk2_flag_ch:
-                annotations_2 = pd.read_csv(base_paths_talk2_ch['annotations_2'])
-                ch_pupil_df_2 = pd.read_csv(base_paths_talk2_ch['ch_pupil_2'])
-                min_max_times.append( (ch_pupil_df_2['pupil_timestamp'].min(), ch_pupil_df_2['pupil_timestamp'].max()) )
-            if talk2_flag_cg:   
-                annotations_2 = pd.read_csv(base_paths_talk2_cg['annotations_2'])
-                cg_pupil_df_2 = pd.read_csv(base_paths_talk2_cg['cg_pupil_2'])      
-                min_max_times.append( (cg_pupil_df_2['pupil_timestamp'].min(), cg_pupil_df_2['pupil_timestamp'].max()) )
-
-
-            # construct dataframe for ET data
+            loaded_data = {}
+            
+            for task in tasks:
+                for member in members:
+                    # Build file paths
+                    file_paths = self._build_et_file_paths(et_path, task['id'], member)
+                    
+                    # Check if files exist
+                    all_exist, missing = self._check_et_files_exist(file_paths)
+                    
+                    # Set flag for this task/member combination
+                    flag_key = f"{task['name']}_{'ch' if member == 'child' else 'cg'}"
+                    task_flags[flag_key] = all_exist
+                    
+                    if not all_exist:
+                        print(f"Warning: Missing ET files for {self.id} {member} {task['name']}: {missing}")
+                    else:
+                        # Load data if all files exist
+                        task_data = self._load_et_task_data(file_paths, task['id'], member, min_max_times)
+                        loaded_data.update(task_data)
+            
+            # Skip ET processing if no data was loaded
+            if not min_max_times:
+                print(f"Warning: No ET data available for {self.id}")
+                return
+            
+            # Construct dataframe for ET data
             et_df = pd.DataFrame()
-            # prepare the time column
+            
+            # Set sampling frequency if not already set
             if self.fs is None:
-                self.fs = 1024  # default sampling rate for UW EEG data; we want to keep all time series at the same sampling rate
-                print('setting fs to the default Fs of EEG:', self.fs)
-            # find the overall min and max times across all tasks and members of the dyad
+                self.fs = 1024  # default sampling rate for UW EEG data
+                print(f'Setting fs to the default Fs of EEG: {self.fs}')
+            
+            # Find the overall min and max times across all tasks and members
             overall_min_time = min([t[0] for t in min_max_times])
             overall_max_time = max([t[1] for t in min_max_times])
-
-            print("min", overall_min_time)
-            print("max", overall_max_time)
+            
+            print(f"ET time range: {overall_min_time:.2f}s to {overall_max_time:.2f}s")
+            
+            # Create time vector
             et_df['time'] = np.arange(overall_min_time, overall_max_time, 1 / self.fs)
-            et_df['time_idx'] = (et_df['time']*self.fs).astype(int)  # integer time indexes for merging with other modalities
-            if movies_flag_ch or movies_flag_cg:
-                dataloader.process_event_et(annotations_0, et_df)
-            if movies_flag_ch: 
-                dataloader.process_pos(ch_pos_df_0, et_df, 'ch')
-                dataloader.process_pupil(ch_pupil_df_0, et_df,'ch')
-                dataloader.process_blinks(ch_blinks_0, et_df,'ch')
-            if movies_flag_cg:
-                dataloader.process_pos(cg_pos_df_0, et_df, 'cg')
-                dataloader.process_pupil(cg_pupil_df_0, et_df,'cg')
-                dataloader.process_blinks(cg_blinks_0, et_df,'cg')
-            if talk1_flag_ch or talk1_flag_cg:
-                dataloader.process_event_et(annotations_1, et_df, 'talk1')
-            if talk1_flag_ch:
-                dataloader.process_pupil(ch_pupil_df_1, et_df,'ch')
-            if talk1_flag_cg:
-                dataloader.process_pupil(cg_pupil_df_1, et_df,'cg')
-            if talk2_flag_ch or talk2_flag_cg:
-                dataloader.process_event_et(annotations_2, et_df, 'talk2')
-            if talk2_flag_ch:   
-                dataloader.process_pupil(ch_pupil_df_2, et_df,'ch') 
-            if talk2_flag_cg:
-                dataloader.process_pupil(cg_pupil_df_2, et_df,'cg')
+            et_df['time_idx'] = (et_df['time'] * self.fs).astype(int)
+            
+            # Process loaded data into the dataframe
+            self._process_et_data_to_dataframe(et_df, loaded_data, task_flags, [t['id'] for t in tasks])
                 
-            # align ET time to EEG time by subtracting the time of the first event; find the time of the first event in ET data
+            # Align ET time to EEG time by subtracting the time of the first event
             min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
             et_df['time'] = et_df['time'] - min_start_time_et
             et_df['time_idx'] = et_df['time_idx'] - int(min_start_time_et*self.fs)
