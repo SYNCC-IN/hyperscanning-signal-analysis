@@ -82,7 +82,7 @@ class MultimodalData:
     - EEG channels: 'EEG_ch_{channel}' for child, 'EEG_cg_{channel}' for caregiver
     - ECG: 'ECG_ch', 'ECG_cg'
     - IBI: 'IBI_ch', 'IBI_cg'
-    - ET: 'ET_ch', 'ET_cg'
+    - ET: 'ET_ch_{x, y, pupil}', 'ET_cg_{x, y, pupil}'
     - Diode: 'diode'
     - Time: 'time', 'time_idx'
     - Events: 'events'
@@ -91,11 +91,9 @@ class MultimodalData:
         # Core data stored in DataFrame - all signal data combined here
         self.data: pd.DataFrame = pd.DataFrame()
 
-        # Sampling frequencies
-        self.eeg_fs: Optional[float] = None  # EEG sampling rate (Hz)
-        self.ecg_fs: Optional[int] = None  # ECG sampling frequency
-        self.ibi_fs: Optional[int] = None  # IBI sampling frequency (default: 4 Hz)
-        self.eyetracker_fs: Optional[int] = None  # ET sampling frequency
+        # Sampling frequency - in the multimodal DataFrame approach, all signals share the same sampling frequency, i.e., the EEG sampling frequency
+        self.fs: Optional[float] = None  # EEG sampling rate (Hz)
+        
 
         # Core metadata
         self.id: Optional[str] = None  # Dyad ID
@@ -143,8 +141,8 @@ class MultimodalData:
         n_samples = eeg_data.shape[1]
         if len(self.data) == 0:
             self.data = pd.DataFrame(index=range(n_samples))
-            if self.eeg_fs is not None:
-                self.data['time'] = np.arange(n_samples) / self.eeg_fs
+            if self.fs is not None:
+                self.data['time'] = np.arange(n_samples) / self.fs
                 self.data['time_idx'] = np.arange(n_samples)
 
         # Add each channel as a column
@@ -181,7 +179,7 @@ class MultimodalData:
         self._ensure_data_length(len(ibi_ch))
         self.data['IBI_ch'] = ibi_ch
         self.data['IBI_cg'] = ibi_cg
-        self.data['IBI_times'] = ibi_times
+        #self.data['IBI_times'] = ibi_times - not needed since time is shared
 
     def set_diode(self, diode: np.ndarray):
         """Store diode data in DataFrame."""
@@ -209,7 +207,7 @@ class MultimodalData:
 
         self.data['time'] = self.data['time'] - min_start_time
         if 'time_idx' in self.data.columns:
-            self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.eeg_fs)
+            self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.fs)
 
     def _ensure_data_length(self, length: int):
         """Ensure DataFrame has enough rows to hold data of given length."""
@@ -226,11 +224,11 @@ class MultimodalData:
 
     def interpolate_ibi_signals(self, ecg, label='', plot_flag=False):
         """Extract R-peaks and interpolate IBI signals from ECG data."""
-        _, info_ecg = nk.ecg_process(ecg, sampling_rate=self.ecg_fs, method='neurokit')
+        _, info_ecg = nk.ecg_process(ecg, sampling_rate=self.fs, method='neurokit')
         r_peaks = info_ecg["ECG_R_Peaks"]
-        ibi = np.diff(r_peaks) / self.ecg_fs * 1000  # IBI in ms
+        ibi = np.diff(r_peaks) / self.fs * 1000  # IBI in ms
         times = np.cumsum(ibi) / 1000  # time vector for the IBI signals [s]
-        ecg_times = np.arange(0, times[-1], 1 / self.ibi_fs)  # time vector for the interpolated IBI signals
+        ecg_times = np.arange(0, times[-1], 1 / self.fs)  # time vector for the interpolated IBI signals
         cubic_spline = CubicSpline(times, ibi)
         ibi_interp = cubic_spline(ecg_times)
         if plot_flag:
@@ -242,9 +240,8 @@ class MultimodalData:
             plt.show()
         return ibi_interp, ecg_times
 
-    def compute_ibi(self, ibi_fs=4):
+    def compute_ibi(self):
         """Interpolate IBI signals from ECG data and store in DataFrame."""
-        self.ibi_fs = ibi_fs
         ecg_ch = self.data['ECG_ch'].values
         ecg_cg = self.data['ECG_cg'].values
 
@@ -264,6 +261,11 @@ class MultimodalData:
 
     def decimate_signals(self, q=8):
         """
+        TODO: in the multimodal dataframe approach we keep all types of signals in the same dataframe, 
+        with the same sampling frequency (i.e., the EEG sampling frequency). 
+        However, decimating the EEG signals only may lead to inconsistencies if other signals (e.g., ECG, IBI) are not decimated accordingly. 
+        Therefore, we need to ensure that all signals are decimated properly to maintain synchronization across modalities.
+
         Decimates the EEG signals by factor q.
         Creates new columns with '_dec' suffix.
         """

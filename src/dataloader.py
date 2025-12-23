@@ -8,11 +8,11 @@ from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch, firwin, lfilter
 import joblib
 
-from src import eyetracker
+from src import eyetracker as et
 from src.data_structures import MultimodalData
 from src.utils import plot_filter_characteristics
 
-
+# --------------  Load EEG and ECG data form SVAROG files -----------------
 def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
     """Set the EEG data for the DataLoader instance by loading and filtering the Warsaw pilot data.
     We assume data were recorded as multiplexed signals in SVAROG system format.
@@ -198,76 +198,7 @@ def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
         multimodal_data.modalities.append('ECG')
 
 
-def load_eyetracker_data(multimodal_data, folder_eyetracker, fs=None):
-    # Load eye-tracking data from CSV files: THIS PART TO BE UPDATED AFTER THE STRUCTURE OF DATA in UW IS CLARIFIED
-    # For now, we will load data from hardcoded paths for testing purposes
-    # movies task 000
-    ch_pos_df_0 = pd.read_csv(folder_eyetracker + '000/ch_gaze_positions_on_surface_Surface 1.csv')
-    cg_pos_df_0 = pd.read_csv(folder_eyetracker + '000/cg_gaze_positions_on_surface_Surface 1.csv')
-    ch_pupil_df_0 = pd.read_csv(folder_eyetracker + '000/ch_pupil_positions.csv')
-    cg_pupil_df_0 = pd.read_csv(folder_eyetracker + '000/cg_pupil_positions.csv')
-    annotations_0 = pd.read_csv(folder_eyetracker + '000/annotations.csv')
-    cg_blinks_0 = pd.read_csv(folder_eyetracker + '000/cg_blinks.csv')
-    ch_blinks_0 = pd.read_csv(folder_eyetracker + '000/ch_blinks.csv')
-    # conversation task 001
-    ch_pupil_df_1 = pd.read_csv(folder_eyetracker + '001/ch_pupil_positions.csv')
-    cg_pupil_df_1 = pd.read_csv(folder_eyetracker + '001/cg_pupil_positions.csv')
-    annotations_1 = pd.read_csv(folder_eyetracker + '001/annotations.csv')
-    cg_blinks_1 = pd.read_csv(folder_eyetracker + '001/cg_blinks.csv')
-    ch_blinks_1 = pd.read_csv(folder_eyetracker + '001/ch_blinks.csv')
-    # conversation task 002
-    ch_pupil_df_2 = pd.read_csv(folder_eyetracker + '002/ch_pupil_positions.csv')
-    cg_pupil_df_2 = pd.read_csv(folder_eyetracker + '002/cg_pupil_positions.csv')
-    annotations_2 = pd.read_csv(folder_eyetracker + '002/annotations.csv')
-    cg_blinks_2 = pd.read_csv(folder_eyetracker + '002/cg_blinks.csv')
-    ch_blinks_2 = pd.read_csv(folder_eyetracker + '002/ch_blinks.csv')
 
-    # construct dataframe for ET data
-    et_df = pd.DataFrame()
-    # prepare the time column
-    if fs is None:
-        fs = multimodal_data.eeg_fs  # default sampling rate for UW EEG data; we want to keep all time series at the same sampling rate
-        print(f"Warning: fs not provided for ET data; setting fs to the default Fs of EEG: {fs} Hz")
-    et_df['time'] = eyetracker.process_time_et(ch_pos_df_0, cg_pos_df_0, ch_pupil_df_0, cg_pupil_df_0, ch_pupil_df_1,
-                                               cg_pupil_df_1, ch_pupil_df_2, cg_pupil_df_2, Fs=fs)
-    et_df['time_idx'] = (et_df['time'] * fs).astype(int)  # integer time indexes for merging with other modalities
-
-    # process position, pupil, blink, and event data
-    eyetracker.process_pos(ch_pos_df_0, et_df, 'ch')
-    eyetracker.process_pos(cg_pos_df_0, et_df, 'cg')
-
-    eyetracker.process_pupil(ch_pupil_df_0, et_df, 'ch')
-    eyetracker.process_pupil(ch_pupil_df_1, et_df, 'ch')
-    eyetracker.process_pupil(ch_pupil_df_2, et_df, 'ch')
-
-    eyetracker.process_pupil(cg_pupil_df_0, et_df, 'cg')
-    eyetracker.process_pupil(cg_pupil_df_1, et_df, 'cg')
-    eyetracker.process_pupil(cg_pupil_df_2, et_df, 'cg')
-
-    eyetracker.process_blinks(cg_blinks_0, et_df, 'cg')
-    eyetracker.process_blinks(cg_blinks_1, et_df, 'cg')
-    eyetracker.process_blinks(cg_blinks_2, et_df, 'cg')
-    eyetracker.process_blinks(ch_blinks_0, et_df, 'ch')
-    eyetracker.process_blinks(ch_blinks_1, et_df, 'ch')
-    eyetracker.process_blinks(ch_blinks_2, et_df, 'ch')
-
-    eyetracker.process_event_et(annotations_0, et_df)
-    eyetracker.process_event_et(annotations_1, et_df, 'talk1')
-    eyetracker.process_event_et(annotations_2, et_df, 'talk2')
-
-    # align ET time to EEG time by subtracting the time of the first event; find the time of the first event in ET data
-    min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
-    et_df['time'] = et_df['time'] - min_start_time_et
-    et_df['time_idx'] = et_df['time_idx'] - int(min_start_time_et * fs)
-
-    #  merging ET data into the main dataframe
-
-    multimodal_data.data = pd.merge(multimodal_data.data, et_df, how='outer', on='time_idx')
-    multimodal_data.data['time'] = multimodal_data.data['time_idx'] / fs
-    multimodal_data.data = multimodal_data.data.drop(columns=['time_x', 'time_y'])
-    multimodal_data.data = multimodal_data.data.replace(np.nan, None)
-
-    multimodal_data.modalities.append('ET')
 
 
 def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
@@ -354,7 +285,7 @@ def _plot_scanned_events(threshold, diode, thresholded_diode, derivative, events
             plt.text(event['start'] * eeg_fs, 1.25, event['name'], rotation=45)
     plt.legend()
 
-
+# --------------  Save and load multimodal data -----------------
 def load_output_data(filename):
     try:
         results = joblib.load(filename)
@@ -365,3 +296,232 @@ def load_output_data(filename):
 
 def save_to_file(multimodal_data: MultimodalData, output_dir):
     joblib.dump(multimodal_data, output_dir + f"/{multimodal_data.id}.joblib")
+
+# --------------  Load eye-tracking data -----------------
+
+def _build_et_file_paths(self, et_path: str, task_id: str, member: str) -> dict:
+    """
+    Build file paths for eye-tracker data for a specific task and dyad member.
+    
+    Args:
+        et_path: Base path to ET data directory
+        task_id: Task identifier ('000', '001', '002')
+        member: Dyad member ('child' or 'caregiver')
+        
+    Returns:
+        Dictionary mapping data types to file paths
+    """
+    base_export_path = f"{et_path}{member}/{task_id}/exports/000/"
+    prefix = 'ch' if member == 'child' else 'cg'
+    
+    paths = {
+        f'annotations_{task_id}': f"{base_export_path}annotations.csv",
+        f'{prefix}_pupil_{task_id}': f"{base_export_path}pupil_positions.csv"
+    }
+    
+    # Movies task (000) has additional gaze position and blinks data
+    if task_id == '000':
+        paths[f'{prefix}_pos_{task_id}'] = f"{base_export_path}surfaces/gaze_positions_on_surface_Surface 1.csv"
+        paths[f'{prefix}_blinks_{task_id}'] = f"{base_export_path}blinks.csv"
+    
+    return paths
+
+def _check_et_files_exist(self, file_paths: dict) -> tuple[bool, list]:
+    """
+    Check if ET data files exist.
+    
+    Args:
+        file_paths: Dictionary mapping data types to file paths
+        
+    Returns:
+        Tuple of (all_exist: bool, missing_files: list)
+    """
+    missing_files = [name for name, path in file_paths.items() if not os.path.exists(path)]
+    return len(missing_files) == 0, missing_files
+
+def _load_et_task_data(self, file_paths: dict, task_id: str, member: str, min_max_times: list) -> dict:
+    """
+    Load ET data files for a specific task and dyad member.
+    
+    Args:
+        file_paths: Dictionary mapping data types to file paths
+        task_id: Task identifier ('000', '001', '002')
+        member: Dyad member ('child' or 'caregiver')
+        min_max_times: List to append (min_time, max_time) tuples for time alignment
+        
+    Returns:
+        Dictionary containing loaded DataFrames
+    """
+    prefix = 'ch' if member == 'child' else 'cg'
+    loaded_data = {}
+    
+    # Load annotations
+    ann_key = f'annotations_{task_id}'
+    if ann_key in file_paths:
+        loaded_data[ann_key] = pd.read_csv(file_paths[ann_key])
+    
+    # Load pupil data
+    pupil_key = f'{prefix}_pupil_{task_id}'
+    if pupil_key in file_paths:
+        pupil_df = pd.read_csv(file_paths[pupil_key])
+        loaded_data[pupil_key] = pupil_df
+        min_max_times.append((pupil_df['pupil_timestamp'].min(), pupil_df['pupil_timestamp'].max()))
+    
+    # Load gaze position data (movies task only)
+    pos_key = f'{prefix}_pos_{task_id}'
+    if pos_key in file_paths:
+        pos_df = pd.read_csv(file_paths[pos_key])
+        loaded_data[pos_key] = pos_df
+        min_max_times.append((pos_df['gaze_timestamp'].min(), pos_df['gaze_timestamp'].max()))
+    
+    # Load blinks data (movies task only)
+    blinks_key = f'{prefix}_blinks_{task_id}'
+    if blinks_key in file_paths:
+        loaded_data[blinks_key] = pd.read_csv(file_paths[blinks_key])
+    
+    return loaded_data
+
+def _process_et_data_to_dataframe(self, et_df: pd.DataFrame, loaded_data: dict, 
+                                    task_flags: dict, task_names: list) -> None:
+    """
+    Process loaded ET data into the main ET dataframe.
+    
+    Args:
+        et_df: DataFrame to populate with ET data
+        loaded_data: Dictionary containing all loaded ET DataFrames
+        task_flags: Dictionary with flags indicating which tasks/members have data
+        task_names: List of task identifiers ['000', '001', '002']
+    """
+    # Process movies task (000) if available
+    if task_flags.get('movies_ch') or task_flags.get('movies_cg'):
+        if 'annotations_000' in loaded_data:
+            et.process_event_et(loaded_data['annotations_000'], et_df)
+    
+    if task_flags.get('movies_ch'):
+        if 'ch_pos_000' in loaded_data:
+            et.process_pos(loaded_data['ch_pos_000'], et_df, 'ch')
+        if 'ch_pupil_000' in loaded_data:
+            et.process_pupil(loaded_data['ch_pupil_000'], et_df, 'ch')
+        if 'ch_blinks_000' in loaded_data:
+            et.process_blinks(loaded_data['ch_blinks_000'], et_df, 'ch')
+    
+    if task_flags.get('movies_cg'):
+        if 'cg_pos_000' in loaded_data:
+            et.process_pos(loaded_data['cg_pos_000'], et_df, 'cg')
+        if 'cg_pupil_000' in loaded_data:
+            et.process_pupil(loaded_data['cg_pupil_000'], et_df, 'cg')
+        if 'cg_blinks_000' in loaded_data:
+            et.process_blinks(loaded_data['cg_blinks_000'], et_df, 'cg')
+    
+    # Process talk1 task (001)
+    if task_flags.get('talk1_ch') or task_flags.get('talk1_cg'):
+        if 'annotations_001' in loaded_data:
+            et.process_event_et(loaded_data['annotations_001'], et_df, 'talk1')
+    
+    if task_flags.get('talk1_ch'):
+        if 'ch_pupil_001' in loaded_data:
+            et.process_pupil(loaded_data['ch_pupil_001'], et_df, 'ch')
+    
+    if task_flags.get('talk1_cg'):
+        if 'cg_pupil_001' in loaded_data:
+            et.process_pupil(loaded_data['cg_pupil_001'], et_df, 'cg')
+    
+    # Process talk2 task (002)
+    if task_flags.get('talk2_ch') or task_flags.get('talk2_cg'):
+        if 'annotations_002' in loaded_data:
+            et.process_event_et(loaded_data['annotations_002'], et_df, 'talk2')
+    
+    if task_flags.get('talk2_ch'):
+        if 'ch_pupil_002' in loaded_data:
+            et.process_pupil(loaded_data['ch_pupil_002'], et_df, 'ch')
+    
+    if task_flags.get('talk2_cg'):
+        if 'cg_pupil_002' in loaded_data:
+            et.process_pupil(loaded_data['cg_pupil_002'], et_df, 'cg')
+
+def load_eye_tracker_data(multimodal_data, dyad_id, et_path, plot_flag):
+    """ Load eye-tracking data from CSV files and integrate into the MultimodalData instance.
+
+    Args:
+        multimodal_data: Instance of MultimodalData to populate with ET data
+        dyad_id: Identifier for the dyad
+        et_path: Base path to ET data directory
+        plot_flag: Whether to plot intermediate results for debugging/visualization
+    """
+    # Configuration for tasks: 000=movies, 001=talk1, 002=talk2
+    tasks = [
+        {'id': '000', 'name': 'movies'},
+        {'id': '001', 'name': 'talk1'}, 
+        {'id': '002', 'name': 'talk2'}
+    ]
+    members = ['child', 'caregiver']
+            
+    # Build file paths and check availability for each task and member
+    task_flags = {}
+    all_file_paths = {}
+    min_max_times = []
+    loaded_data = {}
+    
+    for task in tasks:
+        for member in members:
+            # Build file paths
+            file_paths = _build_et_file_paths(et_path, task['id'], member)
+            
+            # Check if files exist
+            all_exist, missing = _check_et_files_exist(file_paths)
+            
+            # Set flag for this task/member combination
+            flag_key = f"{task['name']}_{'ch' if member == 'child' else 'cg'}"
+            task_flags[flag_key] = all_exist
+            
+            if not all_exist:
+                print(f"Warning: Missing ET files for {multimodal_data.id} {member} {task['name']}: {missing}")
+            else:
+                # Load data if all files exist
+                task_data = _load_et_task_data(file_paths, task['id'], member, min_max_times)
+                loaded_data.update(task_data)
+    
+    # Skip ET processing if no data was loaded
+    if not min_max_times:
+        print(f"Warning: No ET data available for {multimodal_data.id}")
+        return
+    
+    # Construct dataframe for ET data
+    et_df = pd.DataFrame()
+    
+    # Set sampling frequency if not already set
+    if multimodal_data.fs is None:
+        multimodal_data.fs = 1024  # default sampling rate for UW EEG data
+        print(f'Setting fs to the default Fs of EEG: {multimodal_data.fs}')
+    
+    # Find the overall min and max times across all tasks and members
+    overall_min_time = min([t[0] for t in min_max_times])
+    overall_max_time = max([t[1] for t in min_max_times])
+    
+    print(f"ET time range: {overall_min_time:.2f}s to {overall_max_time:.2f}s")
+    
+    # Create time vector
+    et_df['time'] = np.arange(overall_min_time, overall_max_time, 1 / multimodal_data.fs)
+    et_df['time_idx'] = (et_df['time'] * multimodal_data.fs).astype(int)
+    
+    # Process loaded data into the dataframe
+    _process_et_data_to_dataframe(et_df, loaded_data, task_flags, [t['id'] for t in tasks])
+        
+    # Align ET time to EEG time by subtracting the time of the first event; 
+    # We consider the time of first event in all data series to be 0; 
+    # reset time_idx accordingly
+    min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
+    et_df['time'] = et_df['time'] - min_start_time_et
+    et_df['time_idx'] = et_df['time_idx'] - int(min_start_time_et*multimodal_data.fs)
+
+    #  merging ET data into the main dataframe
+    if multimodal_data.data is None:
+        multimodal_data.data = et_df.copy()
+    else:
+        multimodal_data.data = pd.merge(multimodal_data.data, et_df, how = 'outer', on = 'time_idx')
+        # multimodal_data.data['time'] = multimodal_data.data['time_idx'] / multimodal_data.fs # redundant, time column already should exist, if not search for bug!
+        multimodal_data.data = multimodal_data.data.drop(columns=['time_x','time_y'])
+        multimodal_data.data = multimodal_data.data.replace(np.nan, None)
+
+    multimodal_data.info['modalities'].append('ET')
+    return
