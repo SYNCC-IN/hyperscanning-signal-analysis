@@ -13,10 +13,12 @@ from scipy.signal import decimate
 @dataclass
 class Filtration:
     """Stores information about signal filtration."""
-    notch: Optional[bool] = None
+    notch_Q: Optional[float] = None
+    notch_freq: Optional[float] = None
     low_pass: Optional[float] = None
     high_pass: Optional[float] = None
     type: Optional[str] = None
+    applied: Optional[bool] = False
 
 
 @dataclass
@@ -77,6 +79,12 @@ class MultimodalData:
     This class is based on the EEGLAB-style multimodal data structure specification.
     All signal data is stored in a single pandas DataFrame called 'data',
     where each EEG channel, ECG signal, etc. becomes its own column.
+    The sampling frequency 'fs' applies to all signals (i.e., the EEG sampling frequency).
+    Time column is shared across all signals.
+    time_idx column is shared across all signals and is used for merging data that may not span the entire recording duration.
+    Events are stored in the 'events' column of the DataFrame.
+    Filtration information for EEG signals is stored in the 'eeg_filtration' attribute.
+
 
     Column naming conventions:
     - EEG channels: 'EEG_ch_{channel}' for child, 'EEG_cg_{channel}' for caregiver
@@ -102,7 +110,7 @@ class MultimodalData:
 
         # EEG metadata
         self.references: Optional[str] = None  # Information about reference electrodes or common average
-        self.filtration: Filtration = Filtration()
+        self.eeg_filtration: Filtration = Filtration()
         self.eeg_channel_names_ch: List[str] = []  # child EEG channels after montage
         self.eeg_channel_names_cg: List[str] = []  # caregiver EEG channels after montage
 
@@ -145,15 +153,16 @@ class MultimodalData:
                 self.data['time'] = np.arange(n_samples) / self.fs
                 self.data['time_idx'] = np.arange(n_samples)
 
-        # Add each channel as a column
+        # Add each EEG channel as a column
         for chan_name, chan_idx in channel_mapping.items():
-            chan_parts = chan_name.split('_')
-            if len(chan_parts) == 2 and chan_parts[1] == 'cg':
-                col_name = f'EEG_cg_{chan_parts[0]}'
-            else:
-                col_name = f'EEG_ch_{chan_name}'
-            self.data[col_name] = eeg_data[chan_idx, :]
-
+            if chan_name in self.eeg_channel_names_ch or chan_name in self.eeg_channel_names_cg:
+                chan_parts = chan_name.split('_')
+                if len(chan_parts) == 2 and chan_parts[1] == 'cg':
+                    col_name = f'EEG_cg_{chan_parts[0]}'
+                else:
+                    col_name = f'EEG_ch_{chan_name}'
+                self.data[col_name] = eeg_data[chan_idx, :]
+                
     def get_eeg_data_ch(self) -> Optional[np.ndarray]:
         """Returns EEG data for child channels only as 2D array."""
         ch_cols = [col for col in self.data.columns if col.startswith('EEG_ch_')]

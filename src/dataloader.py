@@ -8,21 +8,68 @@ from matplotlib import pyplot as plt
 from scipy.signal import filtfilt, butter, sosfiltfilt, iirnotch, firwin, lfilter
 import joblib
 
-from src import eyetracker as et
-from src.data_structures import MultimodalData
-from src.utils import plot_filter_characteristics
+import eyetracker as et
+from data_structures import MultimodalData
+from utils import plot_filter_characteristics
+
+# --------------  Create multimodal data instance and populate it with data -----------------
+def create_multimodal_data(data_base_path, dyad_id, load_eeg=True, load_et=True, lowcut=4.0, highcut=40.0, plot_flag=False):
+    """Create and populate a MultimodalData instance by loading EEG and ET data.
+    directory structer assumed is: 
+    data_base_path/
+    <dyad_id>/
+        eeg/
+            <dyad_id>.obci
+            <dyad_id>.xml
+        et/
+            child/
+                000/
+                001/
+                002/
+            caregiver/
+                000/
+                001/
+                002/
+
+    Args:
+        dyad_id (str): Identifier for the dyad.
+        load_eeg (bool): Whether to load EEG data.
+        load_et (bool): Whether to load eye-tracker data.
+        plot_flag (bool): Whether to plot intermediate results for debugging/visualization.
+        lowcut (float, optional): Low cut-off frequency for EEG filtering. Defaults to 4.0 Hz.
+        highcut (float, optional): High cut-off frequency for EEG filtering. Defaults to 40.0 Hz.
+
+    Returns:
+        MultimodalData: An instance populated with EEG and ET data.
+    """
+    multimodal_data = MultimodalData()
+    multimodal_data.id = dyad_id
+    if load_eeg:
+        folder_eeg = os.path.join(data_base_path, dyad_id, "eeg")
+        multimodal_data = load_eeg_data(multimodal_data, dyad_id=dyad_id, folder_eeg=folder_eeg, lowcut=lowcut, highcut=highcut, plot_flag=plot_flag)
+    if load_et:
+        folder_et = os.path.join(data_base_path, dyad_id, "et")
+        multimodal_data = load_et_data(multimodal_data,dyad_id=dyad_id, folder_et=folder_et, plot_flag=plot_flag)
+
+    return multimodal_data
 
 # --------------  Load EEG and ECG data form SVAROG files -----------------
-def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
+def load_eeg_data(multimodal_data = None, dyad_id=None, folder_eeg=None, lowcut=4.0, highcut=40.0, plot_flag=False):
     """Set the EEG data for the DataLoader instance by loading and filtering the Warsaw pilot data.
     We assume data were recorded as multiplexed signals in SVAROG system format.
     We also assume specific channel names for child and caregiver EEG data, as specified below.
     Args:
+        multimodal_data (MultimodalData, optional): An existing MultimodalData instance to populate. 
+            If None, a new instance is created. Defaults to None.
+        dyad_id (str): Identifier for the dyad.
         folder_eeg (str): Path to the folder containing the EEG data files.
+        lowcut (float, optional): Low cut-off frequency for EEG filtering. Defaults to 4.0 Hz.
+        highcut (float, optional): High cut-off frequency for EEG filtering. Defaults to 40.0 Hz.
         plot_flag (bool): Whether to plot intermediate results for debugging/visualization.
     """
-    multimodal_data = MultimodalData()
-    multimodal_data.id = dyad_id
+    if multimodal_data is None:
+        multimodal_data = MultimodalData()
+        multimodal_data.id = dyad_id
     multimodal_data.paths.eeg_directory = folder_eeg
     multimodal_data.eeg_channel_names_ch = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz',
                                             'C4', 'T4',
@@ -40,18 +87,20 @@ def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
     diode = raw_eeg_data[multimodal_data.eeg_channel_mapping['Diode'], :]
 
     # scan for events
-    multimodal_data.events, thresholded_diode = _scan_for_events(diode, multimodal_data.eeg_fs, plot_flag,
+    multimodal_data.events, thresholded_diode = _scan_for_events(diode, multimodal_data.fs, plot_flag,
                                                                      threshold=0.75)
     print(f"Detected events: {multimodal_data.events}")
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
     _mount_eeg_data(multimodal_data, raw_eeg_data)
-    filters = _design_eeg_filters(multimodal_data.eeg_fs, lowcut, highcut)
-    _apply_filters(multimodal_data, filters, raw_eeg_data)
+    filters = _design_eeg_filters(multimodal_data, lowcut=lowcut, highcut=highcut, plot_flag=plot_flag, filter_type='fir', notch_freq=50, notch_q=30)
+    _apply_filters(multimodal_data, filters, raw_eeg_data, plot_flag=plot_flag)
 
-    # Store EEG data in DataFrame with each channel as a column
+    # Store EEG data in DataFrame with each channel as a column and set time column if not set yet
     multimodal_data.set_eeg_data(raw_eeg_data, multimodal_data.eeg_channel_mapping)
-
+    # Set EEG events column
+    multimodal_data.set_events_column(multimodal_data.events)   
+     
     # Store diode in DataFrame
     multimodal_data.set_diode(thresholded_diode)
 
@@ -60,6 +109,15 @@ def load_eeg_data(dyad_id, folder_eeg, plot_flag, lowcut=4.0, highcut=40.0):
 
     # set the ECG modality with ECG signals (in place)
     _extract_ecg_data(multimodal_data, raw_eeg_data)
+    # reset time column to be consistent with the first movie event start at time zero; this is needed to align with ET data later; accordingly reset time_idx
+    # in the column 'events' find the first occurance of one of 'Brave', 'Peppa', 'Incredibles'; reset to the corresponding time
+    first_movie_event = multimodal_data.data[
+        multimodal_data.data['events'].isin(['Brave', 'Peppa', 'Incredibles'])
+    ]['time'].min()
+    print(f"Reseting the EEG time to the start of {multimodal_data.data[multimodal_data.data['time'] == first_movie_event]['events'].iloc[0]}")
+    multimodal_data.data['time'] = multimodal_data.data['time'] - first_movie_event
+    multimodal_data.data['time_idx'] = (multimodal_data.data['time'] * multimodal_data.fs).astype(int)
+
 
     return multimodal_data
 
@@ -71,7 +129,7 @@ def _read_raw_svarog_data(multimodal_data: MultimodalData, plot_flag):
         xml = xmltodict.parse(fd.read())
 
     n_channels = int(xml['rs:rawSignal']['rs:channelCount'])
-    eeg_fs = int(float(xml['rs:rawSignal']['rs:samplingFrequency']))
+    fs = int(float(xml['rs:rawSignal']['rs:samplingFrequency']))
     channel_names = xml['rs:rawSignal']['rs:channelLabels']['rs:label']
 
     for i, name in enumerate(channel_names):
@@ -79,10 +137,9 @@ def _read_raw_svarog_data(multimodal_data: MultimodalData, plot_flag):
 
     # if debug print N_chan, Fs_EEG, chan_names
     if plot_flag:
-        print(f"n_channels: {n_channels},\n fs_EEG: {eeg_fs},\n chan_names: {channel_names}")
+        print(f"n_channels: {n_channels},\n fs_EEG: {fs},\n chan_names: {channel_names}")
 
-    multimodal_data.eeg_fs = eeg_fs
-    multimodal_data.ecg_fs = eeg_fs  # ECG data is sampled at the same frequency as EEG data
+    multimodal_data.fs = fs
     raw_eeg_data = np.fromfile(os.path.join(multimodal_data.paths.eeg_directory, f"{file}.raw"),
                                dtype='float32').reshape(
         (-1, n_channels)).T  # transpose to have channels in rows and samples in columns
@@ -94,62 +151,69 @@ def _read_raw_svarog_data(multimodal_data: MultimodalData, plot_flag):
 
 
 def _mount_eeg_data(multimodal_data, raw_eeg_data):
+    """Mount EEG data to M1 and M2 channels for both caregiver and child.
+    Args:
+        multimodal_data (MultimodalData): The multimodal data instance containing EEG metadata.
+        raw_eeg_data (np.ndarray): The raw EEG data array with shape (n_channels, n_samples).
+    """
     channel_mapping = multimodal_data.eeg_channel_mapping
     # mount EEG data to M1 and M2 channels; do it separately for caregiver and child as they have different references
     for channel in multimodal_data.eeg_channel_names_ch:
-        if channel in channel_mapping and channel not in ['M1', 'M2']:
+        if channel in channel_mapping:
             idx = channel_mapping[channel]
             raw_eeg_data[idx, :] -= 0.5 * (
                     raw_eeg_data[channel_mapping['M1'], :] + raw_eeg_data[channel_mapping['M2'], :])
 
     for channel in multimodal_data.eeg_channel_names_cg:
-        if channel in channel_mapping and channel not in ['M1_cg', 'M2_cg']:
+        if channel in channel_mapping:
             idx = channel_mapping[channel]
             raw_eeg_data[idx, :] -= 0.5 * (
                     raw_eeg_data[channel_mapping['M1_cg'], :] + raw_eeg_data[channel_mapping['M2_cg'], :])
+    multimodal_data.references = 'linked ears montage: (M1+M2)/2'
 
-    # adjust channel lists by removing channels M1 and M2 from the caregiver and child EEG channels, as they will not be used after linked ears montage
-    multimodal_data.eeg_channel_names_ch = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'T3', 'C3', 'Cz', 'C4',
-                                            'T4', 'T5', 'P3', 'Pz', 'P4', 'T6', 'O1', 'O2']
-    multimodal_data.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg', 'F7_cg', 'F3_cg', 'Fz_cg', 'F4_cg', 'F8_cg',
-                                            'T3_cg', 'C3_cg', 'Cz_cg', 'C4_cg', 'T4_cg', 'T5_cg', 'P3_cg', 'Pz_cg',
-                                            'P4_cg', 'T6_cg', 'O1_cg', 'O2_cg']
+    
 
 
 
-def _design_eeg_filters(fs, lowcut, highcut, notch_freq=50, notch_q=30, filter_type='iir', plot_flag=False):
+def _design_eeg_filters(multimodal_data: MultimodalData, lowcut, highcut, notch_freq=50, notch_q=30, filter_type='iir', plot_flag=False):
     """
     Task 1: Designs notch, low-pass, and high-pass filters.
     Returns a tuple of filter coefficients.
     """
-    b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=fs)
+    b_notch, a_notch = iirnotch(notch_freq, notch_q, fs=multimodal_data.fs)
 
     if filter_type == 'fir':
         numtaps_low = 201
-        b_low = firwin(numtaps_low, highcut, fs=fs, pass_zero='lowpass')
+        b_low = firwin(numtaps_low, highcut, fs=multimodal_data.fs, pass_zero='lowpass')
         numtaps_high = 1025
-        b_high = firwin(numtaps_high, lowcut, fs=fs, pass_zero='highpass')
+        b_high = firwin(numtaps_high, lowcut, fs=multimodal_data.fs, pass_zero='highpass')
         a_low = a_high = 1.0
     else:
-        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=fs)
-        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=fs)
+        b_low, a_low = butter(N=4, Wn=highcut, btype='low', fs=multimodal_data.fs)
+        b_high, a_high = butter(N=4, Wn=lowcut, btype='high', fs=multimodal_data.fs)
 
     if plot_flag:
         print("---- Notch filter characteristics: --------")
         f_max = 60.0
-        plot_filter_characteristics(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=fs, f_lim=(30, f_max),
+        plot_filter_characteristics(b_notch, a_notch, f=np.arange(0, f_max, 0.01), T=0.5, Fs=multimodal_data.fs, f_lim=(30, f_max),
                                     db_lim=(-300, 0.1))
         print("---- Low-pass filter characteristics: --------")
-        plot_filter_characteristics(b_low, a=[1], f=np.arange(0, fs / 2, 0.1), T=0.5, Fs=fs, f_lim=(0, 50),
+        plot_filter_characteristics(b_low, a=[1], f=np.arange(0, multimodal_data.fs / 2, 0.1), T=0.5, Fs=multimodal_data.fs, f_lim=(0, 50),
                                     db_lim=(-60, 0.1))
         print("---- High-pass filter characteristics: --------")
-        plot_filter_characteristics(b_high, a=[1], f=np.arange(0, fs / 2, 0.01), T=0.5, Fs=fs, f_lim=(0, 10),
+        plot_filter_characteristics(b_high, a=[1], f=np.arange(0, multimodal_data.fs / 2, 0.01), T=1.0, Fs=multimodal_data.fs, f_lim=(0, 10),
                                     db_lim=(-60, 0.1))
+            # add info about filtering to the multimodal data
+    multimodal_data.eeg_filtration.lowcut = lowcut 
+    multimodal_data.eeg_filtration.highcut = highcut
+    multimodal_data.eeg_filtration.notch_Q = notch_q
+    multimodal_data.eeg_filtration.notch_freq = notch_freq
+    multimodal_data.eeg_filtration.type = filter_type
 
     return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), filter_type
 
 
-def _apply_filters(multimodal_data: MultimodalData, filters, raw_eeg_data):
+def _apply_filters(multimodal_data: MultimodalData, filters, raw_eeg_data, plot_flag=False):
     """
     Applies filters to raw data in place.
     """
@@ -174,6 +238,17 @@ def _apply_filters(multimodal_data: MultimodalData, filters, raw_eeg_data):
             signal[-delay:] = 0.0  # zero-pad the end to account for the delay introduced by filtering
 
         raw_eeg_data[multimodal_data.eeg_channel_mapping[ch], :] = signal
+        # plot filtered signals for debugging
+        if plot_flag:
+            plt.figure(figsize=(12, 4))
+            plt.plot(signal)
+            plt.title(f"Filtered signal for channel {ch}")
+            plt.xlabel("Samples")
+            plt.ylabel("Amplitude (uV)")
+            plt.show() 
+    multimodal_data.eeg_filtration.applied = True 
+
+
 
 
 def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
@@ -184,8 +259,8 @@ def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
     ecg_cg = raw_eeg_data[channel_mapping['EKG1_cg'], :] - raw_eeg_data[channel_mapping['EKG2_cg'], :]
 
     # design filters:
-    b_notch, a_notch = iirnotch(50, 30, fs=multimodal_data.ecg_fs)
-    sos_ecg = butter(5, 0.5, btype='high', output="sos", fs=multimodal_data.ecg_fs)
+    b_notch, a_notch = iirnotch(50, 30, fs=multimodal_data.fs)
+    sos_ecg = butter(5, 0.5, btype='high', output="sos", fs=multimodal_data.fs)
     ecg_ch_filtered = sosfiltfilt(sos_ecg, ecg_ch)
     ecg_ch_filtered = filtfilt(b_notch, a_notch, ecg_ch_filtered)
     ecg_cg_filtered = sosfiltfilt(sos_ecg, ecg_cg)
@@ -284,6 +359,7 @@ def _plot_scanned_events(threshold, diode, thresholded_diode, derivative, events
             plt.plot(event['start'] * eeg_fs, 1.2, 'ko', markersize=10)
             plt.text(event['start'] * eeg_fs, 1.25, event['name'], rotation=45)
     plt.legend()
+    plt.show()
 
 # --------------  Save and load multimodal data -----------------
 def load_output_data(filename):
@@ -292,6 +368,8 @@ def load_output_data(filename):
         return results
     except FileNotFoundError:
         print(f"File not found {filename}")
+        return None
+    
 
 
 def save_to_file(multimodal_data: MultimodalData, output_dir):
@@ -299,7 +377,7 @@ def save_to_file(multimodal_data: MultimodalData, output_dir):
 
 # --------------  Load eye-tracking data -----------------
 
-def _build_et_file_paths(self, et_path: str, task_id: str, member: str) -> dict:
+def _build_et_file_paths(et_path: str, task_id: str, member: str) -> dict:
     """
     Build file paths for eye-tracker data for a specific task and dyad member.
     
@@ -311,22 +389,22 @@ def _build_et_file_paths(self, et_path: str, task_id: str, member: str) -> dict:
     Returns:
         Dictionary mapping data types to file paths
     """
-    base_export_path = f"{et_path}{member}/{task_id}/exports/000/"
+    base_export_path = os.path.join(et_path, member, task_id, "exports", "000")
     prefix = 'ch' if member == 'child' else 'cg'
     
     paths = {
-        f'annotations_{task_id}': f"{base_export_path}annotations.csv",
-        f'{prefix}_pupil_{task_id}': f"{base_export_path}pupil_positions.csv"
+        f'annotations_{task_id}': os.path.join(base_export_path, "annotations.csv"),
+        f'{prefix}_pupil_{task_id}': os.path.join(base_export_path, "pupil_positions.csv")
     }
     
     # Movies task (000) has additional gaze position and blinks data
     if task_id == '000':
-        paths[f'{prefix}_pos_{task_id}'] = f"{base_export_path}surfaces/gaze_positions_on_surface_Surface 1.csv"
-        paths[f'{prefix}_blinks_{task_id}'] = f"{base_export_path}blinks.csv"
+        paths[f'{prefix}_pos_{task_id}'] = os.path.join(base_export_path, "surfaces", "gaze_positions_on_surface_Surface 1.csv")
+        paths[f'{prefix}_blinks_{task_id}'] = os.path.join(base_export_path, "blinks.csv")
     
     return paths
 
-def _check_et_files_exist(self, file_paths: dict) -> tuple[bool, list]:
+def _check_et_files_exist(file_paths: dict) -> tuple[bool, list]:
     """
     Check if ET data files exist.
     
@@ -339,7 +417,7 @@ def _check_et_files_exist(self, file_paths: dict) -> tuple[bool, list]:
     missing_files = [name for name, path in file_paths.items() if not os.path.exists(path)]
     return len(missing_files) == 0, missing_files
 
-def _load_et_task_data(self, file_paths: dict, task_id: str, member: str, min_max_times: list) -> dict:
+def _load_et_task_data(file_paths: dict, task_id: str, member: str, min_max_times: list) -> dict:
     """
     Load ET data files for a specific task and dyad member.
     
@@ -381,7 +459,7 @@ def _load_et_task_data(self, file_paths: dict, task_id: str, member: str, min_ma
     
     return loaded_data
 
-def _process_et_data_to_dataframe(self, et_df: pd.DataFrame, loaded_data: dict, 
+def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict, 
                                     task_flags: dict, task_names: list) -> None:
     """
     Process loaded ET data into the main ET dataframe.
@@ -439,7 +517,7 @@ def _process_et_data_to_dataframe(self, et_df: pd.DataFrame, loaded_data: dict,
         if 'cg_pupil_002' in loaded_data:
             et.process_pupil(loaded_data['cg_pupil_002'], et_df, 'cg')
 
-def load_eye_tracker_data(multimodal_data, dyad_id, et_path, plot_flag):
+def load_et_data(multimodal_data, dyad_id, folder_et, plot_flag = False):
     """ Load eye-tracking data from CSV files and integrate into the MultimodalData instance.
 
     Args:
@@ -448,6 +526,9 @@ def load_eye_tracker_data(multimodal_data, dyad_id, et_path, plot_flag):
         et_path: Base path to ET data directory
         plot_flag: Whether to plot intermediate results for debugging/visualization
     """
+    if multimodal_data is None:
+        multimodal_data = MultimodalData()
+        multimodal_data.id = dyad_id
     # Configuration for tasks: 000=movies, 001=talk1, 002=talk2
     tasks = [
         {'id': '000', 'name': 'movies'},
@@ -465,7 +546,7 @@ def load_eye_tracker_data(multimodal_data, dyad_id, et_path, plot_flag):
     for task in tasks:
         for member in members:
             # Build file paths
-            file_paths = _build_et_file_paths(et_path, task['id'], member)
+            file_paths = _build_et_file_paths(folder_et, task['id'], member)
             
             # Check if files exist
             all_exist, missing = _check_et_files_exist(file_paths)
@@ -510,18 +591,24 @@ def load_eye_tracker_data(multimodal_data, dyad_id, et_path, plot_flag):
     # Align ET time to EEG time by subtracting the time of the first event; 
     # We consider the time of first event in all data series to be 0; 
     # reset time_idx accordingly
-    min_start_time_et = et_df[et_df['ET_event'].notna()]['time'].min()
-    et_df['time'] = et_df['time'] - min_start_time_et
-    et_df['time_idx'] = et_df['time_idx'] - int(min_start_time_et*multimodal_data.fs)
+
+    # reset time column to be consistent with the first movie event start at time zero; this is needed to align with EEG data later; accordingly reset time_idx
+    # in the column 'ET_event' find the first occurance of one of 'm1' 'm2' 'm3'; reset to the corresponding time
+    first_movie_event = et_df[et_df['ET_event'].isin(['m1', 'm2', 'm3'])]['time'].min()
+    print(f"Reseting the ET time to the start of {et_df[et_df['time'] == first_movie_event]['ET_event'].iloc[0]}")
+    et_df['time'] = et_df['time'] - first_movie_event
+    et_df['time_idx'] = (et_df['time'] * multimodal_data.fs).astype(int)
+
 
     #  merging ET data into the main dataframe
-    if multimodal_data.data is None:
+    if multimodal_data.data.empty:
         multimodal_data.data = et_df.copy()
     else:
         multimodal_data.data = pd.merge(multimodal_data.data, et_df, how = 'outer', on = 'time_idx')
-        # multimodal_data.data['time'] = multimodal_data.data['time_idx'] / multimodal_data.fs # redundant, time column already should exist, if not search for bug!
+                # After merge, time_x and time_y are created; use time_x (from EEG) as primary, fill missing with time_y (from ET)
+        multimodal_data.data['time'] = multimodal_data.data['time_x'].fillna(multimodal_data.data['time_y'])
         multimodal_data.data = multimodal_data.data.drop(columns=['time_x','time_y'])
         multimodal_data.data = multimodal_data.data.replace(np.nan, None)
 
-    multimodal_data.info['modalities'].append('ET')
-    return
+    multimodal_data.modalities.append('ET')
+    return multimodal_data
