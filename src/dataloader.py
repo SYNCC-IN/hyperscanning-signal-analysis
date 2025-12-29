@@ -175,7 +175,7 @@ def _mount_eeg_data(multimodal_data, raw_eeg_data):
 
 
 
-def _design_eeg_filters(multimodal_data: MultimodalData, lowcut, highcut, notch_freq=50, notch_q=30, filter_type='iir', plot_flag=False):
+def _design_eeg_filters(multimodal_data: MultimodalData, lowcut, highcut, notch_freq=50, notch_q=30, filter_type='fir', plot_flag=False):
     """
     Task 1: Designs notch, low-pass, and high-pass filters.
     Returns a tuple of filter coefficients.
@@ -185,7 +185,7 @@ def _design_eeg_filters(multimodal_data: MultimodalData, lowcut, highcut, notch_
     if filter_type == 'fir':
         numtaps_low = 201
         b_low = firwin(numtaps_low, highcut, fs=multimodal_data.fs, pass_zero='lowpass')
-        numtaps_high = 1025
+        numtaps_high = 2049
         b_high = firwin(numtaps_high, lowcut, fs=multimodal_data.fs, pass_zero='highpass')
         a_low = a_high = 1.0
     else:
