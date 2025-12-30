@@ -29,9 +29,7 @@ class TestMultimodalDataInit:
         """MultimodalData should have correct default values."""
         md = MultimodalData()
         assert md.id is None
-        assert md.eeg_fs is None
-        assert md.ecg_fs is None
-        assert md.ibi_fs is None
+        assert md.fs is None
         assert md.modalities == []
         assert md.events == []
         assert md.eeg_channel_names == []
@@ -40,7 +38,7 @@ class TestMultimodalDataInit:
     def test_init_nested_dataclasses(self):
         """MultimodalData should initialize nested dataclasses correctly."""
         md = MultimodalData()
-        assert isinstance(md.filtration, Filtration)
+        assert isinstance(md.eeg_filtration, Filtration)
         assert isinstance(md.paths, Paths)
         assert isinstance(md.tasks, Tasks)
         assert isinstance(md.child_info, ChildInfo)
@@ -52,7 +50,9 @@ class TestSetEegData:
     def test_set_eeg_data_creates_columns(self):
         """set_eeg_data should create a column for each EEG channel."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
+        md.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg']
         
         n_channels, n_samples = 4, 1000
         eeg_data = np.random.randn(n_channels, n_samples)
@@ -67,9 +67,10 @@ class TestSetEegData:
         assert 'EEG_cg_Fp2' in md.data.columns
 
     def test_set_eeg_data_creates_time_columns(self):
-        """set_eeg_data should create time and time_idx columns when eeg_fs is set."""
+        """set_eeg_data should create time and time_idx columns when fs is set."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
         
         eeg_data = np.random.randn(2, 512)
         channel_mapping = {'Fp1': 0, 'Fp2': 1}
@@ -86,7 +87,8 @@ class TestSetEegData:
     def test_set_eeg_data_preserves_values(self):
         """set_eeg_data should preserve the exact values from input array."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
         
         eeg_data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
         channel_mapping = {'Fp1': 0, 'Fp2': 1}
@@ -99,7 +101,9 @@ class TestSetEegData:
     def test_set_eeg_data_channel_naming_convention(self):
         """Channels ending with _cg should be prefixed with EEG_cg_, others with EEG_ch_."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fz', 'Cz']
+        md.eeg_channel_names_cg = ['Fz_cg', 'Cz_cg']
         
         eeg_data = np.random.randn(4, 100)
         channel_mapping = {'Fz': 0, 'Cz': 1, 'Fz_cg': 2, 'Cz_cg': 3}
@@ -120,7 +124,9 @@ class TestGetEegData:
     def test_get_eeg_data_ch_returns_correct_shape(self):
         """get_eeg_data_ch should return 2D array [n_channels x n_samples]."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
+        md.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg']
         
         n_samples = 100
         eeg_data = np.random.randn(4, n_samples)
@@ -134,7 +140,9 @@ class TestGetEegData:
     def test_get_eeg_data_cg_returns_correct_shape(self):
         """get_eeg_data_cg should return 2D array [n_channels x n_samples]."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
+        md.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg']
         
         n_samples = 100
         eeg_data = np.random.randn(4, n_samples)
@@ -219,7 +227,6 @@ class TestSetIbiData:
         
         assert 'IBI_ch' in md.data.columns
         assert 'IBI_cg' in md.data.columns
-        assert 'IBI_times' in md.data.columns
 
 
 class TestEnsureDataLength:
@@ -280,7 +287,7 @@ class TestAlignTimeToFirstEvent:
     def test_align_time_shifts_correctly(self):
         """align_time_to_first_event should shift time so first event is at t=0."""
         md = MultimodalData()
-        md.eeg_fs = 100
+        md.fs = 100
         
         md.data = pd.DataFrame({
             'time': np.arange(1000) / 100,
@@ -317,7 +324,8 @@ class TestDecimateSignals:
     def test_decimate_creates_new_columns(self):
         """decimate_signals should create new columns with _dec suffix."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2']
         
         # Need enough samples for decimation
         n_samples = 1000
@@ -333,7 +341,8 @@ class TestDecimateSignals:
     def test_decimate_reduces_samples(self):
         """decimate_signals should reduce sample count by factor q."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
+        md.eeg_channel_names_ch = ['Fp1']
         
         n_samples = 1000
         q = 4
@@ -355,7 +364,8 @@ class TestDataclasses:
     def test_filtration_defaults(self):
         """Filtration dataclass should have correct defaults."""
         f = Filtration()
-        assert f.notch is None
+        assert f.notch_Q is None
+        assert f.notch_freq is None
         assert f.low_pass is None
         assert f.high_pass is None
         assert f.type is None

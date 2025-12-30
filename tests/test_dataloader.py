@@ -122,9 +122,8 @@ class TestLoadEegDataIntegration:
         
         result = dataloader.load_eeg_data(sample_dyad_id, sample_data_path, plot_flag=False)
         
-        assert result.eeg_fs is not None
-        assert result.eeg_fs > 0
-        assert result.ecg_fs is not None
+        assert result.fs is not None
+        assert result.fs > 0
 
 
 class TestDesignEegFilters:
@@ -132,27 +131,30 @@ class TestDesignEegFilters:
 
     def test_design_filters_returns_tuple(self):
         """_design_eeg_filters should return filter coefficients tuple."""
-        fs = 256
+        md = MultimodalData()
+        md.fs = 256
         lowcut = 4.0
         highcut = 40.0
         
-        result = dataloader._design_eeg_filters(fs, lowcut, highcut)
+        result = dataloader._design_eeg_filters(md, lowcut, highcut)
         
         assert isinstance(result, tuple)
         assert len(result) == 4  # notch, low, high, filter_type
 
     def test_design_filters_iir_default(self):
-        """_design_eeg_filters should use IIR filters by default."""
-        fs = 256
-        result = dataloader._design_eeg_filters(fs, 4.0, 40.0)
+        """_design_eeg_filters should use FIR filters by default."""
+        md = MultimodalData()
+        md.fs = 256
+        result = dataloader._design_eeg_filters(md, 4.0, 40.0)
         
         filter_type = result[3]
-        assert filter_type == 'iir'
+        assert filter_type == 'fir'
 
     def test_design_filters_notch_coefficients(self):
         """_design_eeg_filters should return valid notch filter coefficients."""
-        fs = 256
-        result = dataloader._design_eeg_filters(fs, 4.0, 40.0)
+        md = MultimodalData()
+        md.fs = 256
+        result = dataloader._design_eeg_filters(md, 4.0, 40.0)
         
         b_notch, a_notch = result[0]
         assert len(b_notch) > 0
@@ -160,8 +162,9 @@ class TestDesignEegFilters:
 
     def test_design_filters_bandpass_coefficients(self):
         """_design_eeg_filters should return valid bandpass filter coefficients."""
-        fs = 256
-        result = dataloader._design_eeg_filters(fs, 4.0, 40.0)
+        md = MultimodalData()
+        md.fs = 256
+        result = dataloader._design_eeg_filters(md, 4.0, 40.0)
         
         b_low, a_low = result[1]
         b_high, a_high = result[2]
@@ -176,20 +179,20 @@ class TestApplyFilters:
     def test_apply_filters_modifies_data_in_place(self):
         """_apply_filters should modify raw_eeg_data in place."""
         md = MultimodalData()
-        md.eeg_fs = 256
+        md.fs = 256
         md.eeg_channel_names_ch = ['Fp1']
         md.eeg_channel_names_cg = []
         md.eeg_channel_mapping = {'Fp1': 0}
         
         # Create test signal with known frequency content
         n_samples = 1000
-        t = np.arange(n_samples) / md.eeg_fs
+        t = np.arange(n_samples) / md.fs
         # Signal with 10 Hz component (should pass) and 60 Hz component (should be attenuated)
         raw_eeg_data = np.zeros((1, n_samples))
         raw_eeg_data[0, :] = np.sin(2 * np.pi * 10 * t) + np.sin(2 * np.pi * 60 * t)
         
         original_data = raw_eeg_data.copy()
-        filters = dataloader._design_eeg_filters(md.eeg_fs, 4.0, 40.0)
+        filters = dataloader._design_eeg_filters(md, 4.0, 40.0)
         
         dataloader._apply_filters(md, filters, raw_eeg_data)
         
@@ -220,7 +223,7 @@ class TestMountEegData:
         np.testing.assert_array_almost_equal(raw_eeg_data[0, :], [9.0, 9.0, 9.0])
 
     def test_mount_eeg_data_updates_channel_lists(self):
-        """_mount_eeg_data should remove M1/M2 from channel lists."""
+        """_mount_eeg_data should set references metadata."""
         md = MultimodalData()
         md.eeg_channel_names_ch = ['Fp1', 'Fp2', 'M1', 'M2']
         md.eeg_channel_names_cg = ['Fp1_cg', 'M1_cg', 'M2_cg']
@@ -233,11 +236,8 @@ class TestMountEegData:
         
         dataloader._mount_eeg_data(md, raw_eeg_data)
         
-        # M1, M2 should be removed from channel lists
-        assert 'M1' not in md.eeg_channel_names_ch
-        assert 'M2' not in md.eeg_channel_names_ch
-        assert 'M1_cg' not in md.eeg_channel_names_cg
-        assert 'M2_cg' not in md.eeg_channel_names_cg
+        # Check that references metadata is set
+        assert md.references == "linked ears montage: (M1+M2)/2"
 
 
 class TestExtractEcgData:
@@ -246,13 +246,24 @@ class TestExtractEcgData:
     def test_extract_ecg_data_creates_ecg_columns(self):
         """_extract_ecg_data should create ECG columns in DataFrame."""
         md = MultimodalData()
-        md.ecg_fs = 256
+        md.fs = 256
         md.eeg_channel_mapping = {
             'EKG1': 0, 'EKG2': 1, 'EKG1_cg': 2, 'EKG2_cg': 3
         }
         
-        n_samples = 1000
-        raw_eeg_data = np.random.randn(4, n_samples) * 0.1
+        # Need enough samples for ECG and IBI processing (at least 60 seconds)
+        n_samples = 60 * 256  # 60 seconds at 256 Hz
+        # Initialize DataFrame with time columns
+        md.data = pd.DataFrame({
+            'time': np.arange(n_samples) / md.fs,
+            'time_idx': np.arange(n_samples)
+        })
+        # Create synthetic ECG-like signals with some heartbeats
+        t = np.arange(n_samples) / 256
+        # Simulate ~60 bpm heart rate
+        raw_eeg_data = np.zeros((4, n_samples))
+        for i in range(4):
+            raw_eeg_data[i, :] = 0.5 * np.sin(2 * np.pi * 1.0 * t) + 0.1 * np.random.randn(n_samples)
         
         dataloader._extract_ecg_data(md, raw_eeg_data)
         
@@ -263,13 +274,23 @@ class TestExtractEcgData:
     def test_extract_ecg_data_adds_modality(self):
         """_extract_ecg_data should add ECG to modalities."""
         md = MultimodalData()
-        md.ecg_fs = 256
+        md.fs = 256
         md.modalities = []
         md.eeg_channel_mapping = {
             'EKG1': 0, 'EKG2': 1, 'EKG1_cg': 2, 'EKG2_cg': 3
         }
         
-        raw_eeg_data = np.random.randn(4, 1000) * 0.1
+        # Need enough samples for ECG and IBI processing
+        n_samples = 60 * 256  # 60 seconds at 256 Hz
+        # Initialize DataFrame with time columns
+        md.data = pd.DataFrame({
+            'time': np.arange(n_samples) / md.fs,
+            'time_idx': np.arange(n_samples)
+        })
+        t = np.arange(n_samples) / 256
+        raw_eeg_data = np.zeros((4, n_samples))
+        for i in range(4):
+            raw_eeg_data[i, :] = 0.5 * np.sin(2 * np.pi * 1.0 * t) + 0.1 * np.random.randn(n_samples)
         
         dataloader._extract_ecg_data(md, raw_eeg_data)
         
@@ -311,7 +332,7 @@ class TestSaveAndLoadData:
         """Data saved with save_to_file should be loadable with load_output_data."""
         md = MultimodalData()
         md.id = "test_dyad"
-        md.eeg_fs = 256
+        md.fs = 256
         md.modalities = ['EEG', 'ECG']
         md.data = pd.DataFrame({
             'time': [0.0, 0.1, 0.2],
@@ -327,7 +348,7 @@ class TestSaveAndLoadData:
             loaded = dataloader.load_output_data(filepath)
             
             assert loaded.id == md.id
-            assert loaded.eeg_fs == md.eeg_fs
+            assert loaded.fs == md.fs
             assert loaded.modalities == md.modalities
             pd.testing.assert_frame_equal(loaded.data, md.data)
 
