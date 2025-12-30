@@ -14,6 +14,7 @@ from scipy.signal import (
     lfilter,
 )
 import joblib
+import mne
 
 from . import eyetracker as et
 from .data_structures import MultimodalData
@@ -653,7 +654,98 @@ def save_to_file(multimodal_data: MultimodalData, output_dir):
     """
     joblib.dump(multimodal_data, output_dir + f"/{multimodal_data.id}.joblib")
 
+def get_eeg_data(df, who: str) -> tuple[np.ndarray | None, list]:
+    """Returns EEG data and channel names for specified participant.
+    
+    Args:
+        df: MultimodalData.data DataFrame instance containing EEG data
+        who: Participant identifier ('ch' for child, 'cg' for caregiver)
+        
+    Returns:
+        Tuple of (eeg_data, channel_names) where:
+        - eeg_data: 2D array [n_channels x n_samples] or None if no data
+        - channel_names: List of clean channel names (e.g., ['Fp1', 'Fp2', ...])
+    """
+    prefix = f'EEG_{who}_'
+    cols = [col for col in df.columns if col.startswith(prefix)]
+    
+    if not cols:
+        return None, []
+    
+    # Extract data as 2D array
+    eeg_data = df[cols].values.T
+    
+    # Strip prefix to get clean channel names
+    channel_names = [col.replace(prefix, '') for col in cols]
+    
+    return eeg_data, channel_names
+    
+def export_eeg_to_mne_raw(multimodal_data: MultimodalData, who: str, events=None, times=None) -> mne.io.Raw:
+    """
+    Export EEG data from MultimodalData to MNE Raw object.
 
+    Args:
+        multimodal_data: MultimodalData instance containing EEG data
+        who: 'ch' for child, 'cg' for caregiver 
+        events: Optional event to include by name (e.g., one of  ['Brave', 'Peppa', 'Incredibles', 'Talk_1', 'Talk_2'])
+        times: tuple; Optional range of time to include (in seconds)
+        Note: if both events and times are provided, times take precedence.
+    Returns:
+        raw: MNE Raw object with EEG data
+    """
+    if events is not None:
+        # Handle both single event (string) and multiple events (list)
+        if isinstance(events, str):
+            selected_data = multimodal_data.data[
+                multimodal_data.data["events"] == events
+            ]
+            first_sample_index = int(selected_data["time"].iloc[0] * multimodal_data.fs)
+        # else:
+        #     selected_data = multimodal_data.data[
+        #         multimodal_data.data["events"].isin(events)
+        #     ]
+    elif times is not None:
+        start_time, end_time = times
+        selected_data = multimodal_data.data[
+            (multimodal_data.data["time"] >= start_time)
+            & (multimodal_data.data["time"] <= end_time)
+        ]
+        first_sample_index = int(start_time * multimodal_data.fs)
+    else:
+        selected_data = multimodal_data.data   
+        first_sample_index = multimodal_data.data["time_idx"].iloc[0]    
+        # now seletd channel data based on the fact that they start with EEG and who
+    eeg_data, channel_names = get_eeg_data(df = selected_data, who=who)
+    
+
+    if eeg_data is None:
+        raise ValueError(f"No EEG data found for {who}, events: {events}, times: {times}")
+
+    info = mne.create_info(ch_names=channel_names, sfreq=multimodal_data.fs, ch_types='eeg')
+    raw = mne.io.RawArray(eeg_data, info, first_samp=first_sample_index)
+    
+    # Add filter information to raw object
+    if multimodal_data.eeg_filtration.applied:
+        filter_desc = (
+            f"EEG filtered with {multimodal_data.eeg_filtration.type} filters: "
+            f"highpass={multimodal_data.eeg_filtration.high_pass}Hz, "
+            f"lowpass={multimodal_data.eeg_filtration.low_pass}Hz, "
+            f"notch={multimodal_data.eeg_filtration.notch_freq}Hz (Q={multimodal_data.eeg_filtration.notch_Q}). "
+            f"Reference: {multimodal_data.references}"
+        )
+        raw.info['description'] = filter_desc
+        
+        # Also mark the data as filtered in MNE's standard way
+        if multimodal_data.eeg_filtration.high_pass:
+            raw.info['highpass'] = multimodal_data.eeg_filtration.high_pass
+        if multimodal_data.eeg_filtration.low_pass:
+            raw.info['lowpass'] = multimodal_data.eeg_filtration.low_pass
+    
+    # Set montage for electrode positions
+    montage = mne.channels.make_standard_montage('standard_1020')
+    raw.set_montage(montage, match_case=False)
+
+    return raw
 # --------------  Load eye-tracking data -----------------
 
 
@@ -1087,3 +1179,4 @@ def load_et_data(
 
     multimodal_data.modalities.append("ET")
     return multimodal_data
+

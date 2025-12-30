@@ -180,6 +180,7 @@ class MultimodalData:
             return None
         return self.data[cg_cols].values.T
 
+
     def set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
         """Store ECG data in DataFrame."""
         self._ensure_data_length(len(ecg_ch))
