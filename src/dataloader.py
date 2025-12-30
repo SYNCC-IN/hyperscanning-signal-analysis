@@ -36,6 +36,7 @@ def create_multimodal_data(
     et_pos_cutoff=128,
     et_pupil_cutoff=4,
     pupil_model_confidence=0.9,
+    decimate_factor=1,
     plot_flag=False,
 ):
     """Create and populate a MultimodalData instance by loading EEG and ET data.
@@ -106,6 +107,10 @@ def create_multimodal_data(
             pupil_model_confidence=pupil_model_confidence,
             plot_flag=plot_flag,
         )
+        if decimate_factor > 1:
+            multimodal_data = multimodal_data.decimate_signals(
+                q=decimate_factor
+            )
 
     return multimodal_data
 

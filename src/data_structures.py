@@ -136,6 +136,9 @@ class MultimodalData:
     # -------------------------------------------------------------------------
     # Methods for managing data in DataFrame
     # -------------------------------------------------------------------------
+    # TODO: all the fuctions for setting data in the dataframe should require 
+    # time vector for proper alignment with the time column. The functions for getting 
+    # data can return data aligned to the time column, together with the time vector.
 
     def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
         """
@@ -269,19 +272,57 @@ class MultimodalData:
 
     def decimate_signals(self, q=8):
         """
-        TODO: in the multimodal dataframe approach we keep all types of signals in the same dataframe, 
-        with the same sampling frequency (i.e., the EEG sampling frequency). 
-        However, decimating the EEG signals only may lead to inconsistencies if other signals (e.g., ECG, IBI) are not decimated accordingly. 
-        Therefore, we need to ensure that all signals are decimated properly to maintain synchronization across modalities.
-
-        Decimates the EEG signals by factor q.
-        Creates new columns with '_dec' suffix.
+        Decimate all signals by factor q while maintaining synchronization across modalities.
+        Note:
+            in the multimodal dataframe approach we keep all types of signals in the same dataframe, 
+            with the same sampling frequency (i.e., the EEG sampling frequency). 
+            However, decimating the EEG signals only may lead to inconsistencies if other signals (e.g., ECG, IBI) are not decimated accordingly. 
+            Therefore, we need to ensure that all signals are decimated properly to maintain synchronization across modalities.
+        Args:
+            q: Decimation factor
+        Returns:
+            multimodal_data_dec: New MultimodalData instance with decimated signals       
         """
-        eeg_ch_cols = [col for col in self.data.columns if col.startswith('EEG_ch_')]
-        eeg_cg_cols = [col for col in self.data.columns if col.startswith('EEG_cg_')]
+        # create a new multimodal data structure to hold decimated signals
+        multimodal_data_dec = MultimodalData()
+        multimodal_data_dec.fs = self.fs / q
+        multimodal_data_dec.id = self.id
+        multimodal_data_dec.eeg_channel_names_ch = self.eeg_channel_names_ch
+        multimodal_data_dec.eeg_channel_names_cg = self.eeg_channel_names_cg
+        multimodal_data_dec.eeg_channel_mapping = self.eeg_channel_mapping
+        multimodal_data_dec.references = self.references
+        multimodal_data_dec.eeg_filtration = self.eeg_filtration
+        multimodal_data_dec.events = self.events
+        multimodal_data_dec.paths = self.paths
+        multimodal_data_dec.tasks = self.tasks
+        multimodal_data_dec.modalities = self.modalities
+        multimodal_data_dec.child_info = self.child_info
+        multimodal_data_dec.notes = self.notes  
 
-        for col in eeg_ch_cols + eeg_cg_cols:
-            decimated = decimate(self.data[col].values, q)
-            self.data[f'{col}_dec'] = np.nan
-            self.data.loc[:len(decimated)-1, f'{col}_dec'] = decimated
+        # decimate time, events, and diode columns by selectiging every q-th sample
+        multimodal_data_dec.data['time'] = self.data['time'].values[::q]
+        multimodal_data_dec.data['time_idx'] = self.data['time_idx'].values[::q]
+        multimodal_data_dec.data['events'] = self.data['events'].values[::q]
+        multimodal_data_dec.data['ET_event'] = self.data['ET_event'].values[::q]
+        multimodal_data_dec.data['diode'] = self.data['diode'].values[::q]
+
+        # create a list of column that need to be antialiased filtered and decimated, these are all EEG, ECG, and IBI and ET columns
+        columns_to_decimate = [ col for col in self.data.columns 
+                               if col.startswith('EEG') 
+                               or col.startswith('ECG') 
+                               or col.startswith('IBI') 
+                               or col.startswith('ET_ch_') 
+                               or col.startswith('ET_cg_')]
+        for col in columns_to_decimate:
+            print(f'Decimating column: {col}')
+            # check if the column contain NaN values, if so, fill them with the previous value (forward fill) before decimation
+            if self.data[col].isnull().any():
+                print(f'Column {col} contains NaN values, applying forward fill before decimation.')
+                data_filled = self.data[col].fillna(method='ffill').values
+            else:
+                data_filled = self.data[col].values
+            decimated = decimate( (data_filled).astype(float), q, ftype='fir', zero_phase=True)
+            multimodal_data_dec.data[col] = decimated
+
+        return multimodal_data_dec
 

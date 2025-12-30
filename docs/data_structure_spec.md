@@ -35,10 +35,11 @@ class MultimodalData:
     
     # Metadata
     id: str                                 # Dyad ID
-    eeg_channel_names: list[str]            # List of all channel names in order
-    eeg_channel_mapping: dict[str, int]     # Mapping: channel name → index in raw data
+
     
     # EEG-specific metadata
+    eeg_channel_names: list[str]            # List of all channel names in order
+    eeg_channel_mapping: dict[str, int]     # Mapping: channel name → index in raw data
     references: str                         # Information about reference electrodes (e.g., "linked ears montage: (M1+M2)/2")
     eeg_filtration: Filtration              # Filtration parameters (see Filtration dataclass below)
     eeg_channel_names_ch: list[str]         # Child EEG channels after montage
