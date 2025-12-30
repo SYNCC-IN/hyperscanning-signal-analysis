@@ -13,7 +13,12 @@ from data_structures import MultimodalData
 from utils import plot_filter_characteristics
 
 # --------------  Create multimodal data instance and populate it with data -----------------
-def create_multimodal_data(data_base_path, dyad_id, load_eeg=True, load_et=True, lowcut=4.0, highcut=40.0, plot_flag=False):
+def create_multimodal_data(data_base_path, 
+                           dyad_id, 
+                           load_eeg=True, load_et=True, 
+                           lowcut=4.0, highcut=40.0, eeg_filter_type='fir', 
+                           interpolate_et_during_blinks_threshold=0, median_filter_size=64, low_pass_et_order=351, et_pos_cutoff=128, et_pupil_cutoff=4, pupil_model_confidence=0.9,
+                           plot_flag=False):
     """Create and populate a MultimodalData instance by loading EEG and ET data.
     directory structer assumed is: 
     data_base_path/
@@ -38,6 +43,13 @@ def create_multimodal_data(data_base_path, dyad_id, load_eeg=True, load_et=True,
         plot_flag (bool): Whether to plot intermediate results for debugging/visualization.
         lowcut (float, optional): Low cut-off frequency for EEG filtering. Defaults to 4.0 Hz.
         highcut (float, optional): High cut-off frequency for EEG filtering. Defaults to 40.0 Hz.
+        eeg_filter_type (str, optional): Type of filter to use for EEG data ('fir' or 'iir'). Defaults to 'fir'.
+        interpolate_et_during_blinks_threshold (int, optional): Threshold for interpolating ET data during blinks. Defaults to 0.
+        median_filter_size (int, optional): Size of the median filter for ET data processing. Defaults to 64.
+        low_pass_et_order (int, optional): Order of the low-pass filter for ET data processing. Defaults to 351.
+        et_pos_cutoff (float, optional): Cutoff frequency for ET position data low-pass filter. Defaults to 128 Hz.
+        et_pupil_cutoff (float, optional): Cutoff frequency for ET pupil data low-pass filter. Defaults to 1 Hz.
+        pupil_model_confidence (float, optional): Confidence level for 3D pupil model. Defaults to 0.9.
 
     Returns:
         MultimodalData: An instance populated with EEG and ET data.
@@ -46,15 +58,23 @@ def create_multimodal_data(data_base_path, dyad_id, load_eeg=True, load_et=True,
     multimodal_data.id = dyad_id
     if load_eeg:
         folder_eeg = os.path.join(data_base_path, dyad_id, "eeg")
-        multimodal_data = load_eeg_data(multimodal_data, dyad_id=dyad_id, folder_eeg=folder_eeg, lowcut=lowcut, highcut=highcut, plot_flag=plot_flag)
+        multimodal_data = load_eeg_data(multimodal_data, dyad_id=dyad_id, folder_eeg=folder_eeg, lowcut=lowcut, highcut=highcut, eeg_filter_type=eeg_filter_type, plot_flag=plot_flag)
     if load_et:
         folder_et = os.path.join(data_base_path, dyad_id, "et")
-        multimodal_data = load_et_data(multimodal_data,dyad_id=dyad_id, folder_et=folder_et, plot_flag=plot_flag)
+        if multimodal_data.fs is None:
+            multimodal_data.fs = 1024  # default EEG sampling frequency common to all signals if EEG data not loaded or set before ET data
+            raise ValueError("EEG data must be loaded before ET data to set the common sampling frequency.")
+        multimodal_data = load_et_data(multimodal_data,dyad_id=dyad_id, 
+                                       folder_et=folder_et, 
+                                       interpolate_et_during_blinks_threshold=interpolate_et_during_blinks_threshold, 
+                                       median_filter_size=median_filter_size, low_pass_et_order=low_pass_et_order, et_pos_cutoff=et_pos_cutoff, et_pupil_cutoff=et_pupil_cutoff,
+                                       pupil_model_confidence=pupil_model_confidence,
+                                       plot_flag=plot_flag)
 
     return multimodal_data
 
 # --------------  Load EEG and ECG data form SVAROG files -----------------
-def load_eeg_data(multimodal_data = None, dyad_id=None, folder_eeg=None, lowcut=4.0, highcut=40.0, plot_flag=False):
+def load_eeg_data(multimodal_data = None, dyad_id=None, folder_eeg=None, lowcut=4.0, highcut=40.0, eeg_filter_type='fir', plot_flag=False):
     """Set the EEG data for the DataLoader instance by loading and filtering the Warsaw pilot data.
     We assume data were recorded as multiplexed signals in SVAROG system format.
     We also assume specific channel names for child and caregiver EEG data, as specified below.
@@ -93,7 +113,7 @@ def load_eeg_data(multimodal_data = None, dyad_id=None, folder_eeg=None, lowcut=
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
     _mount_eeg_data(multimodal_data, raw_eeg_data)
-    filters = _design_eeg_filters(multimodal_data, lowcut=lowcut, highcut=highcut, plot_flag=plot_flag, filter_type='fir', notch_freq=50, notch_q=30)
+    filters = _design_eeg_filters(multimodal_data, lowcut=lowcut, highcut=highcut, filter_type=eeg_filter_type, notch_freq=50, notch_q=30, plot_flag=plot_flag)
     _apply_filters(multimodal_data, filters, raw_eeg_data, plot_flag=plot_flag)
 
     # Store EEG data in DataFrame with each channel as a column and set time column if not set yet
@@ -185,7 +205,7 @@ def _design_eeg_filters(multimodal_data: MultimodalData, lowcut, highcut, notch_
     if filter_type == 'fir':
         numtaps_low = 201
         b_low = firwin(numtaps_low, highcut, fs=multimodal_data.fs, pass_zero='lowpass')
-        numtaps_high = 2049
+        numtaps_high = 3049
         b_high = firwin(numtaps_high, lowcut, fs=multimodal_data.fs, pass_zero='highpass')
         a_low = a_high = 1.0
     else:
@@ -223,7 +243,7 @@ def _apply_filters(multimodal_data: MultimodalData, filters, raw_eeg_data, plot_
     # Filter and separate each channel
     for idx, ch in enumerate(multimodal_data.eeg_channel_names_all()):
         signal = raw_eeg_data[multimodal_data.eeg_channel_mapping[ch], :]
-
+        signal = signal - np.mean(signal)  # remove DC offset
         if filter_type == 'iir':
             signal = filtfilt(b_notch, a_notch, signal, axis=0)
             signal = filtfilt(b_low, a_low, signal, axis=0)
@@ -324,7 +344,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
             queue.popleft()
         # Detect movie events based on their duration and number of recent spikes
         if duration > 55 * eeg_fs and len(queue) > 1:  # movie events longer than 0:55
-            events[len(queue) - 2]['start'] = queue[0] / eeg_fs
+            events[len(queue) - 2]['start'] = (queue[0] +1)/ eeg_fs  # add 1 sample due to shift caoused by diff
             events[len(queue) - 2]['duration'] = (up_down_events[2 * i + 1] - queue[0]) / eeg_fs
             found_movies += 1
         if found_movies > 3:
@@ -333,7 +353,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
         if found_movies == 3 and duration < 2 * eeg_fs and following_space > 175 * eeg_fs:  # talk events longer than 2:55
             if found_talks < 2:
                 event_index = found_movies + found_talks
-                events[event_index]['start'] = up_down_events[2 * i + 1] / eeg_fs
+                events[event_index]['start'] = (up_down_events[2 * i + 1] +1) / eeg_fs  # add 1 sample due to shift caoused by diff
                 events[event_index]['duration'] = following_space / eeg_fs
                 found_talks += 1
             else:
@@ -460,7 +480,7 @@ def _load_et_task_data(file_paths: dict, task_id: str, member: str, min_max_time
     return loaded_data
 
 def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict, 
-                                    task_flags: dict, task_names: list) -> None:
+                                    task_flags: dict, task_names: list, median_filter_size=64, low_pass_et_order=351, et_pos_cutoff=128, et_pupil_cutoff=1,pupil_model_confidence=0.9, Fs=1024  ) -> None:
     """
     Process loaded ET data into the main ET dataframe.
     
@@ -469,6 +489,11 @@ def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict,
         loaded_data: Dictionary containing all loaded ET DataFrames
         task_flags: Dictionary with flags indicating which tasks/members have data
         task_names: List of task identifiers ['000', '001', '002']
+        median_filter_size: Size of the median filter for smoothing
+        low_pass_et_order: Order of the low-pass filter for ET data
+        et_pos_cutoff: Cutoff frequency for position data low-pass filter
+        et_pupil_cutoff: Cutoff frequency for pupil data low-pass filter
+        Fs: Sampling frequency of ET data
     """
     # Process movies task (000) if available
     if task_flags.get('movies_ch') or task_flags.get('movies_cg'):
@@ -477,17 +502,17 @@ def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict,
     
     if task_flags.get('movies_ch'):
         if 'ch_pos_000' in loaded_data:
-            et.process_pos(loaded_data['ch_pos_000'], et_df, 'ch')
+            et.process_pos(loaded_data['ch_pos_000'], et_df, 'ch',median_filter_size=median_filter_size, order = low_pass_et_order, cutoff = et_pos_cutoff, Fs=Fs)
         if 'ch_pupil_000' in loaded_data:
-            et.process_pupil(loaded_data['ch_pupil_000'], et_df, 'ch')
+            et.process_pupil(loaded_data['ch_pupil_000'], et_df, 'ch', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
         if 'ch_blinks_000' in loaded_data:
             et.process_blinks(loaded_data['ch_blinks_000'], et_df, 'ch')
     
     if task_flags.get('movies_cg'):
         if 'cg_pos_000' in loaded_data:
-            et.process_pos(loaded_data['cg_pos_000'], et_df, 'cg')
+            et.process_pos(loaded_data['cg_pos_000'], et_df, 'cg',median_filter_size=median_filter_size, order = low_pass_et_order, cutoff = et_pos_cutoff, Fs=Fs)
         if 'cg_pupil_000' in loaded_data:
-            et.process_pupil(loaded_data['cg_pupil_000'], et_df, 'cg')
+            et.process_pupil(loaded_data['cg_pupil_000'], et_df, 'cg', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
         if 'cg_blinks_000' in loaded_data:
             et.process_blinks(loaded_data['cg_blinks_000'], et_df, 'cg')
     
@@ -498,11 +523,11 @@ def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict,
     
     if task_flags.get('talk1_ch'):
         if 'ch_pupil_001' in loaded_data:
-            et.process_pupil(loaded_data['ch_pupil_001'], et_df, 'ch')
+            et.process_pupil(loaded_data['ch_pupil_001'], et_df, 'ch', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
     
     if task_flags.get('talk1_cg'):
         if 'cg_pupil_001' in loaded_data:
-            et.process_pupil(loaded_data['cg_pupil_001'], et_df, 'cg')
+            et.process_pupil(loaded_data['cg_pupil_001'], et_df, 'cg', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
     
     # Process talk2 task (002)
     if task_flags.get('talk2_ch') or task_flags.get('talk2_cg'):
@@ -511,19 +536,29 @@ def _process_et_data_to_dataframe(et_df: pd.DataFrame, loaded_data: dict,
     
     if task_flags.get('talk2_ch'):
         if 'ch_pupil_002' in loaded_data:
-            et.process_pupil(loaded_data['ch_pupil_002'], et_df, 'ch')
+            et.process_pupil(loaded_data['ch_pupil_002'], et_df, 'ch', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
     
     if task_flags.get('talk2_cg'):
         if 'cg_pupil_002' in loaded_data:
-            et.process_pupil(loaded_data['cg_pupil_002'], et_df, 'cg')
+            et.process_pupil(loaded_data['cg_pupil_002'], et_df, 'cg', model_confidence=pupil_model_confidence, median_size=median_filter_size, order=low_pass_et_order, cutoff=et_pupil_cutoff, Fs=Fs)
 
-def load_et_data(multimodal_data, dyad_id, folder_et, plot_flag = False):
+
+def load_et_data(multimodal_data, dyad_id, folder_et, interpolate_et_during_blinks_threshold = 0,
+                  median_filter_size=64, low_pass_et_order=351, et_pos_cutoff=128, et_pupil_cutoff=1, 
+                  pupil_model_confidence=0.9, 
+                  plot_flag = False):
     """ Load eye-tracking data from CSV files and integrate into the MultimodalData instance.
 
     Args:
         multimodal_data: Instance of MultimodalData to populate with ET data
         dyad_id: Identifier for the dyad
         et_path: Base path to ET data directory
+        interpolate_et_during_blinks_threshold: Threshold for interpolating ET data during blinks
+        median_filter_size: Size of the median filter for ET data processing
+        low_pass_et_order: Order of the low-pass filter for ET data processing
+        et_pos_cutoff: Cutoff frequency for ET position data low-pass filter
+        et_pupil_cutoff: Cutoff frequency for ET pupil data low-pass filter
+        pupil_model_confidence: Confidence level for 3D pupil model
         plot_flag: Whether to plot intermediate results for debugging/visualization
     """
     if multimodal_data is None:
@@ -586,7 +621,11 @@ def load_et_data(multimodal_data, dyad_id, folder_et, plot_flag = False):
     et_df['time_idx'] = (et_df['time'] * multimodal_data.fs).astype(int)
     
     # Process loaded data into the dataframe
-    _process_et_data_to_dataframe(et_df, loaded_data, task_flags, [t['id'] for t in tasks])
+    _process_et_data_to_dataframe(et_df, 
+                                  loaded_data, task_flags, [t['id'] for t in tasks], 
+                                  median_filter_size=median_filter_size, low_pass_et_order=low_pass_et_order, et_pos_cutoff=et_pos_cutoff, 
+                                  et_pupil_cutoff=et_pupil_cutoff, pupil_model_confidence=pupil_model_confidence,
+                                  Fs=multimodal_data.fs)
         
     # Align ET time to EEG time by subtracting the time of the first event; 
     # We consider the time of first event in all data series to be 0; 
@@ -609,6 +648,24 @@ def load_et_data(multimodal_data, dyad_id, folder_et, plot_flag = False):
         multimodal_data.data['time'] = multimodal_data.data['time_x'].fillna(multimodal_data.data['time_y'])
         multimodal_data.data = multimodal_data.data.drop(columns=['time_x','time_y'])
         multimodal_data.data = multimodal_data.data.replace(np.nan, None)
+
+    # correct alignment of x, y, blinks and pupil columns by delta_time estimated to be -0.3s
+    delta_time = -0.3
+    for col in multimodal_data.data.columns:
+        if any(keyword in col for keyword in ['x', 'y', 'blinks', 'diameter3d']):
+            multimodal_data.data[col] = multimodal_data.data[col].shift(int(delta_time * multimodal_data.fs)) 
+    if interpolate_et_during_blinks_threshold>0 :
+        # correct x, y, and diameter3d columns by interpolating the values during blinks, separately for child and caregiver
+        for member in ['ch', 'cg']:
+            blink_col = f'ET_{member}_blinks'
+            print(f'Processing member: {member}, blink column: {blink_col}')
+            for col in multimodal_data.data.columns:
+                if any(keyword in col for keyword in [f'ET_{member}_x', f'ET_{member}_y', f'ET_{member}_diameter3d']):
+                    # Convert to numeric dtype to enable interpolation
+                    multimodal_data.data[col] = pd.to_numeric(multimodal_data.data[col], errors='coerce')
+                    blink_indices = multimodal_data.data.index[multimodal_data.data[blink_col] > interpolate_et_during_blinks_threshold].tolist()
+                    multimodal_data.data.loc[blink_indices, col] = np.nan
+                    multimodal_data.data[col] = multimodal_data.data[col].interpolate(method='linear', limit_direction='both')
 
     multimodal_data.modalities.append('ET')
     return multimodal_data
