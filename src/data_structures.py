@@ -231,15 +231,21 @@ class MultimodalData:
         """Returns a combined list of child and caregiver EEG channel names."""
         return self.eeg_channel_names_ch + self.eeg_channel_names_cg
 
-    def interpolate_ibi_signals(self, ecg, label='', plot_flag=False):
+    def interpolate_ibi_signals(self, who, label='', plot_flag=False):
         """Extract R-peaks and interpolate IBI signals from ECG data."""
-        _, info_ecg = nk.ecg_process(ecg, sampling_rate=self.fs, method='neurokit')
+        _, info_ecg = nk.ecg_process(self.data[f'ECG_{who}'].values, sampling_rate=self.fs, method='neurokit')
         r_peaks = info_ecg["ECG_R_Peaks"]
         ibi = np.diff(r_peaks) / self.fs * 1000  # IBI in ms
         times = np.cumsum(ibi) / 1000  # time vector for the IBI signals [s]
-        ecg_times = np.arange(0, times[-1], 1 / self.fs)  # time vector for the interpolated IBI signals
+        # correct the times so that the first IBI corresponds to the time of the first R-peak
+        # this should corrspond to the time vector of the ECG signal
+        times = times + (r_peaks[0] / self.fs)
+        ecg_times = np.arange(times[0], times[-1], 1 / self.fs)  # time vector for the interpolated IBI signals
         cubic_spline = CubicSpline(times, ibi)
         ibi_interp = cubic_spline(ecg_times)
+        df_ibi = pd.DataFrame({'time': ecg_times, f'IBI_{who}': ibi_interp})
+        self.data = pd.merge_asof(self.data.sort_values('time'), df_ibi.sort_values('time'), on='time', direction='nearest')
+     
         if plot_flag:
             plt.figure(figsize=(12, 6))
             plt.plot(ecg_times, ibi_interp)
@@ -249,24 +255,17 @@ class MultimodalData:
             plt.show()
         return ibi_interp, ecg_times
 
-    def compute_ibi(self):
+    def set_ibi(self):
         """Interpolate IBI signals from ECG data and store in DataFrame."""
-        ecg_ch = self.data['ECG_ch'].values
-        ecg_cg = self.data['ECG_cg'].values
+        # ecg_ch = self.data['ECG_ch'].values
+        # ecg_cg = self.data['ECG_cg'].values
 
-        ibi_ch_interp, t_ibi_ch = self.interpolate_ibi_signals(ecg_ch)
-        ibi_cg_interp, _ = self.interpolate_ibi_signals(ecg_cg)
+        self.interpolate_ibi_signals('ch')
+        self.interpolate_ibi_signals('cg')
 
         if 'IBI' not in self.modalities:
             self.modalities.append('IBI')
 
-        # truncate the IBI signals to the same length
-        min_length = min(len(ibi_ch_interp), len(ibi_cg_interp))
-        self.set_ibi_data(
-            ibi_ch_interp[:min_length],
-            ibi_cg_interp[:min_length],
-            t_ibi_ch[:min_length]
-        )
 
     def decimate_signals(self, q=8):
         """
