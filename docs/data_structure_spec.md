@@ -4,7 +4,7 @@
 
 **Version:** 2.0  
 **Last updated:** 2025-12-30  
-**Author:** Joanna Duda-Goławska
+**Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
 
 This document defines the unified **Python data structure** for handling multimodal child-caregiver data recorded with:
 

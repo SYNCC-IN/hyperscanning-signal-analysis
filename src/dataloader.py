@@ -15,9 +15,9 @@ from scipy.signal import (
 )
 import joblib
 
-import eyetracker as et
-from data_structures import MultimodalData
-from utils import plot_filter_characteristics
+from . import eyetracker as et
+from .data_structures import MultimodalData
+from .utils import plot_filter_characteristics
 
 # --------------  Create multimodal data instance and populate it with dat
 
@@ -1064,7 +1064,7 @@ def load_et_data(
                     for keyword in [
                         f"ET_{member}_x",
                         f"ET_{member}_y",
-                        f"ET_{member}_diameter3d",
+                        f"ET_{member}_pupil",
                     ]
                 ):
                     # Convert to numeric dtype to enable interpolation

@@ -142,7 +142,7 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10,
                    (default: 1)
     :param Fs: sampling frequency in Hz (default: 1024)
     :param plot_flag: if True, plot debug information (default: False)
-    :return: None (modifies df in place, adding 'ET_{who}_diameter3d'
+    :return: None (modifies df in place, adding 'ET_{who}_pupil'
              column)
     '''
 
@@ -180,7 +180,7 @@ def process_pupil(pupil_df, df, who, model_confidence=0.9, median_size=10,
         plt.plot(df['time'], diameter3d_interp, label='Interpolated')
         plt.plot(df['time'], diameter3d_interp_filtred_aligned)
         plt.show()
-    col_name = f'ET_{who}_diameter3d'
+    col_name = f'ET_{who}_pupil'
     if col_name not in df.columns:
         df[col_name] = None
 
