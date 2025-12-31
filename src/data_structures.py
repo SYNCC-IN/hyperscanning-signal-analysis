@@ -15,8 +15,14 @@ class Filtration:
     """Stores information about signal filtration."""
     notch_Q: Optional[float] = None
     notch_freq: Optional[float] = None
+    notch_a: Optional[np.ndarray] = None
+    notch_b: Optional[np.ndarray] = None
     low_pass: Optional[float] = None
+    low_pass_a: Optional[np.ndarray] = None
+    low_pass_b: Optional[np.ndarray] = None
     high_pass: Optional[float] = None
+    high_pass_a: Optional[np.ndarray] = None
+    high_pass_b: Optional[np.ndarray] = None
     type: Optional[str] = None
     applied: Optional[bool] = False
 

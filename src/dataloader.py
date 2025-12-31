@@ -398,10 +398,16 @@ def _design_eeg_filters(
             db_lim=(-60, 0.1),
         )
         # add info about filtering to the multimodal data
-    multimodal_data.eeg_filtration.lowcut = lowcut
-    multimodal_data.eeg_filtration.highcut = highcut
+    multimodal_data.eeg_filtration.low_pass = highcut
+    multimodal_data.eeg_filtration.low_pass_a=a_low
+    multimodal_data.eeg_filtration.low_pass_b=b_low
+    multimodal_data.eeg_filtration.high_pass = lowcut
+    multimodal_data.eeg_filtration.high_pass_a=a_high
+    multimodal_data.eeg_filtration.high_pass_b=b_high
     multimodal_data.eeg_filtration.notch_Q = notch_q
     multimodal_data.eeg_filtration.notch_freq = notch_freq
+    multimodal_data.eeg_filtration.notch_a=a_notch
+    multimodal_data.eeg_filtration.notch_b=b_notch
     multimodal_data.eeg_filtration.type = filter_type
 
     return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), filter_type
@@ -721,10 +727,25 @@ def export_eeg_to_mne_raw(multimodal_data: MultimodalData, who: str, events=None
     if eeg_data is None:
         raise ValueError(f"No EEG data found for {who}, events: {events}, times: {times}")
 
-    info = mne.create_info(ch_names=channel_names, sfreq=multimodal_data.fs, ch_types='eeg')
+    info = mne.create_info(
+        ch_names=channel_names, 
+        sfreq=multimodal_data.fs, 
+        ch_types='eeg'
+    )
+    
     raw = mne.io.RawArray(eeg_data, info, first_samp=first_sample_index)
     
-    # Add filter information to raw object
+    # Mark the data as pre-filtered using MNE's internal method
+    # We need to use the private _update_times method or set these via the dictionary update
+    if multimodal_data.eeg_filtration.applied:
+        # Update the info dictionary with filter information using dict.update to bypass validation
+        with raw.info._unlock():
+            if multimodal_data.eeg_filtration.high_pass:
+                raw.info['highpass'] = float(multimodal_data.eeg_filtration.high_pass)
+            if multimodal_data.eeg_filtration.low_pass:
+                raw.info['lowpass'] = float(multimodal_data.eeg_filtration.low_pass)
+    
+    # Add filter description to raw object
     if multimodal_data.eeg_filtration.applied:
         filter_desc = (
             f"EEG filtered with {multimodal_data.eeg_filtration.type} filters: "
@@ -734,12 +755,6 @@ def export_eeg_to_mne_raw(multimodal_data: MultimodalData, who: str, events=None
             f"Reference: {multimodal_data.references}"
         )
         raw.info['description'] = filter_desc
-        
-        # Also mark the data as filtered in MNE's standard way
-        if multimodal_data.eeg_filtration.high_pass:
-            raw.info['highpass'] = multimodal_data.eeg_filtration.high_pass
-        if multimodal_data.eeg_filtration.low_pass:
-            raw.info['lowpass'] = multimodal_data.eeg_filtration.low_pass
     
     # Set montage for electrode positions
     montage = mne.channels.make_standard_montage('standard_1020')
