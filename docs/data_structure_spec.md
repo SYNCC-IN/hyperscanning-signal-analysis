@@ -2,8 +2,8 @@
 
 ### EEGLAB-style multimodal structure for EEG, ET, and IBI signals
 
-**Version:** 2.0  
-**Last updated:** 2025-12-30  
+**Version:** 2.1  
+**Last updated:** 2026-01-01  
 **Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
 
 This document defines the unified **Python data structure** for handling multimodal child-caregiver data recorded with:
@@ -156,26 +156,47 @@ class ChildInfo:
 ### Data Population Methods
 
 ```python
-set_eeg_data(eeg_data: np.ndarray, channel_mapping: dict)
+set_eeg_data(eeg_data: np.ndarray, channel_mapping: Dict[str, int])
     # Store EEG data with each channel as a DataFrame column
     # Creates time and time_idx columns if fs is set
+    # Args:
+    #   eeg_data: 2D array [n_channels x n_samples]
+    #   channel_mapping: Dict mapping channel names to indices in eeg_data
     
 set_ecg_data(ecg_ch: np.ndarray, ecg_cg: np.ndarray)
     # Store ECG signals for child and caregiver
+    # Creates columns 'ECG_ch' and 'ECG_cg'
     
 set_ibi_data(ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray)
     # Store interpolated IBI signals (note: ibi_times parameter not used in current implementation)
+    # Creates columns 'IBI_ch' and 'IBI_cg'
     
 set_diode(diode: np.ndarray)
     # Store diode signal for event detection
+    # Creates column 'diode'
     
-set_events_column(events: list[dict])
+set_events_column(events: List[dict])
     # Populate events column based on event timing and duration
+    # Events should have format: [{'name': str, 'start': float, 'duration': float}, ...]
 ```
 
 ### Data Retrieval Methods
 
 ```python
+get_signals(mode: str = 'EEG', member: str = 'ch', selected_channels: List[str] = None,
+            selected_events: List[str] = None, selected_times: Tuple[float, float] = None) -> Tuple[np.ndarray, np.ndarray]
+    # Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times
+    # Args:
+    #   mode: Signal type - 'EEG', 'ECG', 'IBI', 'ET' (eye-tracking), or 'diode'
+    #   member: 'ch' (child) or 'cg' (caregiver)
+    #   selected_channels: List of channel names to retrieve (None = all channels for that mode/member)
+    #   selected_events: List of event names to filter by (None = no event filtering)
+    #   selected_times: Time range tuple (start, end) in seconds (None = all times)
+    # Returns:
+    #   Tuple of (time_vector, signal_data)
+    #   - time_vector: 1D array of timestamps in seconds
+    #   - signal_data: 2D array [n_channels x n_samples] or 1D array for single channel modes
+
 get_eeg_data_ch() -> np.ndarray or None
     # Returns child EEG data as 2D array [n_channels x n_samples]
     
@@ -191,13 +212,41 @@ eeg_channel_names_all() -> list[str]
 ```python
 align_time_to_first_event()
     # Shifts time columns so first event starts at t=0
+    # Finds earliest event start time and subtracts from all time values
     
-decimate_signals(q: int)
-    # Decimates all signal columns by factor q, creating new columns with '_dec' suffix
+decimate_signals(q: int = 8) -> MultimodalData
+    # Decimates all signal columns by factor q while maintaining synchronization
+    # Args:
+    #   q: Decimation factor (default=8) - reduce sampling rate by this factor
+    # Returns:
+    #   MultimodalData: New instance with decimated signals and updated sampling frequency
+    # Process:
+    #   - Applies anti-aliasing FIR filter before decimation to prevent frequency folding
+    #   - Handles NaN values by forward filling before decimation to maintain signal continuity
+    #   - Decimates time columns, signal columns (EEG, ECG, IBI, ET), and event markers
+    #   - Updates fs (sampling frequency) by dividing by q
+    # Note: Creates a new MultimodalData object; does not modify in place
+    # Args:
+    #   q: Decimation factor (default: 8)
+    # Returns:
+    #   New MultimodalData instance with decimated signals and fs/q sampling rate
+    # Note: Time, events, and diode columns are downsampled by selecting every q-th sample
+    #       EEG, ECG, IBI, and ET columns are properly anti-aliased filtered then decimated
     
 interpolate_ibi_signals(who: str, label: str = '', plot_flag: bool = False)
-    # Extracts R-peaks and interpolates IBI signals from ECG data
-    # 'who' should be 'ch' (child) or 'cg' (caregiver)
+    # Extracts R-peaks and interpolates IBI signals from ECG data using neurokit2
+    # Args:
+    #   who: 'ch' (child) or 'cg' (caregiver)
+    #   label: Optional label for plotting
+    #   plot_flag: Whether to plot the results
+
+set_ibi()
+    # Convenience method to interpolate IBI signals for both child and caregiver
+    # Calls interpolate_ibi_signals for both 'ch' and 'cg'
+
+_ensure_data_length(length: int)
+    # Internal method to ensure DataFrame has enough rows
+    # Creates or extends DataFrame as needed
 ```
 
 ## Example Usage
@@ -236,6 +285,11 @@ ch_eeg = md.get_eeg_data_ch()  # All child EEG as array
 ```
 
 ## Version History
+
+- **2.1 (2026-01-01)**: Enhanced signal retrieval and decimation methods
+  - Added comprehensive `get_signals()` method for flexible signal retrieval with event/time filtering
+  - Enhanced `decimate_signals()` documentation to clarify return behavior and NaN handling
+  - Improved method documentation with detailed parameter and return value descriptions
 
 - **2.0 (2025-12-30)**: Updated to reflect DataFrame-based architecture
   - Changed from separate arrays to unified DataFrame storage
