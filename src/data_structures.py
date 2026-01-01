@@ -145,7 +145,53 @@ class MultimodalData:
     # TODO: all the fuctions for setting data in the dataframe should require 
     # time vector for proper alignment with the time column. The functions for getting 
     # data can return data aligned to the time column, together with the time vector.
+    def get_signals(self, mode='EEG', member='ch', selected_channels=None, selected_events=None, selected_times=None):
+        """
+        Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times.
 
+        Args:
+            mode: 'EEG', 'ECG', 'IBI', 'ET', 'diode
+            member: 'ch' for child, 'cg' for caregiver
+            selected_channels: List of channel names to retrieve (for EEG and ET)
+            selected_events: List of event names to filter data
+            selected_times: Tuple (start_time, end_time) to filter data by time
+        """
+        # Implementation of get_signals method goes here
+        prefix = ''
+        if mode == 'EEG':
+            prefix = f'EEG_{member}_'
+        elif mode == 'ET':
+            prefix = f'ET_{member}_'
+        elif mode == 'ECG':
+            prefix = f'ECG_{member}'
+        elif mode == 'IBI':
+            prefix = f'IBI_{member}'
+        elif mode == 'diode':
+            prefix = 'diode'    
+        else:
+            raise ValueError("Invalid mode. Choose from 'EEG', 'ECG', 'IBI', 'ET'.")
+        # Filter columns based on selected channels
+        if mode in ['EEG', 'ET']:
+            cols = [f'{prefix}{ch}' for ch in selected_channels if f'{prefix}{ch}' in self.data.columns]
+        else:
+            cols = [prefix] if prefix in self.data.columns else []  
+        if not cols:
+            return None
+        df_filtered = self.data[cols + ['time', 'events']].copy()   
+        # Filter by selected events
+        if selected_events:
+            df_filtered = df_filtered[df_filtered['events'].isin(selected_events)]
+        # Filter by selected times
+        if selected_times:
+            start_time, end_time = selected_times
+            df_filtered = df_filtered[(df_filtered['time'] >= start_time) & (df_filtered['time'] <= end_time)]
+        # Retrive the time vector
+        time_vector = df_filtered['time'].values
+        # Remove 'time' and 'events' columns before returning data
+        df_filtered = df_filtered.drop(columns=['time', 'events'])
+        # Return data as 2D array [n_channels x n_samples]
+        return time_vector, df_filtered[cols].values.T  # return as 2D array [n_channels x n_samples]
+    
     def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
         """
         Store EEG data in DataFrame with each channel as a separate column.
@@ -171,6 +217,7 @@ class MultimodalData:
                 else:
                     col_name = f'EEG_ch_{chan_name}'
                 self.data[col_name] = eeg_data[chan_idx, :]
+
                 
     def get_eeg_data_ch(self) -> Optional[np.ndarray]:
         """Returns EEG data for child channels only as 2D array."""
@@ -321,11 +368,10 @@ class MultimodalData:
                                or col.startswith('ET_ch_') 
                                or col.startswith('ET_cg_')]
         for col in columns_to_decimate:
-            print(f'Decimating column: {col}')
             # check if the column contain NaN values, if so, fill them with the previous value (forward fill) before decimation
             if self.data[col].isnull().any():
                 print(f'Column {col} contains NaN values, applying forward fill before decimation.')
-                data_filled = self.data[col].fillna(method='ffill').values
+                data_filled = self.data[col].infer_objects(copy=False).ffill().values
             else:
                 data_filled = self.data[col].values
             decimated = decimate( (data_filled).astype(float), q, ftype='fir', zero_phase=True)
