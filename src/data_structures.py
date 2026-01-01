@@ -190,7 +190,7 @@ class MultimodalData:
         # Remove 'time' and 'events' columns before returning data
         df_filtered = df_filtered.drop(columns=['time', 'events'])
         # Return data as 2D array [n_channels x n_samples]
-        return time_vector, df_filtered[cols].values.T  # return as 2D array [n_channels x n_samples]
+        return time_vector, df_filtered[cols].values.T  
     
     def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
         """

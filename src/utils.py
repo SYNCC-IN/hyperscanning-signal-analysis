@@ -6,6 +6,7 @@ import os
 from plotly.subplots import make_subplots
 from sklearn.decomposition import FastICA
 import scipy.signal as signal   
+import pandas as pd
 
 def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
     """Get IBI signal from ECG data for a specific event.
@@ -103,7 +104,7 @@ def clean_data_with_ica(data, selected_channels, event):
 
 ### PLOTS ####
 
-def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filtered EEG Channels', renderer='auto'):
+def plot_eeg_channels_pl(mmd, selected_events, selected_channels, title='Filtered EEG Channels', renderer='auto'):
     """
     Plot the filtered EEG channels with events highlighted using Plotly.
     Replicates the matplotlib version with vertical offsets in a single plot.
@@ -134,53 +135,92 @@ def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filter
 
     # Plot each channel with vertical offset
     for i, ch in enumerate(selected_channels):
-        if ch in filtered_data['channels']:
-            idx = filtered_data['channels'][ch]
-            x_ch = filtered_data['data'][idx, :]
-            # clip the amplitudes
-            x_ch = np.clip(x_ch, -100, 100)
+        x_ch= mmd.data[ch].values
+        # clip the amplitudes
+        x_ch = np.clip(x_ch, -100, 100)
 
-            # Add trace for this channel with offset
-            fig.add_trace(go.Scatter(
-                x=filtered_data['t_EEG'],
-                y=x_ch + offset,
-                mode='lines',
-                name=ch,
-                line={'width': 1},
-                showlegend=True
-            ))
+        # Add trace for this channel with offset
+        fig.add_trace(go.Scatter(
+            x=mmd.data.time,
+            y=x_ch + offset,
+            mode='lines',
+            name=ch,
+            line={'width': 1},
+            showlegend=True
+        ))
 
-            y_ticks.append(offset)
-            y_tick_labels.append(ch)
-            offset += spacing
+        y_ticks.append(offset)
+        y_tick_labels.append(ch)
+        offset += spacing
 
-    # Add event highlights as vertical rectangles spanning all channels
-    event_colors_used = []
-    for i, event in enumerate(events):
-        if events[event] is not None:
-            color_idx = i % len(colors)
+    # Add event highlights as vertical rectangles spanning all channels based on 'events' column
+    # Group consecutive rows with the same event to create continuous background regions
+    event_color_map = {}
+    
+    # Get unique events and assign colors
+    unique_events = mmd.data['events'].dropna().unique()
+    for i, event in enumerate(unique_events):
+        color_idx = i % len(colors)
+        event_color_map[event] = colors[color_idx]
+    
+    # Find continuous segments for each event
+    current_event = None
+    segment_start = None
+    prev_time = None
+    
+    for idx in range(len(mmd.data)):
+        row = mmd.data.iloc[idx]
+        event = row['events']
+        time = row['time']
+        
+        # Start a new segment when event changes or on first row
+        if event != current_event:
+            # Close previous segment if it exists
+            if current_event is not None and pd.notna(current_event) and segment_start is not None and prev_time is not None:
+                # Add rectangle for the completed segment
+                if current_event in event_color_map:
+                    fig.add_vrect(
+                        x0=segment_start,
+                        x1=prev_time,
+                        fillcolor=event_color_map[current_event],
+                        opacity=0.2,
+                        layer="below",
+                        line_width=0
+                    )
+            
+            # Start new segment
+            if pd.notna(event):
+                current_event = event
+                segment_start = time
+            else:
+                current_event = None
+                segment_start = None
+        
+        prev_time = time
+    
+    # Close the last segment
+    if current_event is not None and pd.notna(current_event) and segment_start is not None and prev_time is not None:
+        if current_event in event_color_map:
             fig.add_vrect(
-                x0=events[event],
-                x1=events[event] + 60,
-                fillcolor=colors[color_idx],
+                x0=segment_start,
+                x1=prev_time,
+                fillcolor=event_color_map[current_event],
                 opacity=0.2,
                 layer="below",
-                line_width=0,
-                annotation_text=f'{event} (60s)',
-                annotation_position="top left",
-                annotation={'font': {'size': 10, 'color': colors[color_idx]}, 'bgcolor': "white",
-                            'bordercolor': colors[color_idx], 'borderwidth': 1}
+                line_width=0
             )
-            if color_idx not in event_colors_used:
-                # Add invisible trace for legend
-                fig.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode='markers',
-                    marker={'size': 10, 'color': colors[color_idx]},
-                    name=f'{event} Events',
-                    showlegend=True
-                ))
-                event_colors_used.append(color_idx)
+    
+    # Add legend entries for events
+    for event, color in event_color_map.items():
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode='markers',
+            marker={'size': 10, 'color': color},
+            name=f'{event}',
+            showlegend=True
+        ))
+
+    #event_colors_used.append(color_idx)
 
     # Update layout to match matplotlib appearance with enhanced interactivity
     fig.update_layout(
@@ -229,8 +269,11 @@ def plot_eeg_channels_pl(filtered_data, events, selected_channels, title='Filter
             save_figure_to_html(fig, title)
 
 
-def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event, selected_channels_ch,
-                                          selected_channels_cg, title='Filtered EEG Channels - Hyperscanning',
+def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, 
+                                          event,
+                                          selected_channels_ch,
+                                          selected_channels_cg, 
+                                          title='Filtered EEG Channels - Hyperscanning',
                                           renderer='auto'):
     """
     Plot child and caregiver EEG channels for hyperscanning analysis using Plotly.
@@ -242,8 +285,6 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
         Child EEG data (channels x samples)
     data_cg : numpy.ndarray  
         Caregiver EEG data (channels x samples)
-    all_channels : dict
-        Dictionary of all available channels
     event : str
         Name of the event being plotted
     selected_channels_ch : list
@@ -269,37 +310,35 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg, all_channels, event,
 
     # Plot child EEG channels
     for i, ch in enumerate(selected_channels_ch):
-        if ch in all_channels:
-            color_idx = i % len(colors)
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(data_ch.shape[1])),
-                    y=data_ch[i, :],
-                    mode='lines',
-                    name=ch,
-                    line={'color': colors[color_idx], 'width': 1.5},
-                    legendgroup='child',
-                    legendgrouptitle={'text': "Child Channels"}
-                ),
-                row=1, col=1
-            )
+        color_idx = i % len(colors)
+        fig.add_trace(
+            go.Scatter(
+                x=list(range(data_ch.shape[1])),
+                y=data_ch[i, :],
+                mode='lines',
+                name=ch,
+                line={'color': colors[color_idx], 'width': 1.5},
+                legendgroup='child',
+                legendgrouptitle={'text': "Child Channels"}
+            ),
+            row=1, col=1
+        )
 
     # Plot caregiver EEG channels  
     for i, ch in enumerate(selected_channels_cg):
-        if ch in all_channels:
-            color_idx = i % len(colors)
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(data_cg.shape[1])),
-                    y=data_cg[i, :],
-                    mode='lines',
-                    name=ch,
-                    line={'color': colors[color_idx], 'width': 1.5},
-                    legendgroup='caregiver',
-                    legendgrouptitle={'text': "Caregiver Channels"}
-                ),
-                row=2, col=1
-            )
+        color_idx = i % len(colors)
+        fig.add_trace(
+            go.Scatter(
+                x=list(range(data_cg.shape[1])),
+                y=data_cg[i, :],
+                mode='lines',
+                name=ch,
+                line={'color': colors[color_idx], 'width': 1.5},
+                legendgroup='caregiver',
+                legendgrouptitle={'text': "Caregiver Channels"}
+            ),
+            row=2, col=1
+        )
 
     # Update layout
     fig.update_layout(

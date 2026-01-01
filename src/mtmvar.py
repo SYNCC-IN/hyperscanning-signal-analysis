@@ -222,8 +222,8 @@ def dtf_multivariate(signals, freqs, fs, max_model_order=20, optimal_model_order
     """
     if optimal_model_order is None:
         _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, False)
-        print(
-            f'Optimal model order for all {'' if comment is None else comment + ' '}channels: p = {optimal_model_order}')
+        comment_str = '' if comment is None else comment + ' '
+        print(f'Optimal model order for all {comment_str}channels: p = {optimal_model_order}')
     else:
         print(f'Using provided model order: p = {optimal_model_order}')
     ar_coeffs, _ = ar_coeff(signals, optimal_model_order)
@@ -532,7 +532,7 @@ def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title,
                 ax.set_ylim([0, max_on_diag])
                 ax.set_yticks([0, max_on_diag // 2])
 
-            ax.set_xticks([freqs[0], int(freqs[len(freqs) // 2])])
+            # Set xtick and ytick labels only on leftmost and bottom plots
             ax.tick_params(labelleft=(j == 0), labelbottom=(i == n_chan - 1))
 
             if i == n_chan - 1:
