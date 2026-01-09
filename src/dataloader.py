@@ -41,7 +41,7 @@ def create_multimodal_data(
     plot_flag=False,
 ):
     """Create and populate a MultimodalData instance by loading EEG and ET data.
-    directory structer assumed is:
+    directory structure assumed is:
     data_base_path/
     <dyad_id>/
         eeg/

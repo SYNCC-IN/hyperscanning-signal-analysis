@@ -15,6 +15,23 @@ This document defines the unified **Python data structure** for handling multimo
 The structure is designed for transparent integration across different signal types, maintaining synchronisation and
 consistent metadata.
 
+In order to popoulate the data-structure, the expected directory-structure with raw data is:
+
+ data_base_path/
+    <dyad_id>/
+        eeg/
+            <dyad_id>.obci
+            <dyad_id>.xml
+        et/
+            child/
+                000/
+                001/
+                002/
+            caregiver/
+                000/
+                001/
+                002/
+
 ## Core Architecture
 
 The data are stored in a `MultimodalData` class that uses a **DataFrame-based approach** where all signal data is combined in a single pandas DataFrame called `data`. This approach ensures:
