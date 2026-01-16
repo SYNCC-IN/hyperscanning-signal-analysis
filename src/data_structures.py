@@ -379,7 +379,7 @@ class MultimodalData:
 
         return multimodal_data_dec
 
-    def create_events_column(self, start_error= 0.3):
+    def create_events_column(self, start_error= 0.0):
         """Create events column based on EEG_events and ET_event columns.
         - check if the columnes are present in the dataframe
         - create a new events column
@@ -389,8 +389,6 @@ class MultimodalData:
             start_error: allowable error in start time between EEG and ET events (in seconds)
         Returns:
             None
-        TODO:
-            - make the names of events consistent between EEG_events and ET_event columns, currently they differ 
           
         """
 
@@ -423,9 +421,12 @@ class MultimodalData:
         for eeg_ev in EEG_events_dicts:
             for et_ev in ET_events_dicts:
                 if eeg_ev['name'] == et_ev['name']:
-                    # check if the start times are within start_error 
-                    if abs(eeg_ev['start'] - et_ev['start']) > start_error:
-                        print(f'Warning: Inconsistent start times for event {eeg_ev["name"]}: EEG start {eeg_ev["start"]}, ET start {et_ev["start"]}')
+                    diff = abs(eeg_ev['start'] - et_ev['start'])  
+                    if diff > start_error:
+                        print(f'\033[91mEvent {eeg_ev["name"]} differ in start times by: abs({diff}) seconds.\033[0m')
+                    else:
+                        print(f'\033[92mEvent {eeg_ev["name"]} start times are consistent within {start_error} seconds.\033[0m')
+
         # combine the two lists of event dicts, assuming that the times in EEG_events are more precise than in ET_events, but events at each lists may be unique
         # if the EEG_evnts contains an event we strat from it, otherwise we add the ET_events
         if not EEG_events_dicts:

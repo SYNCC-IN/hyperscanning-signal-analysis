@@ -204,6 +204,14 @@ def process_event_et(annotations, df, event_name=None):
     annotations['type'] = annotations['label'].str.split('_').str[0]
     annotations['event'] = annotations['label'].str.split('_').str[1]
 
+    #Event mapping: {None: 0, 'm3': 1, 'm2': 2, 'm1': 3, 'talk1': 4}
+    #Event mapping for events: {None: 0, 'Incredibles': 1, 'Peppa': 2, 'Brave': 3}
+    event_name_mapping = {'m3': 'Incredibles',
+                          'm2': 'Peppa',
+                          'm1': 'Brave',
+                          'Talk1': 'Talk1',
+                          'Talk2': 'Talk2'}
+    annotations.event = annotations.event.map(event_name_mapping)
     starts = annotations[annotations['type'] == 'start'][
         ['event', 'timestamp']]
     stops = annotations[annotations['type'] == 'stop'][
@@ -223,6 +231,9 @@ def process_event_et(annotations, df, event_name=None):
             df.loc[mask, 'ET_event'] = row['event']
         else:
             df.loc[mask, 'ET_event'] = event_name
+    print("Events from ET annotations:")
+    print(df['ET_event'].unique())  
+
 
 
 def process_blinks(blinks, df, who):

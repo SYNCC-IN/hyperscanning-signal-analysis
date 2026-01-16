@@ -16,7 +16,9 @@ from scipy.signal import (
 import joblib
 import mne
 
+import importlib
 from . import eyetracker as et
+importlib.reload(et)
 from .data_structures import MultimodalData
 from .utils import plot_filter_characteristics
 
@@ -148,7 +150,12 @@ def load_eeg_data(
         multimodal_data = MultimodalData()
         multimodal_data.id = dyad_id
     multimodal_data.paths.eeg_directory = folder_eeg
-    #  
+    multimodal_data.eeg_channel_names_ch = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 
+                                            'M1', 'T3', 'C3', 'Cz','C4', 'T4','M2',
+                                            'T5', 'P3', 'Pz', 'P4', 'T6', 'O1', 'O2']
+    multimodal_data.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg', 'F7_cg', 'F3_cg', 'Fz_cg', 'F4_cg', 'F8_cg',
+                                            'M1_cg', 'T3_cg', 'C3_cg', 'Cz_cg', 'C4_cg', 'T4_cg', 'M2_cg', 
+                                            'T5_cg', 'P3_cg', 'Pz_cg', 'P4_cg', 'T6_cg', 'O1_cg', 'O2_cg']
 
     raw_eeg_data = _read_raw_svarog_data(multimodal_data, plot_flag)
 
@@ -192,13 +199,13 @@ def load_eeg_data(
     _extract_ecg_data(multimodal_data, raw_eeg_data)
 
     # reset time column to be consistent with the first movie event start at time zero; this is needed to align with ET data later; accordingly reset time_idx
-    # in the column 'events' find the first occurance of one of 'Brave',
+    # in the column 'EEG_events' find the first occurance of one of 'Brave',
     # 'Peppa', 'Incredibles'; reset to the corresponding time
     first_movie_event = multimodal_data.data[
-        multimodal_data.data["events"].isin(["Brave", "Peppa", "Incredibles"])
+        multimodal_data.data["EEG_events"].isin(["Brave", "Peppa", "Incredibles"])
     ]["time"].min()
     print(
-        f"Reseting the EEG time to the start of {multimodal_data.data[multimodal_data.data['time'] == first_movie_event]['events'].iloc[0]}"
+        f"Reseting the EEG time to the start of {multimodal_data.data[multimodal_data.data['time'] == first_movie_event]['EEG_events'].iloc[0]}"
     )
     multimodal_data.data["time"] = (
         multimodal_data.data["time"] - first_movie_event
@@ -908,7 +915,7 @@ def _process_et_data_to_dataframe(
     # Process talk1 task (001)
     if task_flags.get("talk1_ch") or task_flags.get("talk1_cg"):
         if "annotations_001" in loaded_data:
-            et.process_event_et(loaded_data["annotations_001"], et_df, "talk1")
+            et.process_event_et(loaded_data["annotations_001"], et_df, "Talk1")
 
     if task_flags.get("talk1_ch"):
         if "ch_pupil_001" in loaded_data:
@@ -939,7 +946,7 @@ def _process_et_data_to_dataframe(
     # Process talk2 task (002)
     if task_flags.get("talk2_ch") or task_flags.get("talk2_cg"):
         if "annotations_002" in loaded_data:
-            et.process_event_et(loaded_data["annotations_002"], et_df, "talk2")
+            et.process_event_et(loaded_data["annotations_002"], et_df, "Talk2")
 
     if task_flags.get("talk2_ch"):
         if "ch_pupil_002" in loaded_data:
@@ -1080,11 +1087,9 @@ def load_et_data(
     # reset time_idx accordingly
 
     # reset time column to be consistent with the first movie event start at time zero; this is needed to align with EEG data later; accordingly reset time_idx
-    # in the column 'ET_event' find the first occurance of one of 'm1' 'm2'
+    # in the column 'ET_event' find the first occurance of one of 'Incredibles','Peppa','Brave',
     # 'm3'; reset to the corresponding time
-    first_movie_event = et_df[et_df["ET_event"].isin(["m1", "m2", "m3"])][
-        "time"
-    ].min()
+    first_movie_event = et_df[et_df["ET_event"].isin(["Incredibles", "Peppa", "Brave"])]["time"].min()
     print(
         f"Reseting the ET time to the start of {et_df[et_df['time'] == first_movie_event]['ET_event'].iloc[0]}"
     )
