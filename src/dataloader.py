@@ -108,11 +108,10 @@ def create_multimodal_data(
             pupil_model_confidence=pupil_model_confidence,
             plot_flag=plot_flag,
         )
-        if decimate_factor > 1:
-            multimodal_data = multimodal_data.decimate_signals(
-                q=decimate_factor
-            )
-
+    if decimate_factor > 1:
+        multimodal_data = multimodal_data.decimate_signals(q=decimate_factor)
+    multimodal_data.create_events_column()
+    #result check_consistency_of_multimodal_data(multimodal_data)
     return multimodal_data
 
 
@@ -149,52 +148,7 @@ def load_eeg_data(
         multimodal_data = MultimodalData()
         multimodal_data.id = dyad_id
     multimodal_data.paths.eeg_directory = folder_eeg
-    multimodal_data.eeg_channel_names_ch = [
-        "Fp1",
-        "Fp2",
-        "F7",
-        "F3",
-        "Fz",
-        "F4",
-        "F8",
-        "M1",
-        "T3",
-        "C3",
-        "Cz",
-        "C4",
-        "T4",
-        "M2",
-        "T5",
-        "P3",
-        "Pz",
-        "P4",
-        "T6",
-        "O1",
-        "O2",
-    ]
-    multimodal_data.eeg_channel_names_cg = [
-        "Fp1_cg",
-        "Fp2_cg",
-        "F7_cg",
-        "F3_cg",
-        "Fz_cg",
-        "F4_cg",
-        "F8_cg",
-        "M1_cg",
-        "T3_cg",
-        "C3_cg",
-        "Cz_cg",
-        "C4_cg",
-        "T4_cg",
-        "M2_cg",
-        "T5_cg",
-        "P3_cg",
-        "Pz_cg",
-        "P4_cg",
-        "T6_cg",
-        "O1_cg",
-        "O2_cg",
-    ]
+    #  
 
     raw_eeg_data = _read_raw_svarog_data(multimodal_data, plot_flag)
 
@@ -226,7 +180,7 @@ def load_eeg_data(
         raw_eeg_data, multimodal_data.eeg_channel_mapping
     )
     # Set EEG events column
-    multimodal_data.set_events_column(multimodal_data.events)
+    multimodal_data.set_EEG_events_column(multimodal_data.events)
 
     # Store diode in DataFrame
     multimodal_data.set_diode(thresholded_diode)
@@ -562,7 +516,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
         ):  # movie events longer than 0:55
             events[len(queue) - 2]["start"] = (
                 queue[0] + 1
-            ) / eeg_fs  # add 1 sample due to shift caoused by diff
+            ) / eeg_fs  # add 1 sample due to shift caused by diff
             events[len(queue) - 2]["duration"] = (
                 up_down_events[2 * i + 1] - queue[0]
             ) / eeg_fs
@@ -579,7 +533,7 @@ def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
         ):  # talk events longer than 2:55
             if found_talks < 2:
                 event_index = found_movies + found_talks
-                # add 1 sample due to shift caoused by diff
+                # add 1 sample due to shift caused by diff
                 events[event_index]["start"] = (
                     up_down_events[2 * i + 1] + 1
                 ) / eeg_fs

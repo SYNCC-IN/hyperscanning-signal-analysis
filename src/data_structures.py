@@ -252,22 +252,22 @@ class MultimodalData:
         self._ensure_data_length(len(diode))
         self.data['diode'] = diode
 
-    def set_events_column(self, events: List[dict]):
-        """Populate events column based on event timing and duration."""
-        if 'events' not in self.data.columns:
-            self.data['events'] = None
+    def set_EEG_events_column(self, events: List[dict]):
+        """Populate EEG_events column based on event timing and duration."""
+        if 'EEG_events' not in self.data.columns:
+            self.data['EEG_events'] = None
 
         for ev in events:
             if 'start' in ev and 'duration' in ev:
                 mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
-                self.data.loc[mask, 'events'] = ev['name']
+                self.data.loc[mask, 'EEG_events'] = ev['name']
 
     def align_time_to_first_event(self):
         """Align time columns so that first event starts at t=0."""
-        if 'events' not in self.data.columns or 'time' not in self.data.columns:
+        if 'EEG_events' not in self.data.columns or 'time' not in self.data.columns:
             return
 
-        min_start_time = self.data[self.data['events'].notna()]['time'].min()
+        min_start_time = self.data[self.data['EEG_events'].notna()]['time'].min()
         if pd.isna(min_start_time):
             min_start_time = 0
 
@@ -379,3 +379,73 @@ class MultimodalData:
 
         return multimodal_data_dec
 
+    def create_events_column(self, start_error= 0.3):
+        """Create events column based on EEG_events and ET_event columns.
+        - check if the columnes are present in the dataframe
+        - create a new events column
+        - populate the events column based on EEG_events and ET_event columns
+        -check consistency of the coresponding events in EEG_events and ET_event columns
+        Args:
+            start_error: allowable error in start time between EEG and ET events (in seconds)
+        Returns:
+            None
+        TODO:
+            - make the names of events consistent between EEG_events and ET_event columns, currently they differ 
+          
+        """
+
+        if ('EEG_events' not in self.data.columns) and ('ET_event' not in self.data.columns):
+            print('No event data: no EEG_events and ET_event columns found in the data.')
+            return
+        self.data['events'] = None
+        EEG_events_dicts = []
+        ET_events_dicts = []
+        # if EEG_evnets present, populate structure of EEG_events with time and duration nad name
+        if 'EEG_events' in self.data.columns:
+            eeg_events_list = self.data['EEG_events'].dropna().unique()
+            for ev_name in eeg_events_list:
+                mask = self.data['EEG_events'] == ev_name
+                start_time = self.data.loc[mask, 'time'].min()
+                end_time = self.data.loc[mask, 'time'].max()
+                duration = end_time - start_time
+                event_dict = {'name': ev_name, 'start': start_time, 'duration': duration}
+                EEG_events_dicts.append(event_dict)
+        if 'ET_event' in self.data.columns:
+            et_events_list = self.data['ET_event'].dropna().unique()
+            for ev_name in et_events_list:
+                mask = self.data['ET_event'] == ev_name
+                start_time = self.data.loc[mask, 'time'].min()
+                end_time = self.data.loc[mask, 'time'].max()
+                duration = end_time - start_time
+                event_dict = {'name': ev_name, 'start': start_time, 'duration': duration}
+                ET_events_dicts.append(event_dict)
+        # check consistency of the coresponding events in EEG_events_dicts and ET_events_dicts 
+        for eeg_ev in EEG_events_dicts:
+            for et_ev in ET_events_dicts:
+                if eeg_ev['name'] == et_ev['name']:
+                    # check if the start times are within start_error 
+                    if abs(eeg_ev['start'] - et_ev['start']) > start_error:
+                        print(f'Warning: Inconsistent start times for event {eeg_ev["name"]}: EEG start {eeg_ev["start"]}, ET start {et_ev["start"]}')
+        # combine the two lists of event dicts, assuming that the times in EEG_events are more precise than in ET_events, but events at each lists may be unique
+        # if the EEG_evnts contains an event we strat from it, otherwise we add the ET_events
+        if not EEG_events_dicts:
+            combined_events = ET_events_dicts
+            print('No EEG_events found, using ET_event data only.')
+
+        elif not ET_events_dicts:
+            combined_events = EEG_events_dicts
+            print('No ET_event found, using EEG_events data only.')
+        else:
+            combined_events = EEG_events_dicts.copy()
+            for et_ev in ET_events_dicts:
+                if not any(eeg_ev['name'] == et_ev['name'] for eeg_ev in EEG_events_dicts):
+                    combined_events.append(et_ev)
+        # populate the events column based on combined_events
+        for ev in combined_events:
+            if 'start' in ev and 'duration' in ev:
+                mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
+                self.data.loc[mask, 'events'] = ev['name']  
+        print('Events column created based on EEG_events and ET_event columns.')
+
+                    
+        
