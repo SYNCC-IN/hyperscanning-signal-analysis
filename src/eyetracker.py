@@ -204,8 +204,8 @@ def process_event_et(annotations, df, event_name=None):
     annotations['type'] = annotations['label'].str.split('_').str[0]
     annotations['event'] = annotations['label'].str.split('_').str[1]
 
-    #Event mapping: {None: 0, 'm3': 1, 'm2': 2, 'm1': 3, 'talk1': 4}
-    #Event mapping for events: {None: 0, 'Incredibles': 1, 'Peppa': 2, 'Brave': 3}
+    
+    #m1 to Brave, m2 to Peppa, m3 to Incredibles. - info from Mateusz Wawrzyniak
     event_name_mapping = {'m3': 'Incredibles',
                           'm2': 'Peppa',
                           'm1': 'Brave',
