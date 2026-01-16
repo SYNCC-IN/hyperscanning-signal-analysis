@@ -113,6 +113,7 @@ def create_multimodal_data(
     if decimate_factor > 1:
         multimodal_data = multimodal_data.decimate_signals(q=decimate_factor)
     multimodal_data.create_events_column()
+    multimodal_data.create_event_structure()
     #result check_consistency_of_multimodal_data(multimodal_data)
     return multimodal_data
 

@@ -121,7 +121,7 @@ class MultimodalData:
         self.eeg_channel_names_cg: List[str] = []  # caregiver EEG channels after montage
 
         # Events and epochs
-        self.events: List[Any] = []  # list of event markers (stimuli, triggers, etc.)
+        self.events: List[Any] = []  # list of event dictionaries definig the events by name, time and duration. E.g., {'name': 'Incredibles', 'start': 12.5, 'duration': 300.0}
         self.epoch: Optional[List[Any]] = None
 
         # Paths
@@ -448,5 +448,53 @@ class MultimodalData:
                 self.data.loc[mask, 'events'] = ev['name']  
         print('Events column created based on EEG_events and ET_event columns.')
 
-                    
+    def print_events(self):
+        """Print event structure in a formatted table."""
+        if not self.events:
+            print('No events found.')
+            return
         
+        print('\n' + '='*70)
+        print(f'{"Event Name":<30} {"Start (s)":<15} {"Duration (s)":<15}')
+        print('='*70)
+        for ev in self.events:
+            name = ev.get('name', 'N/A')
+            start = ev.get('start', 'N/A')
+            duration = ev.get('duration', 'N/A')
+            
+            if isinstance(start, (int, float)):
+                start_str = f'{start:.2f}'
+            else:
+                start_str = str(start)
+                
+            if isinstance(duration, (int, float)):
+                duration_str = f'{duration:.2f}'
+            else:
+                duration_str = str(duration)
+                
+            print(f'{name:<30} {start_str:<15} {duration_str:<15}')
+        print('='*70 + '\n')
+
+    def create_event_structure(self):   
+        """Create event structure based on event column.
+        Args:
+            None
+        Returns:
+            None
+        """
+
+        
+        if 'events' not in self.data.columns:
+            print('No events column found in the data.')
+            return
+        self.events = []
+        events_list = self.data['events'].dropna().unique()
+        for ev_name in events_list:
+            mask = self.data['events'] == ev_name
+            start_time = self.data.loc[mask, 'time'].min()
+            end_time = self.data.loc[mask, 'time'].max()
+            duration = end_time - start_time
+            event_dict = {'name': ev_name, 'start': start_time, 'duration': duration}
+            self.events.append(event_dict)
+        print('Event structure created based on events column.')
+        self.print_events()
