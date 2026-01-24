@@ -121,7 +121,7 @@ class MultimodalData:
         self.eeg_channel_names_cg: List[str] = []  # caregiver EEG channels after montage
 
         # Events and epochs
-        self.events: List[Any] = []  # list of event dictionaries definig the events by name, time and duration. E.g., {'name': 'Incredibles', 'start': 12.5, 'duration': 300.0}
+        self.events: Dict[str, Any] = {}  # dictionary of event dictionaries definig the events by name, time and duration. E.g., {'name': 'Incredibles', 'start': 12.5, 'duration': 300.0}
         self.epoch: Optional[List[Any]] = None
 
         # Paths
@@ -457,7 +457,7 @@ class MultimodalData:
         print('\n' + '='*70)
         print(f'{"Event Name":<30} {"Start (s)":<15} {"Duration (s)":<15}')
         print('='*70)
-        for ev in self.events:
+        for ev in self.events.values():
             name = ev.get('name', 'N/A')
             start = ev.get('start', 'N/A')
             duration = ev.get('duration', 'N/A')
@@ -487,14 +487,20 @@ class MultimodalData:
         if 'events' not in self.data.columns:
             print('No events column found in the data.')
             return
-        self.events = []
-        events_list = self.data['events'].dropna().unique()
-        for ev_name in events_list:
+        
+        # Get unique event names
+        unique_events = self.data['events'].dropna().unique()
+        
+        # Create list of event dictionaries
+        events_list = []
+        for ev_name in unique_events:
             mask = self.data['events'] == ev_name
             start_time = self.data.loc[mask, 'time'].min()
             end_time = self.data.loc[mask, 'time'].max()
             duration = end_time - start_time
             event_dict = {'name': ev_name, 'start': start_time, 'duration': duration}
-            self.events.append(event_dict)
+            events_list.append(event_dict)
+        
+        self.events = {ev_dict['name']: ev_dict for ev_dict in events_list}
         print('Event structure created based on events column.')
         self.print_events()
