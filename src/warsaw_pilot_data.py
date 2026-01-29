@@ -196,11 +196,11 @@ def analyze_eeg_dtf_for_events(mmd, selected_events: List[str]) -> None:
         selected_events: List of event names to analyze
     """
     # Extract EEG data
-    time, eeg_ch = mmd.get_signals(mode='EEG', member='ch', 
+    time, chan_list, eeg_ch = mmd.get_signals(mode='EEG', member='ch', 
                                     selected_channels=EEG_CHANNELS_FOR_DTF, 
                                     selected_events=selected_events, 
                                     selected_times=None)
-    time, eeg_cg = mmd.get_signals(mode='EEG', member='cg', 
+    time, chan_list, eeg_cg = mmd.get_signals(mode='EEG', member='cg', 
                                     selected_channels=EEG_CHANNELS_FOR_DTF, 
                                     selected_events=selected_events, 
                                     selected_times=None)
@@ -255,11 +255,11 @@ def analyze_eeg_hrv_dtf_for_events(mmd, selected_events: List[str]) -> None:
     eeg_ch_Fz = mmd.get_signals(mode='EEG', member='ch', 
                                   selected_channels=selected_channels, 
                                   selected_events=selected_events, 
-                                  selected_times=None)[1]
+                                  selected_times=None)[2]
     eeg_cg_Fz = mmd.get_signals(mode='EEG', member='cg', 
                                   selected_channels=selected_channels, 
                                   selected_events=selected_events, 
-                                  selected_times=None)[1]
+                                  selected_times=None)[2]
     
     # Plot spectra
     _plot_spectra(eeg_ch_Fz, eeg_cg_Fz, mmd.fs, selected_events[0])
@@ -284,12 +284,11 @@ def analyze_eeg_hrv_dtf_for_events(mmd, selected_events: List[str]) -> None:
     ibi_ch = mmd.get_signals(mode='IBI', member='ch', 
                               selected_channels=['IBI_ch'], 
                               selected_events=selected_events, 
-                              selected_times=None)[1]
+                              selected_times=None)[2]
     ibi_cg = mmd.get_signals(mode='IBI', member='cg', 
                                      selected_channels=['IBI_cg'], 
                                      selected_events=selected_events, 
-                                     selected_times=None)[1]
-
+                                     selected_times=None)[2]
     # Combine into DTF data array
     dtf_data = np.zeros((4, eeg_ch_Fz_theta_amp.shape[0]))
     dtf_data[0, :] = ibi_ch

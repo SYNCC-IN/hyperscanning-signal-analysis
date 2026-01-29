@@ -163,6 +163,9 @@ def load_eeg_data(
     # extract diode signal for event detection filtering
     diode = raw_eeg_data[multimodal_data.eeg_channel_mapping["Diode"], :]
 
+    # set the ECG modality with ECG signals (in place)
+    _extract_ecg_data(multimodal_data, raw_eeg_data)
+    
     # scan for events
     multimodal_data.events, thresholded_diode = _scan_for_events(
         diode, multimodal_data.fs, plot_flag, threshold=0.75
@@ -196,8 +199,7 @@ def load_eeg_data(
     if "EEG" not in multimodal_data.modalities:
         multimodal_data.modalities.append("EEG")
 
-    # set the ECG modality with ECG signals (in place)
-    _extract_ecg_data(multimodal_data, raw_eeg_data)
+
 
     # reset time column to be consistent with the first movie event start at time zero; this is needed to align with ET data later; accordingly reset time_idx
     # in the column 'EEG_events' find the first occurance of one of 'Brave',
@@ -626,7 +628,7 @@ def get_eeg_data(df, who: str) -> tuple[np.ndarray | None, list]:
     """Returns EEG data and channel names for specified participant.
     
     Args:
-        df: MultimodalData.data DataFrame instance containing EEG data
+        df:  DataFrame instance containing EEG data (MultimodalData.data) 
         who: Participant identifier ('ch' for child, 'cg' for caregiver)
         
     Returns:
@@ -703,7 +705,7 @@ def export_eeg_to_mne_raw(multimodal_data: MultimodalData, who: str, times=None,
         selected_data = multimodal_data.data   
         # first_sample_index = multimodal_data.data["time_idx"].iloc[0]    
         time = selected_data["time"].to_numpy()
-    eeg_data, channel_names = get_eeg_data(df = selected_data, who=who)
+    eeg_data, channel_names =     get_eeg_data(df = selected_data, who=who)
     
 
     if eeg_data is None:

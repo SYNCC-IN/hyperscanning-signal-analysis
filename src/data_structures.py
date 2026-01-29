@@ -261,6 +261,13 @@ class MultimodalData:
 
     def set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
         """Store ECG data in DataFrame."""
+        # Initialize DataFrame with time columns if empty
+        n_samples = ecg_ch.shape[0]
+        if len(self.data) == 0:
+            self.data = pd.DataFrame(index=range(n_samples))
+            if self.fs is not None:
+                self.data['time'] = np.arange(n_samples) / self.fs
+                self.data['time_idx'] = np.arange(n_samples)
         self._ensure_data_length(len(ecg_ch))
         self.data['ECG_ch'] = ecg_ch
         self.data['ECG_cg'] = ecg_cg
