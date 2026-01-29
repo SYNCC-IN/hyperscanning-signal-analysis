@@ -166,14 +166,6 @@ class MultimodalData:
                 - channel_names (list of str): List of column names corresponding to retrieved channels
                 - data (np.ndarray): 2D array of shape [n_channels, n_samples] containing signal data
 
-        Example:
-            # Get all child EEG channels for specific events
-            time, channels, data = obj.get_signals(
-                mode='EEG', 
-                member='ch', 
-                selected_channels=['Fz', 'Cz', 'Pz'],
-                selected_events=['movies']
-            )
         """
         prefix = ''
         if mode == 'EEG':
@@ -207,8 +199,39 @@ class MultimodalData:
         time_vector = df_filtered['time'].values
         # Remove 'time' and 'events' columns before returning data
         df_filtered = df_filtered.drop(columns=['time', 'events'])
+        channel_names = df_filtered.columns.tolist()
         # Return data as 2D array [n_channels x n_samples]
-        return time_vector, df_filtered[cols].values.T  
+        return time_vector, channel_names, df_filtered[cols].values.T  
+    
+    def get_events_as_marker_channel(self,  selected_times: Optional[tuple] = None):
+        """
+        Retrieve events as a marker channel aligned with the time column.
+        Args:
+            selected_times (tuple, optional): Time window (start_time, end_time) to filter events.
+
+        Returns:
+            tuple: (time_vector, marker_channel, event_to_marker) where
+                - time_vector (np.ndarray): 1D array of time points in seconds
+                - marker_channel (np.ndarray): 1D array of event markers aligned with time_vector
+                - event_to_marker (dict): Mapping of event names to integer markers
+        """
+        if 'events' not in self.data.columns:
+            return None
+        time_vector = self.data['time'].values  
+        # create a dictionary mapping event names to integer markers
+        unique_events = self.data['events'].dropna().unique()
+        event_to_marker = {event: idx + 1 for idx, event in enumerate(unique_events)}
+        # copy the events column to avoid modifying the original data
+        events_copy = self.data['events'].copy()
+        # create marker channel based on events column
+        events_copy = events_copy.map(event_to_marker).fillna(0).astype(int)    
+        marker_channel = events_copy.values
+        if selected_times:
+            start_time, end_time = selected_times
+            mask = (time_vector >= start_time) & (time_vector <= end_time)
+            time_vector = time_vector[mask]
+            marker_channel = marker_channel[mask]
+        return time_vector, marker_channel, event_to_marker
     
     def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
         """
@@ -242,12 +265,6 @@ class MultimodalData:
         self.data['ECG_ch'] = ecg_ch
         self.data['ECG_cg'] = ecg_cg
 
-    # def set_ibi_data(self, ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray):
-    #     """Store interpolated IBI data in DataFrame."""
-    #     self._ensure_data_length(len(ibi_ch))
-    #     self.data['IBI_ch'] = ibi_ch
-    #     self.data['IBI_cg'] = ibi_cg
-    #     #self.data['IBI_times'] = ibi_times - not needed since time is shared
 
     def set_diode(self, diode: np.ndarray):
         """Store diode data in DataFrame."""
@@ -264,18 +281,6 @@ class MultimodalData:
                 mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
                 self.data.loc[mask, 'EEG_events'] = ev['name']
 
-    # def align_time_to_first_event(self):
-    #     """Align time columns so that first event starts at t=0."""
-    #     if 'EEG_events' not in self.data.columns or 'time' not in self.data.columns:
-    #         return
-
-    #     min_start_time = self.data[self.data['EEG_events'].notna()]['time'].min()
-    #     if pd.isna(min_start_time):
-    #         min_start_time = 0
-
-    #     self.data['time'] = self.data['time'] - min_start_time
-    #     if 'time_idx' in self.data.columns:
-    #         self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.fs)
 
     def _ensure_data_length(self, length: int):
         """Ensure DataFrame has enough rows to hold data of given length."""
