@@ -1,11 +1,37 @@
-scikit-learn
+# Core scientific computing
+numpy==2.4.1
+scipy==1.17.0
+pandas==3.0.0
+
+# Machine learning
+scikit-learn==1.8.0
+
+# Signal processing and neurophysiology
+neurokit2==0.2.12
+mne==1.11.0
+PyWavelets==1.9.0
+
+# Visualization
+matplotlib==3.10.8
+plotly==6.5.2
+ipympl==0.10.0
+
+# Data handling
+xmltodict==1.0.2
+joblib==1.5.3
 networkx
-numpy
-os
-xmltodict
-matplotlib
-scipy
-neurokit2
-plotly
-joblib
+
+# Jupyter notebook support
+ipykernel==7.1.0
+ipython==9.9.0
+ipywidgets==8.1.8
+jupyter_client==8.8.0
+
+# Network analysis
+networkx
+
+# Utilities
+tqdm==4.67.1
+requests==2.32.5
+
 

@@ -21,7 +21,6 @@ def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_e
     """
     if selected_event not in events:
         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
-        # extract the ECG signal for the selected event
     ibi_ch_interp = filtered_data['IBI_ch_interp']
     ibi_cg_interp = filtered_data['IBI_cg_interp']
     t_ibi = filtered_data['t_IBI']

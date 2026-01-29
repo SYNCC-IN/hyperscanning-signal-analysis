@@ -150,13 +150,31 @@ class MultimodalData:
         Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times.
 
         Args:
-            mode: 'EEG', 'ECG', 'IBI', 'ET', 'diode
-            member: 'ch' for child, 'cg' for caregiver
-            selected_channels: List of channel names to retrieve (for EEG and ET)
-            selected_events: List of event names to filter data
-            selected_times: Tuple (start_time, end_time) to filter data by time
+            mode (str): Signal modality to retrieve. Options: 'EEG', 'ECG', 'IBI', 'ET', 'diode'. Default: 'EEG'.
+            member (str): Participant role. Options: 'ch' (child), 'cg' (caregiver). Default: 'ch'.
+            selected_channels (list of str, optional): List of channel names to retrieve. 
+                Required for 'EEG' and 'ET' modes. Ignored for other modes.
+            selected_events (list of str, optional): List of event names to filter data by. 
+                Only returns samples where events column matches one of these event names.
+            selected_times (tuple of float, optional): Time range (start_time, end_time) in seconds 
+                to filter data. Only returns samples within this time window.
+            Note: If both selected_events and selected_times are provided, data is filtered by events first, then by times.
+
+        Returns:
+            tuple or None: Returns None if no matching columns are found. Otherwise returns:
+                - time_vector (np.ndarray): 1D array of time points in seconds
+                - channel_names (list of str): List of column names corresponding to retrieved channels
+                - data (np.ndarray): 2D array of shape [n_channels, n_samples] containing signal data
+
+        Example:
+            # Get all child EEG channels for specific events
+            time, channels, data = obj.get_signals(
+                mode='EEG', 
+                member='ch', 
+                selected_channels=['Fz', 'Cz', 'Pz'],
+                selected_events=['movies']
+            )
         """
-        # Implementation of get_signals method goes here
         prefix = ''
         if mode == 'EEG':
             prefix = f'EEG_{member}_'
@@ -218,34 +236,18 @@ class MultimodalData:
                     col_name = f'EEG_ch_{chan_name}'
                 self.data[col_name] = eeg_data[chan_idx, :]
 
-                
-    def get_eeg_data_ch(self) -> Optional[np.ndarray]:
-        """Returns EEG data for child channels only as 2D array."""
-        ch_cols = [col for col in self.data.columns if col.startswith('EEG_ch_')]
-        if not ch_cols:
-            return None
-        return self.data[ch_cols].values.T
-
-    def get_eeg_data_cg(self) -> Optional[np.ndarray]:
-        """Returns EEG data for caregiver channels only as 2D array."""
-        cg_cols = [col for col in self.data.columns if col.startswith('EEG_cg_')]
-        if not cg_cols:
-            return None
-        return self.data[cg_cols].values.T
-
-
     def set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
         """Store ECG data in DataFrame."""
         self._ensure_data_length(len(ecg_ch))
         self.data['ECG_ch'] = ecg_ch
         self.data['ECG_cg'] = ecg_cg
 
-    def set_ibi_data(self, ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray):
-        """Store interpolated IBI data in DataFrame."""
-        self._ensure_data_length(len(ibi_ch))
-        self.data['IBI_ch'] = ibi_ch
-        self.data['IBI_cg'] = ibi_cg
-        #self.data['IBI_times'] = ibi_times - not needed since time is shared
+    # def set_ibi_data(self, ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray):
+    #     """Store interpolated IBI data in DataFrame."""
+    #     self._ensure_data_length(len(ibi_ch))
+    #     self.data['IBI_ch'] = ibi_ch
+    #     self.data['IBI_cg'] = ibi_cg
+    #     #self.data['IBI_times'] = ibi_times - not needed since time is shared
 
     def set_diode(self, diode: np.ndarray):
         """Store diode data in DataFrame."""
@@ -262,18 +264,18 @@ class MultimodalData:
                 mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
                 self.data.loc[mask, 'EEG_events'] = ev['name']
 
-    def align_time_to_first_event(self):
-        """Align time columns so that first event starts at t=0."""
-        if 'EEG_events' not in self.data.columns or 'time' not in self.data.columns:
-            return
+    # def align_time_to_first_event(self):
+    #     """Align time columns so that first event starts at t=0."""
+    #     if 'EEG_events' not in self.data.columns or 'time' not in self.data.columns:
+    #         return
 
-        min_start_time = self.data[self.data['EEG_events'].notna()]['time'].min()
-        if pd.isna(min_start_time):
-            min_start_time = 0
+    #     min_start_time = self.data[self.data['EEG_events'].notna()]['time'].min()
+    #     if pd.isna(min_start_time):
+    #         min_start_time = 0
 
-        self.data['time'] = self.data['time'] - min_start_time
-        if 'time_idx' in self.data.columns:
-            self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.fs)
+    #     self.data['time'] = self.data['time'] - min_start_time
+    #     if 'time_idx' in self.data.columns:
+    #         self.data['time_idx'] = self.data['time_idx'] - int(min_start_time * self.fs)
 
     def _ensure_data_length(self, length: int):
         """Ensure DataFrame has enough rows to hold data of given length."""
@@ -356,14 +358,21 @@ class MultimodalData:
         # decimate time, events, and diode columns by selectiging every q-th sample
         multimodal_data_dec.data['time'] = self.data['time'].values[::q]
         multimodal_data_dec.data['time_idx'] = self.data['time_idx'].values[::q]
-        multimodal_data_dec.data['events'] = self.data['events'].values[::q]
-        multimodal_data_dec.data['ET_event'] = self.data['ET_event'].values[::q]
-        multimodal_data_dec.data['diode'] = self.data['diode'].values[::q]
+        # check if the events column exists
+        if 'events' in self.data.columns:   
+            multimodal_data_dec.data['events'] = self.data['events'].values[::q]
+        if 'ET_event' in self.data.columns:
+            multimodal_data_dec.data['ET_event'] = self.data['ET_event'].values[::q]
+        if 'EEG_events' in self.data.columns:
+            multimodal_data_dec.data['EEG_events'] = self.data['EEG_events'].values[::q]
+        if 'diode' in self.data.columns:
+            multimodal_data_dec.data['diode'] = self.data['diode'].values[::q]
 
         # create a list of column that need to be antialiased filtered and decimated, these are all EEG, ECG, and IBI and ET columns
         columns_to_decimate = [ col for col in self.data.columns 
-                               if col.startswith('EEG') 
-                               or col.startswith('ECG') 
+                               if col.startswith('EEG_ch_') 
+                                 or col.startswith('EEG_cg_')
+                                 or col.startswith('ECG')   
                                or col.startswith('IBI') 
                                or col.startswith('ET_ch_') 
                                or col.startswith('ET_cg_')]
