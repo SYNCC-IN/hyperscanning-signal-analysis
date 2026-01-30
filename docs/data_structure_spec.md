@@ -2,8 +2,8 @@
 
 ### EEGLAB-style multimodal structure for EEG, ET, and IBI signals
 
-**Version:** 2.1  
-**Last updated:** 2026-01-01  
+**Version:** 2.3  
+**Last updated:** 2026-01-30  
 **Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
 
 This document defines the unified **Python data structure** for handling multimodal child-caregiver data recorded with:
@@ -65,7 +65,7 @@ class MultimodalData:
     eeg_channel_names_cg: list[str]         # Caregiver EEG channels after montage
     
     # Events and epochs
-    events: list[dict]                      # List of event markers with 'name', 'start', 'duration'
+    events: dict[str, dict]                 # Dictionary of event dictionaries: {event_name: {'name': str, 'start': float, 'duration': float}}
     epoch: list or None                     # Epoch information (if applicable)
     
     # Organizational structures
@@ -89,12 +89,12 @@ The `data` DataFrame uses consistent naming patterns for different signal types:
 - **ECG signals**: `ECG_ch` (child), `ECG_cg` (caregiver)
 - **IBI signals**: `IBI_ch` (child), `IBI_cg` (caregiver)
 - **Eye-tracking**:
-  - Position: `ET_ch_x`, `ET_ch_y`, `ET_cg_x`, `ET_cg_y`
-  - Pupil: `ET_ch_pupil`, `ET_cg_pupil`
-  - Blinks: `ET_ch_blinks`, `ET_cg_blinks`
+  - Position: `ET_ch_x`, `ET_ch_y` (child), `ET_cg_x`, `ET_cg_y` (caregiver)
+  - Pupil: `ET_ch_pupil` (child), `ET_cg_pupil` (caregiver)
+  - Blinks: `ET_ch_blinks` (child), `ET_cg_blinks` (caregiver)
   - Events: `ET_event`
 - **Diode signal**: `diode`
-- **Events**: `events`
+- **Event columns**: `events` (unified), `EEG_events`, `ET_event` (modality-specific)
 
 ### Supporting Dataclasses
 
@@ -107,8 +107,14 @@ Stores EEG signal filtration parameters:
 class Filtration:
     notch_Q: float or None              # Quality factor for notch filter
     notch_freq: float or None           # Notch filter frequency (Hz, typically 50 or 60)
+    notch_a: np.ndarray or None         # Notch filter denominator coefficients
+    notch_b: np.ndarray or None         # Notch filter numerator coefficients
     low_pass: float or None             # Low-pass filter cutoff frequency (Hz)
+    low_pass_a: np.ndarray or None      # Low-pass filter denominator coefficients
+    low_pass_b: np.ndarray or None      # Low-pass filter numerator coefficients
     high_pass: float or None            # High-pass filter cutoff frequency (Hz)
+    high_pass_a: np.ndarray or None     # High-pass filter denominator coefficients
+    high_pass_b: np.ndarray or None     # High-pass filter numerator coefficients
     type: str or None                   # Filter type ('fir' or 'iir')
     applied: bool                       # Whether filters have been applied (default: False)
 ```
@@ -172,138 +178,302 @@ class ChildInfo:
 
 ## Key Methods
 
-### Data Population Methods
+### Data Population Methods (Private - Called by DataLoader)
+
+**Important Note**: The following methods are private (prefixed with `_`) and should only be called by the `DataLoader` class during data initialization. They are not intended for direct use by end users.
 
 ```python
-set_eeg_data(eeg_data: np.ndarray, channel_mapping: Dict[str, int])
+_set_eeg_data(eeg_data: np.ndarray, channel_mapping: Dict[str, int])
     # Store EEG data with each channel as a DataFrame column
     # Creates time and time_idx columns if fs is set
     # Args:
     #   eeg_data: 2D array [n_channels x n_samples]
     #   channel_mapping: Dict mapping channel names to indices in eeg_data
+    # Note: Private method - only called by DataLoader
     
-set_ecg_data(ecg_ch: np.ndarray, ecg_cg: np.ndarray)
+_set_ecg_data(ecg_ch: np.ndarray, ecg_cg: np.ndarray)
     # Store ECG signals for child and caregiver
     # Creates columns 'ECG_ch' and 'ECG_cg'
+    # Note: Private method - only called by DataLoader
     
-set_ibi_data(ibi_ch: np.ndarray, ibi_cg: np.ndarray, ibi_times: np.ndarray)
-    # Store interpolated IBI signals (note: ibi_times parameter not used in current implementation)
-    # Creates columns 'IBI_ch' and 'IBI_cg'
-    
-set_diode(diode: np.ndarray)
+_set_diode(diode: np.ndarray)
     # Store diode signal for event detection
     # Creates column 'diode'
+    # Note: Private method - only called by DataLoader
     
-set_events_column(events: List[dict])
-    # Populate events column based on event timing and duration
+_set_EEG_events_column(events: List[dict])
+    # Populate EEG_events column based on event timing and duration
     # Events should have format: [{'name': str, 'start': float, 'duration': float}, ...]
+    # Creates or updates 'EEG_events' column in the DataFrame
+    # Note: Private method - only called by DataLoader
+
+_create_events_column(start_error: float = 0.0)
+    # Creates unified 'events' column from 'EEG_events' and 'ET_event' columns
+    # Checks consistency between EEG and ET event timing
+    # Args:
+    #   start_error: Maximum acceptable difference in event start times (seconds)
+    # Process:
+    #   - Extracts event information from both EEG_events and ET_event columns
+    #   - Checks for timing consistency between corresponding events
+    #   - Prioritizes EEG_events timing when events overlap
+    #   - Includes unique events from both sources
+    #   - Populates 'events' column in the DataFrame
+    # Note: Private method - only called by DataLoader
+
+_create_event_structure()
+    # Creates event structure dictionary from the 'events' column in the DataFrame
+    # Populates self.events attribute as dict[str, dict] mapping event names to event info
+    # Each event dict contains: {'name': str, 'start': float, 'duration': float}
+    # Note: Requires 'events' column to exist in self.data
+    # Note: Private method - only called by DataLoader
+
+_interpolate_ibi_signals(who: str, label: str = '', plot_flag: bool = False) -> tuple[np.ndarray, np.ndarray]
+    # Extracts R-peaks and interpolates IBI signals from ECG data using neurokit2
+    # Merges interpolated IBI into the main data DataFrame using time-based alignment
+    # Args:
+    #   who: 'ch' (child) or 'cg' (caregiver)
+    #   label: Optional label for plotting
+    #   plot_flag: Whether to plot the interpolated IBI signal
+    # Returns:
+    #   Tuple of (ibi_interp, ecg_times) where:
+    #   - ibi_interp: Interpolated IBI signal in milliseconds
+    #   - ecg_times: Time vector for the interpolated IBI signal
+    # Note: Creates or updates 'IBI_ch' or 'IBI_cg' column in the DataFrame
+    # Note: Private method - only called by DataLoader
+
+_set_ibi()
+    # Convenience method to interpolate IBI signals for both child and caregiver
+    # Calls _interpolate_ibi_signals for both 'ch' and 'cg'
+    # Note: Private method - only called by DataLoader
+
+_decimate_signals(q: int = 8) -> MultimodalData
+    # Decimates all signal columns by factor q while maintaining synchronization across modalities
+    # Args:
+    #   q: Decimation factor (default=8) - reduce sampling rate by this factor
+    # Returns:
+    #   MultimodalData: New instance with decimated signals and updated sampling frequency (fs/q)
+    # Process:
+    #   - Applies anti-aliasing FIR filter before decimation to prevent frequency folding
+    #   - Handles NaN values by forward filling before decimation to maintain signal continuity
+    #   - Decimates time, time_idx columns by selecting every q-th sample
+    #   - Event columns (events, ET_event, EEG_events) are downsampled by selecting every q-th sample
+    #   - Diode column is downsampled by selecting every q-th sample
+    #   - Signal columns (EEG, ECG, IBI, ET) are properly anti-aliased filtered then decimated
+    #   - Updates fs (sampling frequency) by dividing by q
+    #   - Copies all metadata (id, channel names, filtration, paths, tasks, child_info, notes)
+    # Note: Creates a new MultimodalData object; does not modify in place
+    # Note: Private method - only called by DataLoader
+
+_ensure_data_length(length: int)
+    # Internal method to ensure DataFrame has enough rows
+    # Creates or extends DataFrame as needed
+    # Note: Private method - only called by DataLoader
 ```
 
-### Data Retrieval Methods
+### Data Retrieval Methods (Public)
+
+### Data Retrieval Methods (Public)
 
 ```python
 get_signals(mode: str = 'EEG', member: str = 'ch', selected_channels: List[str] = None,
-            selected_events: List[str] = None, selected_times: Tuple[float, float] = None) -> Tuple[np.ndarray, np.ndarray]
+            selected_events: List[str] = None, selected_times: Tuple[float, float] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray] or None
     # Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times
     # Args:
     #   mode: Signal type - 'EEG', 'ECG', 'IBI', 'ET' (eye-tracking), or 'diode'
     #   member: 'ch' (child) or 'cg' (caregiver)
     #   selected_channels: List of channel names to retrieve (None = all channels for that mode/member)
+    #                      Required for 'EEG' and 'ET' modes. Ignored for other modes.
     #   selected_events: List of event names to filter by (None = no event filtering)
     #   selected_times: Time range tuple (start, end) in seconds (None = all times)
     # Returns:
-    #   Tuple of (time_vector, signal_data)
+    #   None if no matching columns found, otherwise tuple of:
     #   - time_vector: 1D array of timestamps in seconds
-    #   - signal_data: 2D array [n_channels x n_samples] or 1D array for single channel modes
+    #   - channel_names: List of column names corresponding to retrieved channels
+    #   - data: 2D array [n_samples x n_channels] containing signal data
+    # Note: If both selected_events and selected_times are provided, data is filtered by events first, then by times.
 
 get_eeg_data_ch() -> np.ndarray or None
     # Returns child EEG data as 2D array [n_channels x n_samples]
     
 get_eeg_data_cg() -> np.ndarray or None
     # Returns caregiver EEG data as 2D array [n_channels x n_samples]
+
+@staticmethod
+get_eeg_data(df: pd.DataFrame, who: str) -> tuple[np.ndarray or None, list]
+    # Static method that returns EEG data and channel names for specified participant from any DataFrame
+    # Args:
+    #   df: DataFrame containing EEG data following MultimodalData column naming convention
+    #   who: 'ch' for child, 'cg' for caregiver
+    # Returns:
+    #   Tuple of (eeg_data, channel_names) where:
+    #   - eeg_data: 2D array [n_channels x n_samples] or None if no data
+    #   - channel_names: List of clean channel names (e.g., ['Fp1', 'Fp2', ...])
     
 eeg_channel_names_all() -> list[str]
     # Returns combined list of child and caregiver channel names
+
+get_events_as_marker_channel(selected_times: tuple or None = None) -> tuple or None
+    # Retrieve events as a marker channel aligned with the time column
+    # Args:
+    #   selected_times: Optional time window (start_time, end_time) to filter events
+    # Returns:
+    #   Tuple of (time_vector, marker_channel, event_to_marker) where:
+    #   - time_vector: 1D array of time points in seconds
+    #   - marker_channel: 1D array of event markers (integers) aligned with time_vector
+    #   - event_to_marker: Dict mapping event names to integer markers
 ```
 
-### Utility Methods
+### Export and Visualization Methods (Public)
 
 ```python
-align_time_to_first_event()
-    # Shifts time columns so first event starts at t=0
-    # Finds earliest event start time and subtracts from all time values
-    
-decimate_signals(q: int = 8) -> MultimodalData
-    # Decimates all signal columns by factor q while maintaining synchronization
+to_mne_raw(who: str, times: tuple[float, float] or None = None, 
+           event: str or None = None, margin_around_event: float = 0) -> tuple
+    # Export EEG data to MNE Raw object with optional time/event filtering
     # Args:
-    #   q: Decimation factor (default=8) - reduce sampling rate by this factor
+    #   who: 'ch' for child, 'cg' for caregiver
+    #   times: Optional time range (start_time, end_time) in seconds
+    #   event: Optional event name to extract (e.g., 'Brave', 'Incredibles')
+    #   margin_around_event: Time margin (seconds) to add before/after event
     # Returns:
-    #   MultimodalData: New instance with decimated signals and updated sampling frequency
-    # Process:
-    #   - Applies anti-aliasing FIR filter before decimation to prevent frequency folding
-    #   - Handles NaN values by forward filling before decimation to maintain signal continuity
-    #   - Decimates time columns, signal columns (EEG, ECG, IBI, ET), and event markers
-    #   - Updates fs (sampling frequency) by dividing by q
-    # Note: Creates a new MultimodalData object; does not modify in place
-    # Args:
-    #   q: Decimation factor (default: 8)
-    # Returns:
-    #   New MultimodalData instance with decimated signals and fs/q sampling rate
-    # Note: Time, events, and diode columns are downsampled by selecting every q-th sample
-    #       EEG, ECG, IBI, and ET columns are properly anti-aliased filtered then decimated
-    
-interpolate_ibi_signals(who: str, label: str = '', plot_flag: bool = False)
-    # Extracts R-peaks and interpolates IBI signals from ECG data using neurokit2
-    # Args:
-    #   who: 'ch' (child) or 'cg' (caregiver)
-    #   label: Optional label for plotting
-    #   plot_flag: Whether to plot the results
+    #   Tuple of (raw, time) where:
+    #   - raw: MNE Raw object with EEG data and annotations
+    #   - time: np.ndarray of time points in seconds
+    # Note: If both event and times are provided, event takes precedence
+    #       Adds event annotations to the MNE Raw object
+    #       Sets montage to standard 10-20 electrode positions
+    #       Marks data as pre-filtered if eeg_filtration.applied is True
 
-set_ibi()
-    # Convenience method to interpolate IBI signals for both child and caregiver
-    # Calls interpolate_ibi_signals for both 'ch' and 'cg'
+print_events()
+    # Prints formatted table of all events from self.events dictionary
+    # Displays event name, start time, and duration for each event
+```
 
-_ensure_data_length(length: int)
-    # Internal method to ensure DataFrame has enough rows
-    # Creates or extends DataFrame as needed
+### Utility Methods (Public)
+
+```python
+eeg_channel_names_all() -> list[str]
+    # Returns combined list of child and caregiver EEG channel names
 ```
 
 ## Example Usage
 
 ```python
+from src.dataloader import create_multimodal_data
 from src.data_structures import MultimodalData
 import numpy as np
 
-# Create instance
-md = MultimodalData()
-md.id = "W001"
-md.fs = 1024  # Hz
+# Load data using DataLoader (recommended approach)
+md = create_multimodal_data(
+    data_base_path='./data',
+    dyad_id='W003',
+    load_eeg=True,
+    load_et=True,
+    lowcut=4.0,
+    highcut=40.0,
+    decimate_factor=8
+)
 
-# Set EEG data
-eeg_data = np.random.randn(21, 10000)  # 21 channels, 10000 samples
-channel_mapping = {'Fp1': 0, 'Fp2': 1, ...}
-md.eeg_channel_names_ch = ['Fp1', 'Fp2', 'F3', ...]
-md.set_eeg_data(eeg_data, channel_mapping)
+# Access basic information
+print(f"Dyad ID: {md.id}")
+print(f"Sampling frequency: {md.fs} Hz")
+print(f"Available modalities: {md.modalities}")
+print(f"Data shape: {md.data.shape}")
 
-# Set ECG data
-ecg_ch = np.random.randn(10000)
-ecg_cg = np.random.randn(10000)
-md.set_ecg_data(ecg_ch, ecg_cg)
+# View events
+md.print_events()
 
-# Add events
-md.events = [
-    {'name': 'Brave', 'start': 10.0, 'duration': 120.0},
-    {'name': 'Talk_1', 'start': 200.0, 'duration': 180.0}
-]
-md.set_events_column(md.events)
-
-# Access data
+# Access specific columns
 print(md.data.columns)  # All column names
 print(md.data['EEG_ch_Fp1'])  # Specific channel data
-ch_eeg = md.get_eeg_data_ch()  # All child EEG as array
+
+# Get EEG data as arrays
+ch_eeg = md.get_eeg_data_ch()  # All child EEG as 2D array [n_channels x n_samples]
+cg_eeg = md.get_eeg_data_cg()  # All caregiver EEG as 2D array [n_channels x n_samples]
+
+# Get filtered signals
+time_vec, chan_names, eeg_data = md.get_signals(
+    mode='EEG',
+    member='ch',
+    selected_channels=['Fp1', 'Fp2', 'F3', 'F4'],
+    selected_events=['Brave'],
+    selected_times=None
+)
+
+# Get ECG signals
+time_vec, chan_names, ecg_data = md.get_signals(mode='ECG', member='ch')
+
+# Export to MNE for advanced analysis
+raw, time = md.to_mne_raw(who='ch', event='Brave', margin_around_event=2.0)
+raw.plot()
+
+# Get events as marker channel for external tools
+time_vec, markers, event_map = md.get_events_as_marker_channel()
 ```
 
+## DataLoader Usage
+
+The `DataLoader` module provides the `create_multimodal_data()` function to load and preprocess data:
+
+```python
+from src.dataloader import create_multimodal_data
+
+md = create_multimodal_data(
+    data_base_path='path/to/data',
+    dyad_id='W003',
+    load_eeg=True,              # Load EEG data
+    load_et=True,               # Load eye-tracking data
+    lowcut=4.0,                 # High-pass filter cutoff (Hz)
+    highcut=40.0,               # Low-pass filter cutoff (Hz)
+    eeg_filter_type='fir',      # 'fir' or 'iir'
+    interpolate_et_during_blinks_threshold=0,  # ET blink interpolation (0 = no interpolation)
+    median_filter_size=64,      # ET median filter size
+    low_pass_et_order=351,      # ET low-pass filter order
+    et_pos_cutoff=128,          # ET position cutoff frequency (Hz)
+    et_pupil_cutoff=4,          # ET pupil cutoff frequency (Hz)
+    pupil_model_confidence=0.9, # 3D pupil model confidence threshold
+    decimate_factor=1,          # Decimation factor (1 = no decimation)
+    plot_flag=False             # Show diagnostic plots
+)
+```
+
+The DataLoader:
+1. Loads EEG data from SVAROG format (.obci, .xml files)
+2. Extracts ECG signals and processes them to obtain IBI
+3. Detects events from diode channel
+4. Applies EEG filters (notch, high-pass, low-pass)
+5. Loads eye-tracking data from Pupil Labs format
+6. Processes and filters ET signals (position, pupil diameter, blinks)
+7. Synchronizes all modalities to common time base
+8. Optionally decimates signals to reduce data size
+9. Creates unified event structure from EEG and ET events
+
+**Note**: Direct manipulation of MultimodalData using private methods (prefixed with `_`) is not recommended. Use the DataLoader instead.
+
 ## Version History
+
+- **2.2 (2026-01-30)**: Major documentation update to reflect actual implementation
+  - Marked data population methods as private (prefixed with `_`) - should only be called by DataLoader
+  - Updated `get_signals()` return signature to tuple of 3 items: (time_vector, channel_names, data)
+  - Clarified ET column naming: `ET_ch_x`, `ET_ch_y`, `ET_ch_pupil`, `ET_ch_blinks` for child
+  - Added separate sections for private (DataLoader-only) and public methods
+  - Added comprehensive DataLoader usage section
+  - Reorganized methods into logical groups: Data Population (Private), Data Retrieval (Public), Export/Visualization (Public)
+  - Added warning against direct use of private methods
+  - Updated example usage to show recommended DataLoader approach
+  - Clarified that `_decimate_signals()` is private and called by DataLoader
+  - Enhanced event column documentation to distinguish `events`, `EEG_events`, and `ET_event`
+  - Changed `events` from `list[dict]` to `dict[str, dict]` with event names as keys
+  - Added filter coefficient fields to `Filtration` dataclass (notch_a, notch_b, low_pass_a, low_pass_b, high_pass_a, high_pass_b)
+  - Renamed `set_events_column()` to `set_EEG_events_column()` for clarity
+  - Added `get_eeg_data()` static method for extracting EEG from any DataFrame
+  - Added `get_events_as_marker_channel()` for event marker channel export
+  - Added `create_events_column()` for merging EEG_events and ET_event into unified events column
+  - Added `create_event_structure()` for creating events dictionary from DataFrame
+  - Added `print_events()` for formatted event display
+  - Added `to_mne_raw()` for MNE Raw object export with event annotations
+  - Enhanced `interpolate_ibi_signals()` documentation to clarify return values and DataFrame merging
+  - Enhanced `decimate_signals()` documentation with complete metadata copying details
+  - Removed `align_time_to_first_event()` (not implemented in current code)
 
 - **2.1 (2026-01-01)**: Enhanced signal retrieval and decimation methods
   - Added comprehensive `get_signals()` method for flexible signal retrieval with event/time filtering

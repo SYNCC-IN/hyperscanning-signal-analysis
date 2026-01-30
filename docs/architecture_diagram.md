@@ -1,5 +1,9 @@
 # Hyperscanning Signal Analysis - Architecture Diagram
 
+**Version:** 1.1  
+**Last updated:** 2026-01-30  
+**Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
+
 ## System Architecture Overview
 
 ```mermaid
@@ -39,10 +43,10 @@ flowchart TB
 
     subgraph Output["Data Access Layer"]
         direction LR
-        GS["get_signals()<br/>- Filter by mode<br/>- Filter by member<br/>- Filter by events<br/>- Filter by time"]
-        GE["get_events_as_marker()<br/>- Event to int mapping<br/>- Marker channel<br/>- Time alignment"]
-        GD["get_eeg_data()<br/>- Extract EEG array<br/>- Get channel names<br/>- Transpose to [ch × samples]"]
-        GME["export_eeg_to_mne_raw()<br/>- Create MNE Raw<br/>- Add annotations<br/>- Set montage<br/>- Add filter info"]
+        GS["get_signals()<br/>- Filter by mode/member<br/>- Filter by events/time<br/>- Returns: (time, channels, data)"]
+        GE["get_events_as_marker_channel()<br/>- Event to int mapping<br/>- Returns: (time, markers, map)"]
+        GD["get_eeg_data_ch/cg()<br/>- Extract EEG array<br/>- Returns: [ch × samples]"]
+        GME["to_mne_raw()<br/>- Create MNE Raw<br/>- Add annotations<br/>- Set montage & filter info"]
     end
 
     subgraph Analysis["Analysis Layer"]
@@ -112,10 +116,9 @@ flowchart LR
 
     subgraph Methods["Key Methods"]
         direction TB
-        SET["Data Setters<br/>set_eeg_data()<br/>set_ecg_data()<br/>set_ibi()<br/>set_diode()<br/>set_EEG_events_column()"]
-        GET["Data Getters<br/>get_signals()<br/>get_eeg_data_ch()<br/>get_eeg_data_cg()<br/>get_events_as_marker()"]
-        PROC["Processing<br/>decimate_signals()<br/>interpolate_ibi_signals()<br/>create_events_column()<br/>create_event_structure()"]
-        EXPORT["Export<br/>export_eeg_to_mne_raw()"]
+        SET["Private (DataLoader only)<br/>_set_eeg_data()<br/>_set_ecg_data()<br/>_set_ibi()<br/>_set_diode()<br/>_set_EEG_events_column()<br/>_decimate_signals()<br/>_create_events_column()<br/>_create_event_structure()"]
+        GET["Public: Data Retrieval<br/>get_signals()<br/>get_eeg_data_ch/cg()<br/>get_eeg_data() [static]<br/>get_events_as_marker_channel()"]
+        EXPORT["Public: Export/Utility<br/>to_mne_raw()<br/>print_events()<br/>eeg_channel_names_all()"]
     end
 
     DataFrame --> Methods
@@ -210,13 +213,13 @@ flowchart TD
     
     MMD --> CHOICE{Access Pattern}
     
-    CHOICE -->|"Mode-based"| MODE["get_signals()<br/>- mode='EEG'/'ECG'/'IBI'/'ET'<br/>- member='ch'/'cg'<br/>- selected_channels=[...]<br/>- selected_events=[...]<br/>- selected_times=(start, end)"]
+    CHOICE -->|"Mode-based"| MODE["get_signals()<br/>- mode='EEG'/'ECG'/'IBI'/'ET'<br/>- member='ch'/'cg'<br/>- selected_channels=[...]<br/>- selected_events=[...]<br/>- selected_times=(start, end)<br/>Returns: (time, channels, data)"]
     
-    CHOICE -->|"Direct array"| DIRECT["get_eeg_data()<br/>Returns EEG data array<br/>[n_channels × n_samples]<br/>+ channel names list"]
+    CHOICE -->|"Direct array"| DIRECT["get_eeg_data_ch/cg()<br/>Returns EEG data array<br/>[n_channels × n_samples]<br/><br/>get_eeg_data() [static]<br/>Returns: (data, channel_names)"]
     
-    CHOICE -->|"Events as markers"| MARKER["get_events_as_marker()<br/>Returns time-aligned<br/>integer marker channel"]
+    CHOICE -->|"Events as markers"| MARKER["get_events_as_marker_channel()<br/>Returns time-aligned<br/>integer marker channel<br/>+ event name mapping"]
     
-    CHOICE -->|"MNE export"| MNE["export_eeg_to_mne_raw()<br/>- Select by event or time<br/>- Add margins<br/>- Include annotations<br/>- Set montage & filter info"]
+    CHOICE -->|"MNE export"| MNE["to_mne_raw()<br/>- Select by event or time<br/>- Add margins<br/>- Include annotations<br/>- Set montage & filter info"]
     
     MODE --> ANALYSIS["Analysis Code<br/>- DTF computation<br/>- Spectral analysis<br/>- Visualization"]
     
@@ -283,78 +286,109 @@ hyperscanning-signal-analysis/
 1. **Unified Storage**: All signals (EEG, ECG, IBI, ET) stored in single DataFrame
 2. **Common Sampling**: All signals resampled to common `fs` (typically 1024 Hz or decimated)
 3. **Time Alignment**: Time column aligned so first movie event starts at t=0
-4. **Flexible Access**: Multiple methods to retrieve data (`get_signals()`, `get_eeg_data()`) by mode, member, event, or time
-5. **Immutable Decimation**: `decimate_signals()` returns new object, preserves original
+4. **Flexible Access**: Multiple methods to retrieve data (`get_signals()`, `get_eeg_data_ch/cg()`) by mode, member, event, or time
+5. **Immutable Decimation**: `_decimate_signals()` returns new object, preserves original
 6. **Event Integration**: Events from both EEG (diode) and ET (annotations) merged and validated
-7. **MNE Compatibility**: Export to MNE format with proper annotations and filter info
+7. **MNE Compatibility**: Export to MNE format with proper annotations and filter info via `to_mne_raw()`
 8. **Modular Processing**: Separate functions for loading, filtering, and processing each modality
+9. **Encapsulation**: Private methods (prefixed with `_`) only called by DataLoader; public methods for user access
 
 ## Signal Flow Summary
 
 ```
 Raw SVAROG Files → Read → Extract Diode/ECG from Raw → Process ECG/Detect Events → 
-Mount EEG to M1/M2 → Filter EEG → Store in DataFrame → Compute IBI → 
-Load & Merge ET Data → Decimate All Modalities (optional) → Create Unified Events → 
-Access via get_signals()/get_eeg_data() → Analysis (DTF, HRV, etc.) → Results
+Mount EEG to M1/M2 → Filter EEG → Store in DataFrame (via _set_eeg_data) → 
+Compute IBI (via _set_ibi) → Load & Merge ET Data → 
+Decimate All Modalities [optional] (via _decimate_signals) → 
+Create Unified Events (via _create_events_column, _create_event_structure) → 
+Access via get_signals()/get_eeg_data_ch/cg()/to_mne_raw() → 
+Analysis (DTF, HRV, etc.) → Results
 ```
 
 ## Common Usage Patterns
 
 ### Pattern 1: Load and Extract EEG for Event
 ```python
-# Load data
-mmd = create_multimodal_data(data_base_path, dyad_id)
+from src.dataloader import create_multimodal_data
 
-# Get EEG for specific event
+# Load data
+mmd = create_multimodal_data(
+    data_base_path='./data',
+    dyad_id='W003',
+    load_eeg=True,
+    load_et=True,
+    decimate_factor=8
+)
+
+# Get EEG for specific event - returns (time, channels, data)
 time, channels, data = mmd.get_signals(
     mode='EEG', 
     member='ch',
     selected_channels=['Fz', 'Cz', 'Pz'],
     selected_events=['Brave']
 )
+# data shape: [n_samples × n_channels]
 ```
 
 ### Pattern 2: Export to MNE with Time Selection
 ```python
-# Export specific time window
-raw, times = export_eeg_to_mne_raw(
-    mmd, 
+# Export specific time window - use to_mne_raw() method
+raw, times = mmd.to_mne_raw(
     who='cg',
     times=(100.0, 300.0)  # 100s to 300s
 )
 raw.plot()
+
+# Also available as convenience function in dataloader:
+from src.dataloader import export_eeg_to_mne_raw
+raw, times = export_eeg_to_mne_raw(mmd, who='cg', times=(100.0, 300.0))
 ```
 
 ### Pattern 3: Export Event with Margins
 ```python
 # Export event with margins for baseline
-raw, times = export_eeg_to_mne_raw(
-    mmd, 
+raw, times = mmd.to_mne_raw(
     who='ch',
     event='Incredibles',
     margin_around_event=10.0  # 10s before and after
 )
 # MNE annotations will include event timing
-raw.annotations
+print(raw.annotations)
 ```
 
 ### Pattern 4: Direct Array Access
 ```python
-# Get EEG as numpy array
-eeg_data, channel_names = get_eeg_data(
-    df=mmd.data,
-    who='ch'
-)
+# Get EEG as numpy array - instance methods
+eeg_ch_data = mmd.get_eeg_data_ch()  # Returns [n_channels × n_samples]
+eeg_cg_data = mmd.get_eeg_data_cg()  # Returns [n_channels × n_samples]
+
+# Or use static method for any DataFrame
+from src.data_structures import MultimodalData
+eeg_data, channel_names = MultimodalData.get_eeg_data(df=mmd.data, who='ch')
 # eeg_data shape: [n_channels × n_samples]
 # channel_names: ['Fp1', 'Fp2', 'F7', ...]
+
+# Also available as convenience function in dataloader:
+from src.dataloader import get_eeg_data
+eeg_data, channel_names = get_eeg_data(df=mmd.data, who='ch')
 ```
 
 ### Pattern 5: Multi-modal Analysis
 ```python
-# Get synchronized signals
-eeg_time, eeg_ch, eeg_data = mmd.get_signals('EEG', 'ch', ...)
-ibi_time, ibi_ch, ibi_data = mmd.get_signals('IBI', 'ch', ...)
-et_time, et_cols, et_data = mmd.get_signals('ET', 'ch', ...)
+# Get synchronized signals - all return (time, channel_names, data)
+eeg_time, eeg_channels, eeg_data = mmd.get_signals(
+    mode='EEG', member='ch', 
+    selected_channels=['Fp1', 'Fz', 'Cz', 'Pz', 'O1']
+)
+ibi_time, ibi_channels, ibi_data = mmd.get_signals(mode='IBI', member='ch')
+et_time, et_cols, et_data = mmd.get_signals(
+    mode='ET', member='ch',
+    selected_channels=['x', 'y', 'pupil']
+)
+
+# Get events as markers for plotting
+event_time, markers, event_map = mmd.get_events_as_marker_channel()
+# event_map: {'Brave': 1, 'Peppa': 2, 'Incredibles': 3, ...}
 ```
 
 ---
