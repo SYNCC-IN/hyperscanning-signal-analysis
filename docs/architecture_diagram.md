@@ -12,16 +12,22 @@ flowchart TB
     subgraph Load["Data Loading Layer"]
         direction LR
         CEG["create_multimodal_data()<br/>Main entry point"]
-        LEG["load_eeg_data()<br/>- Read SVAROG files<br/>- Scan for events<br/>- Mount to M1/M2<br/>- Apply filters"]
+        LEG["load_eeg_data()<br/>- Read SVAROG files<br/>- Extract ECG/diode from raw<br/>- Mount to M1/M2<br/>- Apply EEG filters"]
         LET["load_et_data()<br/>- Read CSV files<br/>- Align timestamps<br/>- Process per task<br/>- Interpolate blinks"]
     end
 
     subgraph Process["Data Processing Layer"]
         direction TB
-        FILT["Filtering<br/>- Bandpass (1-40 Hz)<br/>- Notch (50 Hz)<br/>- FIR/IIR options"]
-        ECG["ECG Extraction<br/>- Extract EKG channels<br/>- High-pass filter<br/>- Compute IBI"]
+        RAW["Raw Signal Extraction<br/>- Extract diode signal<br/>- Extract ECG channels<br/>- From raw SVAROG data"]
+        ECG["ECG Processing<br/>- High-pass (0.5 Hz)<br/>- Notch (50 Hz)<br/>- Compute IBI"]
         EVT["Event Detection<br/>- Diode signal analysis<br/>- Threshold detection<br/>- Event timing"]
-        DEC["Decimation<br/>- Anti-aliasing filter<br/>- Downsample by factor q<br/>- Update fs"]
+        FILT["EEG Filtering<br/>- Mount to M1/M2<br/>- Bandpass (1-40 Hz)<br/>- Notch (50 Hz)<br/>- FIR/IIR options"]
+    end
+
+    subgraph PostProcess["Post-Load Processing"]
+        direction TB
+        DEC["Decimation (Optional)<br/>- Applied to all modalities<br/>- Anti-aliasing filter<br/>- Downsample by factor q<br/>- Update fs"]
+        MERGE["Event Merging<br/>- Create unified events<br/>- Merge EEG & ET events"]
     end
 
     subgraph Storage["Data Structure Layer"]
@@ -35,7 +41,7 @@ flowchart TB
         direction LR
         GS["get_signals()<br/>- Filter by mode<br/>- Filter by member<br/>- Filter by events<br/>- Filter by time"]
         GE["get_events_as_marker()<br/>- Event to int mapping<br/>- Marker channel<br/>- Time alignment"]
-        GD["get_data()<br/>- Extract EEG array<br/>- Get channel names<br/>- Transpose to [ch × samples]"]
+        GD["get_eeg_data()<br/>- Extract EEG array<br/>- Get channel names<br/>- Transpose to [ch × samples]"]
         GME["export_eeg_to_mne_raw()<br/>- Create MNE Raw<br/>- Add annotations<br/>- Set montage<br/>- Add filter info"]
     end
 
@@ -52,25 +58,27 @@ flowchart TB
     CEG --> LEG
     CEG --> LET
     
-    LEG --> FILT
-    FILT --> ECG
-    LEG --> EVT
+    LEG --> RAW
+    RAW --> ECG
+    RAW --> EVT
+    RAW --> FILT
     
     LEG --> MMD
     LET --> MMD
     ECG --> MMD
     EVT --> MMD
+    FILT --> MMD
     
     MMD --> DF
     MMD --> META
     
-    CEG --> DEC
-    DEC --> MMD
+    DF --> DEC
+    DEC --> MERGE
     
-    DF --> GS
-    DF --> GE
-    DF --> GD
-    DF --> GME
+    MERGE --> GS
+    MERGE --> GE
+    MERGE --> GD
+    MERGE --> GME
     
     GS --> HRV
     GS --> EEG_A
@@ -83,6 +91,7 @@ flowchart TB
     style Load fill:#fff3e0
     style Process fill:#f3e5f5
     style Storage fill:#e8f5e9
+    style PostProcess fill:#e1bee7
     style Output fill:#fff9c4
     style Analysis fill:#ffe0b2
 ```
@@ -104,7 +113,7 @@ flowchart LR
     subgraph Methods["Key Methods"]
         direction TB
         SET["Data Setters<br/>set_eeg_data()<br/>set_ecg_data()<br/>set_ibi()<br/>set_diode()<br/>set_EEG_events_column()"]
-        GET["Data Getters<br/>get_signals()<br/>get_data()<br/>get_events_as_marker()"]
+        GET["Data Getters<br/>get_signals()<br/>get_eeg_data_ch()<br/>get_eeg_data_cg()<br/>get_events_as_marker()"]
         PROC["Processing<br/>decimate_signals()<br/>interpolate_ibi_signals()<br/>create_events_column()<br/>create_event_structure()"]
         EXPORT["Export<br/>export_eeg_to_mne_raw()"]
     end
@@ -119,9 +128,15 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    START["Raw EEG Data<br/>(n_channels × n_samples)"]
+    START["Raw SVAROG Data<br/>(n_channels × n_samples)"]
     
-    START --> MOUNT["Reference Mounting<br/>Subtract 0.5×(M1 + M2)<br/>Separately for child & caregiver"]
+    START --> EXTRACT["Extract Signals<br/>- Diode signal<br/>- ECG channels (EKG1-EKG2)<br/>- All EEG channels"]
+    
+    EXTRACT --> ECG_PROC["ECG Processing<br/>High-pass: 0.5 Hz<br/>Notch: 50 Hz<br/>Store ECG_ch/ECG_cg"]
+    
+    EXTRACT --> DIODE["Event Detection<br/>From diode signal<br/>Threshold & timing"]
+    
+    EXTRACT --> MOUNT["Reference Mounting<br/>Subtract 0.5×(M1 + M2)<br/>Separately for child & caregiver"]
     
     MOUNT --> DESIGN["Filter Design<br/>- Bandpass: lowcut to highcut<br/>- Notch: 50 Hz (Q=30)<br/>- Type: FIR or IIR"]
     
@@ -129,10 +144,15 @@ flowchart TD
     
     APPLY --> STORE["Store in DataFrame<br/>Each channel = column<br/>EEG_ch_* / EEG_cg_*"]
     
-    STORE --> DEC_Q{Decimate?<br/>q > 1}
+    ECG_PROC --> STORE
+    DIODE --> STORE
     
-    DEC_Q -->|Yes| ANTI["Anti-aliasing Filter<br/>FIR lowpass: 0.8×(fs/2q)"]
-    ANTI --> DOWN["Downsample<br/>Select every q-th sample"]
+    STORE --> MERGE_ET["Merge ET Data<br/>(if loaded)<br/>Align on time_idx"]
+    
+    MERGE_ET --> DEC_Q{Decimate?<br/>q > 1}
+    
+    DEC_Q -->|Yes| ANTI["Anti-aliasing Filter<br/>FIR lowpass: 0.8×(fs/2q)<br/>Applied to all modalities"]
+    ANTI --> DOWN["Downsample<br/>Select every q-th sample<br/>EEG, ECG, IBI, ET"]
     DOWN --> UPDATE["Update fs<br/>fs_new = fs / q"]
     
     DEC_Q -->|No| READY["Ready for Analysis"]
@@ -192,7 +212,7 @@ flowchart TD
     
     CHOICE -->|"Mode-based"| MODE["get_signals()<br/>- mode='EEG'/'ECG'/'IBI'/'ET'<br/>- member='ch'/'cg'<br/>- selected_channels=[...]<br/>- selected_events=[...]<br/>- selected_times=(start, end)"]
     
-    CHOICE -->|"Direct array"| DIRECT["get_data()<br/>Returns EEG data array<br/>[n_channels × n_samples]<br/>+ channel names list"]
+    CHOICE -->|"Direct array"| DIRECT["get_eeg_data()<br/>Returns EEG data array<br/>[n_channels × n_samples]<br/>+ channel names list"]
     
     CHOICE -->|"Events as markers"| MARKER["get_events_as_marker()<br/>Returns time-aligned<br/>integer marker channel"]
     
@@ -263,7 +283,7 @@ hyperscanning-signal-analysis/
 1. **Unified Storage**: All signals (EEG, ECG, IBI, ET) stored in single DataFrame
 2. **Common Sampling**: All signals resampled to common `fs` (typically 1024 Hz or decimated)
 3. **Time Alignment**: Time column aligned so first movie event starts at t=0
-4. **Flexible Access**: Multiple methods to retrieve data by mode, member, event, or time
+4. **Flexible Access**: Multiple methods to retrieve data (`get_signals()`, `get_eeg_data()`) by mode, member, event, or time
 5. **Immutable Decimation**: `decimate_signals()` returns new object, preserves original
 6. **Event Integration**: Events from both EEG (diode) and ET (annotations) merged and validated
 7. **MNE Compatibility**: Export to MNE format with proper annotations and filter info
@@ -272,9 +292,10 @@ hyperscanning-signal-analysis/
 ## Signal Flow Summary
 
 ```
-Raw Files → Load → Mount/Reference → Filter → Extract ECG/IBI → 
-Store in DataFrame → Decimate (optional) → Align Events → 
-Access via get_signals()/get_data() → Analysis (DTF, HRV, etc.) → Results
+Raw SVAROG Files → Read → Extract Diode/ECG from Raw → Process ECG/Detect Events → 
+Mount EEG to M1/M2 → Filter EEG → Store in DataFrame → Compute IBI → 
+Load & Merge ET Data → Decimate All Modalities (optional) → Create Unified Events → 
+Access via get_signals()/get_eeg_data() → Analysis (DTF, HRV, etc.) → Results
 ```
 
 ## Common Usage Patterns
@@ -320,7 +341,7 @@ raw.annotations
 ### Pattern 4: Direct Array Access
 ```python
 # Get EEG as numpy array
-eeg_data, channel_names = get_data(
+eeg_data, channel_names = get_eeg_data(
     df=mmd.data,
     who='ch'
 )
