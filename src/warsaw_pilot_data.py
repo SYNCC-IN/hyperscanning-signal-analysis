@@ -217,18 +217,18 @@ def analyze_eeg_dtf_for_events(mmd, selected_events: List[str]) -> None:
     # DTF analysis with optimal model order
     p_opt = 9  # Optimal model order for EEG DTF
 
-    # Child DTF
-    dtf_ch = dtf_multivariate(eeg_ch, DTF_FREQ_RANGE_EEG, mmd.fs, 
+    # Child DTF - note that for mvar functions we need channels x time so we transpose
+    dtf_ch = dtf_multivariate(eeg_ch.T, DTF_FREQ_RANGE_EEG, mmd.fs, 
                                optimal_model_order=p_opt, comment='child')
-    spectra_ch = multivariate_spectra(eeg_ch, DTF_FREQ_RANGE_EEG, mmd.fs, 
+    spectra_ch = multivariate_spectra(eeg_ch.T, DTF_FREQ_RANGE_EEG, mmd.fs, 
                                        optimal_model_order=p_opt)
     mvar_plot(spectra_ch, dtf_ch, DTF_FREQ_RANGE_EEG, 'From ', 'To ', 
               EEG_CHANNELS_FOR_DTF, 'Child DTF', 'sqrt')
 
-    # Caregiver DTF
-    dtf_cg = dtf_multivariate(eeg_cg, DTF_FREQ_RANGE_EEG, mmd.fs, 
+    # Caregiver DTF - note that for mvar functions we need channels x time so we transpose
+    dtf_cg = dtf_multivariate(eeg_cg.T, DTF_FREQ_RANGE_EEG, mmd.fs, 
                                optimal_model_order=p_opt, comment='caregiver')
-    spectra_cg = multivariate_spectra(eeg_cg, DTF_FREQ_RANGE_EEG, mmd.fs, 
+    spectra_cg = multivariate_spectra(eeg_cg.T, DTF_FREQ_RANGE_EEG, mmd.fs, 
                                        optimal_model_order=p_opt)
     mvar_plot(spectra_cg, dtf_cg, DTF_FREQ_RANGE_EEG, 'From ', 'To ', 
               EEG_CHANNELS_FOR_DTF, 'Caregiver DTF', 'sqrt')
@@ -268,8 +268,8 @@ def analyze_eeg_hrv_dtf_for_events(mmd, selected_events: List[str]) -> None:
     b = firwin(numtaps=255, cutoff=[THETA_BAND_LOW, THETA_BAND_HIGH], 
                fs=mmd.fs, pass_zero=False)
     
-    filtered_eeg_ch_Fz = lfilter(b, [1.0], eeg_ch_Fz[0, :])
-    filtered_eeg_cg_Fz = lfilter(b, [1.0], eeg_cg_Fz[0, :])
+    filtered_eeg_ch_Fz = lfilter(b, [1.0], eeg_ch_Fz[:, 0])
+    filtered_eeg_cg_Fz = lfilter(b, [1.0], eeg_cg_Fz[:, 0])
     
     # Correct for filter delay
     delay = (len(b) - 1) // 2
@@ -289,12 +289,12 @@ def analyze_eeg_hrv_dtf_for_events(mmd, selected_events: List[str]) -> None:
                                      selected_channels=['IBI_cg'], 
                                      selected_events=selected_events, 
                                      selected_times=None)[2]
-    # Combine into DTF data array
+    # Combine into DTF data array - note the shape: channels x time, so we stack accordingly and transpose
     dtf_data = np.zeros((4, eeg_ch_Fz_theta_amp.shape[0]))
-    dtf_data[0, :] = ibi_ch
-    dtf_data[1, :] = ibi_cg
-    dtf_data[2, :] = eeg_ch_Fz_theta_amp
-    dtf_data[3, :] = eeg_cg_Fz_theta_amp
+    dtf_data[0, :] = ibi_ch.T
+    dtf_data[1, :] = ibi_cg.T
+    dtf_data[2, :] = eeg_ch_Fz_theta_amp.T
+    dtf_data[3, :] = eeg_cg_Fz_theta_amp.T
     
     # Z-score normalization
     dtf_data = zscore(dtf_data, axis=1)
@@ -345,8 +345,8 @@ def _plot_debug_eeg_channels(mmd, selected_events: List[str]) -> None:
 def _plot_spectra(eeg_ch: np.ndarray, eeg_cg: np.ndarray, 
                      fs: float, event_name: str) -> None:
     """Plot power spectra of Fz channels."""
-    f_ch, pxx_ch = welch(eeg_ch[0, :], fs=fs, nperseg=1024)
-    f_cg, pxx_cg = welch(eeg_cg[0, :], fs=fs, nperseg=1024)
+    f_ch, pxx_ch = welch(eeg_ch[:,0], fs=fs, nperseg=1024)
+    f_cg, pxx_cg = welch(eeg_cg[:,0], fs=fs, nperseg=1024)
     
     plt.figure(figsize=(12, 6))
     plt.plot(f_ch, pxx_ch, label='Child Fz channel')
@@ -365,8 +365,8 @@ def _plot_spectra(eeg_ch: np.ndarray, eeg_cg: np.ndarray,
 
 if __name__ == "__main__":
     sys.exit(main(
-        plot_debug=False, 
-        analyze_hrv_dtf=False, 
-        analyze_eeg_dtf=False, 
+        plot_debug=True, 
+        analyze_hrv_dtf=True, 
+        analyze_eeg_dtf=True, 
         analyze_eeg_hrv_dtf=True
     ))

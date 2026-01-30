@@ -1,5 +1,10 @@
 import numpy as np
 import pandas as pd
+import warnings
+
+# Suppress pandas ChainedAssignmentError from neurokit2 (external library using deprecated patterns)
+warnings.filterwarnings('ignore', category=pd.errors.ChainedAssignmentError)
+
 import neurokit2 as nk
 from matplotlib import pyplot as plt
 from scipy.interpolate import CubicSpline
@@ -195,13 +200,13 @@ class MultimodalData:
         if selected_times:
             start_time, end_time = selected_times
             df_filtered = df_filtered[(df_filtered['time'] >= start_time) & (df_filtered['time'] <= end_time)]
-        # Retrive the time vector
+        # Retrive the time vector 
         time_vector = df_filtered['time'].values
         # Remove 'time' and 'events' columns before returning data
         df_filtered = df_filtered.drop(columns=['time', 'events'])
         channel_names = df_filtered.columns.tolist()
-        # Return data as 2D array [n_channels x n_samples]
-        return time_vector, channel_names, df_filtered[cols].values.T  
+        # Return data as 2D array [ n_samples x n_channels ] 
+        return time_vector, channel_names, df_filtered[cols].values  
     
     def get_events_as_marker_channel(self,  selected_times: Optional[tuple] = None):
         """
@@ -217,7 +222,7 @@ class MultimodalData:
         """
         if 'events' not in self.data.columns:
             return None
-        time_vector = self.data['time'].values  
+        time_vector = self.data['time'].values
         # create a dictionary mapping event names to integer markers
         unique_events = self.data['events'].dropna().unique()
         event_to_marker = {event: idx + 1 for idx, event in enumerate(unique_events)}
@@ -233,9 +238,11 @@ class MultimodalData:
             marker_channel = marker_channel[mask]
         return time_vector, marker_channel, event_to_marker
     
-    def set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
+    def _set_eeg_data(self, eeg_data: np.ndarray, channel_mapping: Dict[str, int]):
         """
         Store EEG data in DataFrame with each channel as a separate column.
+        
+        Private method - should only be called by DataLoader.
 
         Args:
             eeg_data: 2D array [n_channels x n_samples]
@@ -259,8 +266,9 @@ class MultimodalData:
                     col_name = f'EEG_ch_{chan_name}'
                 self.data[col_name] = eeg_data[chan_idx, :]
 
-    def set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
-        """Store ECG data in DataFrame."""
+    def _set_ecg_data(self, ecg_ch: np.ndarray, ecg_cg: np.ndarray):
+        """Store ECG data in DataFrame. 
+        Private method - should only be called by DataLoader."""
         # Initialize DataFrame with time columns if empty
         n_samples = ecg_ch.shape[0]
         if len(self.data) == 0:
@@ -273,13 +281,16 @@ class MultimodalData:
         self.data['ECG_cg'] = ecg_cg
 
 
-    def set_diode(self, diode: np.ndarray):
-        """Store diode data in DataFrame."""
+    def _set_diode(self, diode: np.ndarray):
+        """Store diode data in DataFrame. 
+        Private method - should only be called by DataLoader.
+        """
         self._ensure_data_length(len(diode))
         self.data['diode'] = diode
 
-    def set_EEG_events_column(self, events: List[dict]):
-        """Populate EEG_events column based on event timing and duration."""
+    def _set_EEG_events_column(self, events: List[dict]):
+        """Populate EEG_events column based on event timing and duration. 
+        Private method - should only be called by DataLoader."""
         if 'EEG_events' not in self.data.columns:
             self.data['EEG_events'] = None
 
@@ -290,7 +301,8 @@ class MultimodalData:
 
 
     def _ensure_data_length(self, length: int):
-        """Ensure DataFrame has enough rows to hold data of given length."""
+        """Ensure DataFrame has enough rows to hold data of given length.
+        Private method - should only be called by DataLoader."""
         if len(self.data) == 0:
             self.data = pd.DataFrame(index=range(length))
         elif len(self.data) < length:
@@ -301,9 +313,176 @@ class MultimodalData:
     def eeg_channel_names_all(self) -> List[str]:
         """Returns a combined list of child and caregiver EEG channel names."""
         return self.eeg_channel_names_ch + self.eeg_channel_names_cg
+    
+    def get_eeg_data_ch(self) -> np.ndarray | None:
+        """
+        Returns child EEG data as 2D array.
+        
+        Returns:
+            np.ndarray or None: 2D array [n_channels x n_samples] or None if no data
+        """
+        prefix = 'EEG_ch_'
+        cols = [col for col in self.data.columns if col.startswith(prefix)]
+        
+        if not cols:
+            return None
+        
+        return self.data[cols].values.T
+    
+    def get_eeg_data_cg(self) -> np.ndarray | None:
+        """
+        Returns caregiver EEG data as 2D array.
+        
+        Returns:
+            np.ndarray or None: 2D array [n_channels x n_samples] or None if no data
+        """
+        prefix = 'EEG_cg_'
+        cols = [col for col in self.data.columns if col.startswith(prefix)]
+        
+        if not cols:
+            return None
+        
+        return self.data[cols].values.T
+    
+    @staticmethod
+    def get_eeg_data(df: pd.DataFrame, who: str) -> tuple[np.ndarray | None, list]:
+        """
+        Returns EEG data and channel names for specified participant from a DataFrame.
+        
+        This is a utility method for extracting EEG data from any DataFrame
+        following the MultimodalData column naming convention.
+        
+        Args:
+            df: DataFrame instance containing EEG data 
+            who: Participant identifier ('ch' for child, 'cg' for caregiver)
+            
+        Returns:
+            Tuple of (eeg_data, channel_names) where:
+            - eeg_data: 2D array [n_channels x n_samples] or None if no data
+            - channel_names: List of clean channel names (e.g., ['Fp1', 'Fp2', ...])
+        """
+        prefix = f'EEG_{who}_'
+        cols = [col for col in df.columns if col.startswith(prefix)]
+        
+        if not cols:
+            return None, []
+        
+        # Extract data as 2D array
+        eeg_data = df[cols].values.T
+        
+        # Strip prefix to get clean channel names
+        channel_names = [col.replace(prefix, '') for col in cols]
+        
+        return eeg_data, channel_names
+    
+    def to_mne_raw(self, who: str, times: tuple[float, float] | None = None, 
+                   event: str | None = None, margin_around_event: float = 0) -> tuple:
+        """
+        Export EEG data to MNE Raw object.
+        
+        Args:
+            who: 'ch' for child, 'cg' for caregiver 
+            times: Optional range of time to include (in seconds) (start_time, end_time)
+            event: Optional event to include by name (e.g., 'Brave', 'Peppa', 'Incredibles', 'Talk_1', 'Talk_2')
+            margin_around_event: Margin in seconds to add before and after the event time range  
+            Note: if both event and times are provided, event takes precedence.
+        
+        Returns:
+            Tuple of (raw, time) where:
+            - raw: MNE Raw object with EEG data
+            - time: np.ndarray of time points in seconds
+            
+        Note:
+            Requires mne package to be installed.
+        """
+        import mne
+        
+        # Determine time range and select data
+        annotations = None
+        if event is not None:
+            # Handle single event (string) 
+            if isinstance(event, str):
+                if event not in self.events:
+                    raise ValueError(f"Event '{event}' not found in self.events")
+                start_time = self.events[event]["start"] - margin_around_event
+                end_time = self.events[event]["start"] + self.events[event]["duration"] + margin_around_event
+                
+                selected_data = self.data[
+                    (self.data["time"] >= start_time)
+                    & (self.data["time"] <= end_time)    
+                ]
+                annotations = [(event, margin_around_event, self.events[event]["duration"])]
+                time = selected_data["time"].to_numpy()
+            else:
+                raise TypeError(f"event must be a string, got {type(event)}")
+        elif times is not None:
+            start_time, end_time = times
+            selected_data = self.data[
+                (self.data["time"] >= start_time)
+                & (self.data["time"] <= end_time)
+            ]
+            # Set the annotations for events within the time range
+            annotations = []
+            for ev_name, ev in self.events.items():
+                ev_start = ev["start"]
+                ev_end = ev["start"] + ev["duration"]
+                if (ev_start >= start_time) and (ev_end <= end_time):
+                    annotations.append((ev_name, ev_start - start_time, ev["duration"]))
+            time = selected_data["time"].to_numpy()
+        else:
+            selected_data = self.data   
+            time = selected_data["time"].to_numpy()
+        
+        # Extract EEG data
+        eeg_data, channel_names = self.get_eeg_data(df=selected_data, who=who)
+        
+        if eeg_data is None:
+            raise ValueError(f"No EEG data found for {who}, event: {event}, times: {times}")
+        
+        # Create MNE Raw object
+        info = mne.create_info(
+            ch_names=channel_names, 
+            sfreq=self.fs, 
+            ch_types='eeg'
+        )
+        
+        raw = mne.io.RawArray(eeg_data, info)
+        
+        # Add annotations if available
+        if annotations is not None:
+            onsets = [ann[1] for ann in annotations]
+            durations = [ann[2] for ann in annotations]
+            descriptions = [ann[0] for ann in annotations]
+            raw.set_annotations(mne.Annotations(onsets, durations, descriptions))
+        
+        # Mark the data as pre-filtered
+        if self.eeg_filtration.applied:
+            with raw.info._unlock():
+                if self.eeg_filtration.high_pass:
+                    raw.info['highpass'] = float(self.eeg_filtration.high_pass)
+                if self.eeg_filtration.low_pass:
+                    raw.info['lowpass'] = float(self.eeg_filtration.low_pass)
+        
+        # Add filter description
+        if self.eeg_filtration.applied:
+            filter_desc = (
+                f"EEG filtered with {self.eeg_filtration.type} filters: "
+                f"highpass={self.eeg_filtration.high_pass}Hz, "
+                f"lowpass={self.eeg_filtration.low_pass}Hz, "
+                f"notch={self.eeg_filtration.notch_freq}Hz (Q={self.eeg_filtration.notch_Q}). "
+                f"Reference: {self.references}"
+            )
+            raw.info['description'] = filter_desc
+        
+        # Set montage for electrode positions
+        montage = mne.channels.make_standard_montage('standard_1020')
+        raw.set_montage(montage, match_case=False)
+        
+        return raw, time
 
-    def interpolate_ibi_signals(self, who, label='', plot_flag=False):
-        """Extract R-peaks and interpolate IBI signals from ECG data."""
+    def _interpolate_ibi_signals(self, who, label='', plot_flag=False):
+        """Extract R-peaks and interpolate IBI signals from ECG data. 
+        Private method - called by _set_ibi()."""
         _, info_ecg = nk.ecg_process(self.data[f'ECG_{who}'].values, sampling_rate=self.fs, method='neurokit')
         r_peaks = info_ecg["ECG_R_Peaks"]
         ibi = np.diff(r_peaks) / self.fs * 1000  # IBI in ms
@@ -326,21 +505,24 @@ class MultimodalData:
             plt.show()
         return ibi_interp, ecg_times
 
-    def set_ibi(self):
-        """Interpolate IBI signals from ECG data and store in DataFrame."""
+    def _set_ibi(self):
+        """Interpolate IBI signals from ECG data and store in DataFrame. 
+        Private method - called by DataLoader."""
         # ecg_ch = self.data['ECG_ch'].values
         # ecg_cg = self.data['ECG_cg'].values
 
-        self.interpolate_ibi_signals('ch')
-        self.interpolate_ibi_signals('cg')
+        self._interpolate_ibi_signals('ch')
+        self._interpolate_ibi_signals('cg')
 
         if 'IBI' not in self.modalities:
             self.modalities.append('IBI')
 
 
-    def decimate_signals(self, q=8):
+    def _decimate_signals(self, q=8):
         """
         Decimate all signals by factor q while maintaining synchronization across modalities.
+        Private method - should only be called by DataLoader.
+        
         Note:
             in the multimodal dataframe approach we keep all types of signals in the same dataframe, 
             with the same sampling frequency (i.e., the EEG sampling frequency). 
@@ -400,8 +582,9 @@ class MultimodalData:
 
         return multimodal_data_dec
 
-    def create_events_column(self, start_error= 0.0):
-        """Create events column based on EEG_events and ET_event columns.
+    def _create_events_column(self, start_error= 0.0):
+        """Create events column based on EEG_events and ET_event columns. 
+        Private method - called by DataLoader.
         - check if the columnes are present in the dataframe
         - create a new events column
         - populate the events column based on EEG_events and ET_event columns
@@ -496,8 +679,9 @@ class MultimodalData:
             print(f'{name:<30} {start_str:<15} {duration_str:<15}')
         print('='*70 + '\n')
 
-    def create_event_structure(self):   
-        """Create event structure based on event column.
+    def _create_event_structure(self):   
+        """Create event structure based on event column. 
+        Private method - called by DataLoader.
         Args:
             None
         Returns:

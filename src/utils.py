@@ -8,100 +8,110 @@ from sklearn.decomposition import FastICA
 import scipy.signal as signal   
 import pandas as pd
 
-def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
-    """Get IBI signal from ECG data for a specific event.
-    Args:
-        filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
-        events (dict): Dictionary containing the start and end time of detected events.
-        selected_event (str): Name of the event to extract IBI signal for
-    Returns:
-        IBI_ch_interp (np.ndarray): Interpolated IBI signal for the child.
-        IBI_cg_interp (np.ndarray): Interpolated IBI signal for the caregiver.
-        t_ECG (np.ndarray): Time vector for the interpolated IBI signal.
-    """
-    if selected_event not in events:
-        raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
-    ibi_ch_interp = filtered_data['IBI_ch_interp']
-    ibi_cg_interp = filtered_data['IBI_cg_interp']
-    t_ibi = filtered_data['t_IBI']
-    t_idx = events[selected_event]  # get the time of the event in the data
-    if t_idx is not None:
-        # extract 60 seconds after the event
-        # find the index in t_IBI
-        start_idx = np.searchsorted(t_ibi, t_idx)  # find the index in t_IBI
-        end_idx = start_idx + int(60 * filtered_data['Fs_IBI'])  # extract 60 seconds after the event
-        # check if the start and end indices are within the bounds of the data
-        if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
-            raise ValueError(f"Event '{selected_event}' is out of bounds.")
-    else:
-        raise ValueError(f"Event '{selected_event}' is None.")
 
-    # cut the IBI signal of the selected event
-    ibi_ch_interp = ibi_ch_interp[start_idx:end_idx]
-    ibi_cg_interp = ibi_cg_interp[start_idx:end_idx]
-    t_ibi = t_ibi[start_idx:end_idx]
-
-    return ibi_ch_interp, ibi_cg_interp, t_ibi
-
-
-def get_data_for_selected_channel_and_event(filtered_data, selected_channels, events, selected_event):
-    """Get data for selected channels and event from the filtered data.
-    Args:
-        filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
-        selected_channels (list): List of channel names to extract data for.
-        events (dict): Dictionary containing the start and end time of detected events.
-        selected_event (str): Name of the event to extract data for.
-    Returns:
-        data_selected (np.ndarray): Data array with the shape (N_samples, N_channels) for the selected channels and event.
-    """
-    if selected_event not in events:
-        raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
-    idx = events[selected_event]
-    if idx is not None:
-        # extract 60 seconds after the event
-        data_selected = np.zeros((len(selected_channels), int(60 * filtered_data['Fs_EEG'])))
-        start_idx = int(idx * filtered_data['Fs_EEG'])  # convert the event time to the index in the filtered data
-        end_idx = start_idx + int(60 * filtered_data['Fs_EEG'])  # extract 60 seconds after the event
-        # check if the start and end indices are within the bounds of the data
-        if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
-            raise ValueError(f"Event '{selected_event}' is out of bounds.")
-    else:
-        raise ValueError(f"Event '{selected_event}' is None.")
-    for i, ch in enumerate(selected_channels):
-        if ch in filtered_data['channels']:
-            idx_ch = filtered_data['channels'][ch]
-            data_selected[i, :] = filtered_data['data'][idx_ch, start_idx:end_idx]
-    return data_selected
-
-
-def clean_data_with_ica(data, selected_channels, event):
-    """Clean data with ICA to remove artifacts.
-    Args:
-        data (np.ndarray): Data array with the shape (N_channels, N_samples) for the selected channels and event.
-        selected_channels (list): List of channel names to extract data for.
-        event (str): Name of the event to extract data for.
-    Returns:
-        data_cleaned (np.ndarray): Cleaned data array with the shape (N_channels, N_samples) for the selected channels and event.
-    """
-    ica = FastICA(n_components=len(selected_channels), max_iter=1000, whiten="unit-variance")
-    ica_components = ica.fit_transform(data.T)  # get components
-
-    _, ax = plt.subplots(len(selected_channels), 1, figsize=(12, 8), sharex=True)
-    for i, ch in enumerate(selected_channels):
-        ax[i].plot(ica_components[:, i])
-        ax[i].set_ylabel(ch)
-    plt.tight_layout()
-    plt.show()
-    idx_to_remove = input(f'Event {event}: select components to remove and press Enter to continue...  ')
-    if idx_to_remove != '':
-        idx_to_remove = [int(i) for i in idx_to_remove.split(',')]
-        ica_components[:, idx_to_remove] = 0  # set the selected components to zero
-        print('Selected components to remove: ', idx_to_remove)
-    data_cleaned = ica.inverse_transform(ica_components).T  # reconstruct the data from the components
-    return data_cleaned
 
 
 ### PLOTS ####
+def plot_signal_with_events(time, data, channels, marker_channel, event_to_marker, seleted_time):
+    """
+    Plot signal data with background colors indicating different events.
+    
+    This function creates a time-series plot with colored background regions corresponding
+    to different events. Each event type is assigned a unique color and plotted as a 
+    semi-transparent background. Multiple signal channels can be overlaid on the same plot.
+    
+    Parameters
+    ----------
+    time : array-like
+        Time vector in seconds, matching the length of data columns
+    data : numpy.ndarray
+        Signal data array with shape (n_channels, n_samples)
+    channels : list of str
+        List of channel names corresponding to rows in data
+    marker_channel : array-like
+        Array of marker values indicating which event is active at each time point.
+        0 indicates no event, other values map to events via event_to_marker dict.
+        Should have same length as time vector.
+    event_to_marker : dict
+        Dictionary mapping event names (str) to marker values (int).
+        Example: {'Peppa': 1, 'Incredibles': 2, 'Brave': 3}
+    seleted_time : list of float
+        [start_time, end_time] in seconds, used for plot title
+    
+    Returns
+    -------
+    None
+        Displays the plot using matplotlib
+    
+    Notes
+    -----
+    - Event regions are plotted as semi-transparent (alpha=0.3) background spans
+    - Up to 6 default colors are cycled for different events
+    - Each event is only added to the legend once, even if it appears multiple times
+    - Grid is enabled with alpha=0.3 for better readability
+    
+    Examples
+    --------
+    >>> time, channels, data = multimodal_data.get_signals(
+    ...     mode='EEG', member='ch', 
+    ...     selected_channels=['Fz', 'Cz'], 
+    ...     selected_times=[60, 120]
+    ... )
+    >>> time, marker_channel, event_to_marker = multimodal_data.get_events_as_marker_channel(
+    ...     selected_times=[60, 120]
+    ... )
+    >>> plot_signal_with_events(time, data, channels, marker_channel, 
+    ...                          event_to_marker, [60, 120])
+    """
+    # Create reverse mapping from marker value to event name
+    marker_to_event = {v: k for k, v in event_to_marker.items()}
+
+    # Create color map for events
+    colors = ['lightblue', 'lightgreen', 'lightyellow', 'lightcoral', 'lightpink', 'lavender']
+    event_colors = {}
+    for i, event_name in enumerate(marker_to_event.values()):
+        if event_name != '':
+            event_colors[event_name] = colors[i % len(colors)]
+
+    plt.figure(figsize=(12, 5))
+
+    # Plot background colors for each event
+    current_marker = marker_channel[0]
+    segment_start = time[0]
+
+    for i in range(1, len(marker_channel)):
+        if marker_channel[i] != current_marker:
+            # End of current segment
+            if current_marker > 0 and current_marker in marker_to_event:
+                event_name = marker_to_event[current_marker]
+                if event_name in event_colors:
+                    plt.axvspan(segment_start, time[i-1], 
+                            alpha=0.3, color=event_colors[event_name], 
+                            label=event_name if segment_start == time[0] or event_name not in plt.gca().get_legend_handles_labels()[1] else '')
+            # Start new segment
+            current_marker = marker_channel[i]
+            segment_start = time[i]
+
+    # Handle last segment
+    if current_marker > 0 and current_marker in marker_to_event:
+        event_name = marker_to_event[current_marker]
+        if event_name in event_colors:
+            plt.axvspan(segment_start, time[-1], 
+                    alpha=0.3, color=event_colors[event_name],
+                    label=event_name if event_name not in plt.gca().get_legend_handles_labels()[1] else '')
+
+    # Plot  data
+    for idxch, ch in enumerate(channels):
+            plt.plot(time, data[:, idxch], label=ch, linewidth=1.0)
+
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude (µV)')
+    plt.title(f'EEG Signal ({", ".join(channels)}) and Event Markers between {seleted_time[0]}s and {seleted_time[1]}s')
+    plt.legend(loc='upper right')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
 
 def plot_eeg_channels_pl(mmd, selected_events, selected_channels, title='Filtered EEG Channels', renderer='auto'):
     """
@@ -313,7 +323,7 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg,
         fig.add_trace(
             go.Scatter(
                 x=list(range(data_ch.shape[1])),
-                y=data_ch[i, :],
+                y=data_ch[:,i],
                 mode='lines',
                 name=ch,
                 line={'color': colors[color_idx], 'width': 1.5},
@@ -329,7 +339,7 @@ def overlay_eeg_channels_hyperscanning_pl(data_ch, data_cg,
         fig.add_trace(
             go.Scatter(
                 x=list(range(data_cg.shape[1])),
-                y=data_cg[i, :],
+                y=data_cg[:,i],
                 mode='lines',
                 name=ch,
                 line={'color': colors[color_idx], 'width': 1.5},
@@ -602,3 +612,96 @@ def save_figure_to_html(fig, title, event=None):
     fig.write_html(html_file)
     print(f"Plot saved as HTML file: {os.path.abspath(html_file)}")
     print("Open this file in your web browser to view the interactive plot.")
+
+# Outdated functions - commented out for potential future reference
+# def get_ibi_signal_from_ecg_for_selected_event(filtered_data, events, selected_event):
+#     """Get IBI signal from ECG data for a specific event.
+#     Args:
+#         filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
+#         events (dict): Dictionary containing the start and end time of detected events.
+#         selected_event (str): Name of the event to extract IBI signal for
+#     Returns:
+#         IBI_ch_interp (np.ndarray): Interpolated IBI signal for the child.
+#         IBI_cg_interp (np.ndarray): Interpolated IBI signal for the caregiver.
+#         t_ECG (np.ndarray): Time vector for the interpolated IBI signal.
+#     """
+#     if selected_event not in events:
+#         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
+#     ibi_ch_interp = filtered_data['IBI_ch_interp']
+#     ibi_cg_interp = filtered_data['IBI_cg_interp']
+#     t_ibi = filtered_data['t_IBI']
+#     t_idx = events[selected_event]  # get the time of the event in the data
+#     if t_idx is not None:
+#         # extract 60 seconds after the event
+#         # find the index in t_IBI
+#         start_idx = np.searchsorted(t_ibi, t_idx)  # find the index in t_IBI
+#         end_idx = start_idx + int(60 * filtered_data['Fs_IBI'])  # extract 60 seconds after the event
+#         # check if the start and end indices are within the bounds of the data
+#         if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
+#             raise ValueError(f"Event '{selected_event}' is out of bounds.")
+#     else:
+#         raise ValueError(f"Event '{selected_event}' is None.")
+
+#     # cut the IBI signal of the selected event
+#     ibi_ch_interp = ibi_ch_interp[start_idx:end_idx]
+#     ibi_cg_interp = ibi_cg_interp[start_idx:end_idx]
+#     t_ibi = t_ibi[start_idx:end_idx]
+
+#     return ibi_ch_interp, ibi_cg_interp, t_ibi
+
+
+# def get_data_for_selected_channel_and_event(filtered_data, selected_channels, events, selected_event):
+#     """Get data for selected channels and event from the filtered data.
+#     Args:
+#         filtered_data (dict): Filtered data with the structure returned by filter_warsaw_pilot_data function.
+#         selected_channels (list): List of channel names to extract data for.
+#         events (dict): Dictionary containing the start and end time of detected events.
+#         selected_event (str): Name of the event to extract data for.
+#     Returns:
+#         data_selected (np.ndarray): Data array with the shape (N_samples, N_channels) for the selected channels and event.
+#     """
+#     if selected_event not in events:
+#         raise ValueError(f"Event '{selected_event}' not found in events dictionary.")
+#     idx = events[selected_event]
+#     if idx is not None:
+#         # extract 60 seconds after the event
+#         data_selected = np.zeros((len(selected_channels), int(60 * filtered_data['Fs_EEG'])))
+#         start_idx = int(idx * filtered_data['Fs_EEG'])  # convert the event time to the index in the filtered data
+#         end_idx = start_idx + int(60 * filtered_data['Fs_EEG'])  # extract 60 seconds after the event
+#         # check if the start and end indices are within the bounds of the data
+#         if start_idx < 0 or end_idx > filtered_data['data'].shape[1]:
+#             raise ValueError(f"Event '{selected_event}' is out of bounds.")
+#     else:
+#         raise ValueError(f"Event '{selected_event}' is None.")
+#     for i, ch in enumerate(selected_channels):
+#         if ch in filtered_data['channels']:
+#             idx_ch = filtered_data['channels'][ch]
+#             data_selected[i, :] = filtered_data['data'][idx_ch, start_idx:end_idx]
+#     return data_selected
+
+
+# def clean_data_with_ica(data, selected_channels, event):
+#     """Clean data with ICA to remove artifacts.
+#     Args:
+#         data (np.ndarray): Data array with the shape (N_channels, N_samples) for the selected channels and event.
+#         selected_channels (list): List of channel names to extract data for.
+#         event (str): Name of the event to extract data for.
+#     Returns:
+#         data_cleaned (np.ndarray): Cleaned data array with the shape (N_channels, N_samples) for the selected channels and event.
+#     """
+#     ica = FastICA(n_components=len(selected_channels), max_iter=1000, whiten="unit-variance")
+#     ica_components = ica.fit_transform(data.T)  # get components
+
+#     _, ax = plt.subplots(len(selected_channels), 1, figsize=(12, 8), sharex=True)
+#     for i, ch in enumerate(selected_channels):
+#         ax[i].plot(ica_components[:, i])
+#         ax[i].set_ylabel(ch)
+#     plt.tight_layout()
+#     plt.show()
+#     idx_to_remove = input(f'Event {event}: select components to remove and press Enter to continue...  ')
+#     if idx_to_remove != '':
+#         idx_to_remove = [int(i) for i in idx_to_remove.split(',')]
+#         ica_components[:, idx_to_remove] = 0  # set the selected components to zero
+#         print('Selected components to remove: ', idx_to_remove)
+#     data_cleaned = ica.inverse_transform(ica_components).T  # reconstruct the data from the components
+#     return data_cleaned
