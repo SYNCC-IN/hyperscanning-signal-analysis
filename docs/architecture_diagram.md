@@ -283,11 +283,11 @@ hyperscanning-signal-analysis/
 
 ## Key Design Principles
 
-1. **Unified Storage**: All signals (EEG, ECG, IBI, ET) stored in single DataFrame
-2. **Common Sampling**: All signals resampled to common `fs` (typically 1024 Hz or decimated)
-3. **Time Alignment**: Time column aligned so first movie event starts at t=0
+1. **Unified Storage**: All signals (EEG, ECG, IBI, ET) stored in a single DataFrame
+2. **Common Sampling**: All signals resampled to a common `fs` (typically 1024 Hz or decimated)
+3. **Time Alignment**: Time column aligned so the first movie event starts at t=0
 4. **Flexible Access**: Multiple methods to retrieve data (`get_signals()`, `get_eeg_data_ch/cg()`) by mode, member, event, or time
-5. **Immutable Decimation**: `_decimate_signals()` returns new object, preserves original
+5. **Decimation**: `_decimate_signals()` decimates the signals in the DataFrame, taking care of the proper antialiasing
 6. **Event Integration**: Events from both EEG (diode) and ET (annotations) merged and validated
 7. **MNE Compatibility**: Export to MNE format with proper annotations and filter info via `to_mne_raw()`
 8. **Modular Processing**: Separate functions for loading, filtering, and processing each modality
