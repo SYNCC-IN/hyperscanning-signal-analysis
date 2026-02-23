@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from scipy.signal import decimate
 
-class Who_enum:
+class WhoEnum(StrEnum):
     CG_Only = "CG_Only",
     CH_Only = "CH_Only",
     Both = "Both",
@@ -50,23 +50,23 @@ class Paths:
 @dataclass
 class DualHRV:
     """Stores information about dual HRV tasks."""
-    secore: Optional[Who_enum] = None
-    movies: Optional[Who_enum] = None
-    conversation: Optional[Who_enum] = None
+    secore: Optional[WhoEnum] = None
+    movies: Optional[WhoEnum] = None
+    conversation: Optional[WhoEnum] = None
 
 
 @dataclass
 class DualEEG:
     """Stores information about dual EEG tasks."""
-    movies: Optional[Who_enum] = None
-    conversation: Optional[Who_enum] = None
+    movies: Optional[WhoEnum] = None
+    conversation: Optional[WhoEnum] = None
 
 
 @dataclass
 class DualET:
     """Stores information about dual eye-tracking tasks."""
-    movies: Optional[Who_enum] = None
-    conversation: Optional[Who_enum] = None
+    movies: Optional[WhoEnum] = None
+    conversation: Optional[WhoEnum] = None
 
 
 @dataclass

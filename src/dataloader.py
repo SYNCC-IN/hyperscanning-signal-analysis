@@ -18,16 +18,16 @@ import mne
 import importlib
 from . import eyetracker as et
 importlib.reload(et)
-from .data_structures import MultimodalData, Tasks, Who_enum
+from .data_structures import MultimodalData, Tasks, WhoEnum
 from .utils import plot_filter_characteristics
 from . import export  # For backwards compatibility
 # --------------- ENUM status handler
 def to_status(value):
     if value is None:
-        return Who_enum.Neither
+        return WhoEnum.Neither
     try:
         if isnan(value):
-            return  Who_enum.Neither
+            return  WhoEnum.Neither
     except TypeError:
         pass
     if isinstance(value, str):
@@ -35,13 +35,13 @@ def to_status(value):
     else:
         v = str(value).strip().lower()
     if v == "tak":
-        return Who_enum.Both
+        return WhoEnum.Both
     elif v == "tylko mama":
-        return Who_enum.CG_Only
+        return WhoEnum.CG_Only
     elif v == "tylko dziecko":
-        return Who_enum.CH_Only
+        return WhoEnum.CH_Only
     else:
-        return Who_enum.Neither
+        return WhoEnum.Neither
 
 # --------------  Create multimodal data instance and populate it with dat
 
