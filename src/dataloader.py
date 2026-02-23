@@ -1,6 +1,6 @@
 import os
+from cmath import isnan
 from collections import deque
-
 import numpy as np
 import pandas as pd
 import xmltodict
@@ -18,18 +18,39 @@ import mne
 import importlib
 from . import eyetracker as et
 importlib.reload(et)
-from .data_structures import MultimodalData
+from .data_structures import MultimodalData, Tasks, Who_enum
 from .utils import plot_filter_characteristics
 from . import export  # For backwards compatibility
+# --------------- ENUM status handler
+def to_status(value):
+    if value is None:
+        return Who_enum.Neither
+    try:
+        if isnan(value):
+            return  Who_enum.Neither
+    except TypeError:
+        pass
+    if isinstance(value, str):
+        v = value.strip().lower()
+    else:
+        v = str(value).strip().lower()
+    if v == "tak":
+        return Who_enum.Both
+    elif v == "tylko mama":
+        return Who_enum.CG_Only
+    elif v == "tylko dziecko":
+        return Who_enum.CH_Only
+    else:
+        return Who_enum.Neither
 
 # --------------  Create multimodal data instance and populate it with dat
-
 
 def create_multimodal_data(
     data_base_path,
     dyad_id,
     load_eeg=True,
     load_et=True,
+    load_meta=True,
     lowcut=4.0,
     highcut=40.0,
     eeg_filter_type="fir",
@@ -64,6 +85,7 @@ def create_multimodal_data(
         dyad_id (str): Identifier for the dyad.
         load_eeg (bool, optional): Whether to load EEG data. Defaults to True.
         load_et (bool, optional): Whether to load eye-tracker data. Defaults to True.
+        load_meta (bool, optional): Whether to load metadata. Defaults to True.
         lowcut (float, optional): Low cut-off frequency for EEG filtering. Defaults to 4.0 Hz.
         highcut (float, optional): High cut-off frequency for EEG filtering. Defaults to 40.0 Hz.
         eeg_filter_type (str, optional): Type of filter to use for EEG data ('fir' or 'iir'). Defaults to 'fir'.
@@ -80,6 +102,38 @@ def create_multimodal_data(
     """
     multimodal_data = MultimodalData()
     multimodal_data.id = dyad_id
+    if load_meta:
+        meta_path = os.path.join(data_base_path, 'meta_data.csv')
+        df_meta = pd.read_csv(meta_path)
+        df_meta.columns = df_meta.columns.str.strip()
+        df_meta["ID"] = df_meta["ID"].astype(str).str.strip()
+        dyad_id = str(dyad_id).strip()
+        df_meta = df_meta.set_index("ID")
+        if dyad_id not in df_meta.index:
+            raise ValueError(f"No {dyad_id} found in meta_data.csv")
+        # tasks
+        row = df_meta.loc[dyad_id]
+        multimodal_data.tasks.dual_hrv.secore = to_status(row["Active ECG during SECORE"])
+        multimodal_data.tasks.dual_hrv.movies = to_status(row["Passive ECG during EEG&ET"])
+        multimodal_data.tasks.dual_hrv.conversation = None # brak kolumny w WarsawID
+
+        multimodal_data.tasks.dual_eeg.movies = to_status(row["EEG Passive"])
+        multimodal_data.tasks.dual_eeg.conversation = to_status(row["EEG Active during Conversation"])
+
+        multimodal_data.tasks.dual_et.movies = to_status(row["ET Passive ET"])
+        multimodal_data.tasks.dual_et.conversation = to_status(row["ET Active ET during Conversation"])
+
+        # child info
+        multimodal_data.child_info.birth_date = row["Data_urodzenia"]
+        multimodal_data.child_info.age_years = row["Wiek [y]"]
+        multimodal_data.child_info.age_months = row["Wiek [m]"]
+        multimodal_data.child_info.rec_date = row["Study_date"]
+        multimodal_data.child_info.sex = row["Płeć"]
+        multimodal_data.child_info.group = row["Grupa"]
+
+        # notes
+        multimodal_data.notes = row["Comments\nczerwone do wyjaśnienia (nieczytelne)"]
+
     if load_eeg:
         folder_eeg = os.path.join(data_base_path, dyad_id, "eeg")
         multimodal_data = load_eeg_data(
