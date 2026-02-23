@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import warnings
+from enum import StrEnum
 
 # Suppress pandas ChainedAssignmentError from neurokit2 (external library using deprecated patterns)
 warnings.filterwarnings('ignore', category=pd.errors.ChainedAssignmentError)
@@ -14,6 +15,11 @@ from dataclasses import dataclass, field
 
 from scipy.signal import decimate
 
+class Who_enum:
+    CG_Only = "CG_Only",
+    CH_Only = "CH_Only",
+    Both = "Both",
+    Neither = "Neither"
 
 @dataclass
 class Filtration:
@@ -44,23 +50,23 @@ class Paths:
 @dataclass
 class DualHRV:
     """Stores information about dual HRV tasks."""
-    secore: Optional[bool] = None
-    movies: Optional[bool] = None
-    conversation: Optional[bool] = None
+    secore: Optional[Who_enum] = None
+    movies: Optional[Who_enum] = None
+    conversation: Optional[Who_enum] = None
 
 
 @dataclass
 class DualEEG:
     """Stores information about dual EEG tasks."""
-    movies: Optional[bool] = None
-    conversation: Optional[bool] = None
+    movies: Optional[Who_enum] = None
+    conversation: Optional[Who_enum] = None
 
 
 @dataclass
 class DualET:
     """Stores information about dual eye-tracking tasks."""
-    movies: Optional[bool] = None
-    conversation: Optional[bool] = None
+    movies: Optional[Who_enum] = None
+    conversation: Optional[Who_enum] = None
 
 
 @dataclass
@@ -75,7 +81,7 @@ class Tasks:
 class ChildInfo:
     """Stores information about the child participant."""
     birth_date: Optional[date] = None
-    age_years: Optional[int] = None
+    age_years: Optional[str] = None
     age_months: Optional[int] = None
     age_days: Optional[int] = None
     rec_date: Optional[date] = None
