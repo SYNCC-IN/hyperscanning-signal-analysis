@@ -2,8 +2,8 @@
 
 ### EEGLAB-style multimodal structure for EEG, ET, and IBI signals
 
-**Version:** 2.3  
-**Last updated:** 2026-01-30  
+**Version:** 2.5  
+**Last updated:** 2026-02-26  
 **Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
 
 This document defines the unified **Python data structure** for handling multimodal child-caregiver data recorded with:
@@ -64,7 +64,7 @@ class MultimodalData:
     eeg_channel_names_ch: list[str]         # Child EEG channels after montage
     eeg_channel_names_cg: list[str]         # Caregiver EEG channels after montage
     
-    # Events and epochs
+    # Events
     events: dict[str, dict]                 # Dictionary of event dictionaries: {event_name: {'name': str, 'start': float, 'duration': float}}
     epoch: list or None                     # Epoch information (if applicable)
     
@@ -105,19 +105,20 @@ Stores EEG signal filtration parameters:
 ```python
 @dataclass
 class Filtration:
-    notch_Q: float or None              # Quality factor for notch filter
-    notch_freq: float or None           # Notch filter frequency (Hz, typically 50 or 60)
-    notch_a: np.ndarray or None         # Notch filter denominator coefficients
-    notch_b: np.ndarray or None         # Notch filter numerator coefficients
-    low_pass: float or None             # Low-pass filter cutoff frequency (Hz)
-    low_pass_a: np.ndarray or None      # Low-pass filter denominator coefficients
-    low_pass_b: np.ndarray or None      # Low-pass filter numerator coefficients
-    high_pass: float or None            # High-pass filter cutoff frequency (Hz)
-    high_pass_a: np.ndarray or None     # High-pass filter denominator coefficients
-    high_pass_b: np.ndarray or None     # High-pass filter numerator coefficients
-    type: str or None                   # Filter type ('fir' or 'iir')
-    applied: bool                       # Whether filters have been applied (default: False)
+    notch: dict[str, Any]               # {'Q', 'freq', 'a', 'b', 'applied'}
+    low_pass: dict[str, Any]            # {'type', 'a', 'b', 'applied'}
+    high_pass: dict[str, Any]           # {'type', 'a', 'b', 'applied'}
 ```
+
+Nested dictionary keys:
+
+- `notch['Q']`: Quality factor for notch filter
+- `notch['freq']`: Notch filter frequency (Hz, typically 50 or 60)
+- `notch['a']`, `notch['b']`: Notch denominator/numerator coefficients
+- `notch['applied']`: Whether notch filter was applied
+- `low_pass['type']`, `high_pass['type']`: Filter design type (`'fir'` or `'iir'`)
+- `low_pass['a']`, `low_pass['b']`, `high_pass['a']`, `high_pass['b']`: filter coefficients
+- `low_pass['applied']`, `high_pass['applied']`: Whether each filter was applied
 
 #### Paths
 
@@ -341,11 +342,76 @@ to_mne_raw(who: str, times: tuple[float, float] or None = None,
     # Note: If both event and times are provided, event takes precedence
     #       Adds event annotations to the MNE Raw object
     #       Sets montage to standard 10-20 electrode positions
-    #       Marks data as pre-filtered if eeg_filtration.applied is True
+    #       Marks data as pre-filtered based on low_pass/high_pass applied flags
 
 print_events()
     # Prints formatted table of all events from self.events dictionary
     # Displays event name, start time, and duration for each event
+```
+
+### Export to Xarray
+
+The `export` module provides helper functions for exporting selected signal fragments to `xarray.DataArray`.
+
+```python
+from src.export import export_to_xarray
+
+export_to_xarray(multimodal_data, selected_event, selected_channels,
+                 selected_modality, member, time_margin) -> xr.DataArray
+```
+
+Behavior:
+
+- Validates that `selected_event` exists in `multimodal_data.events`
+- Computes a time window covering event start/end with `time_margin` on both sides
+- Slices data via `MultimodalData.get_signals(...)`
+- Returns `xr.DataArray` with dimensions `['time', 'channel']`
+- Normalizes channel labels by stripping modality/member prefixes (e.g., `EEG_ch_`)
+
+Supported modalities:
+
+- `EEG`
+- `ET`
+- `ECG`
+- `IBI`
+- `diode`
+
+Default metadata stored in `DataArray.attrs`:
+
+- `dyad_id`
+- `who`
+- `fs_hz`
+- `event_name`
+- `event_start_s`
+- `event_end_s`
+- `time_margin_s`
+- `notes`
+- `child_info`
+- for EEG only: `filtration`, `references`
+
+Example:
+
+```python
+from src.export import export_to_xarray
+
+data_xr = export_to_xarray(
+    multimodal_data=md,
+    selected_event='Incredibles',
+    selected_channels=['Fz', 'Cz', 'Pz'],
+    selected_modality='EEG',
+    member='ch',
+    time_margin=10,
+)
+
+print(data_xr)
+data_xr.plot.line(x='time', hue='channel')
+```
+
+Optional post-processing example (z-score over time per channel):
+
+```python
+from scipy.stats import zscore
+data_xr.data = zscore(data_xr.data, axis=0, nan_policy='omit')
 ```
 
 ### Utility Methods (Public)
@@ -406,6 +472,18 @@ time_vec, chan_names, ecg_data = md.get_signals(mode='ECG', member='ch')
 raw, time = md.to_mne_raw(who='ch', event='Brave', margin_around_event=2.0)
 raw.plot()
 
+# Export selected signals to xarray
+from src.export import export_to_xarray
+eeg_xr = export_to_xarray(
+    multimodal_data=md,
+    selected_event='Brave',
+    selected_channels=['Fz', 'Cz', 'Pz'],
+    selected_modality='EEG',
+    member='ch',
+    time_margin=5,
+)
+print(eeg_xr.attrs)
+
 # Get events as marker channel for external tools
 time_vec, markers, event_map = md.get_events_as_marker_channel()
 ```
@@ -450,6 +528,16 @@ The DataLoader:
 **Note**: Direct manipulation of MultimodalData using private methods (prefixed with `_`) is not recommended. Use the DataLoader instead.
 
 ## Version History
+
+- **2.5 (2026-02-26)**: Added Xarray export documentation
+    - Added `export_to_xarray()` API description and behavior
+    - Documented supported modalities and `DataArray.attrs` metadata
+    - Added end-to-end Xarray export examples and z-score post-processing snippet
+
+- **2.4 (2026-02-26)**: Filtration schema refactor
+    - Replaced flat `Filtration` fields with nested dictionaries: `notch`, `low_pass`, `high_pass`
+    - Added per-filter `applied` flags inside each nested dictionary
+    - Updated filter metadata documentation for `to_mne_raw()` behavior
 
 - **2.2 (2026-01-30)**: Major documentation update to reflect actual implementation
   - Marked data population methods as private (prefixed with `_`) - should only be called by DataLoader
