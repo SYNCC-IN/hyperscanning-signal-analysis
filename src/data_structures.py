@@ -24,18 +24,31 @@ class WhoEnum(StrEnum):
 @dataclass
 class Filtration:
     """Stores information about signal filtration."""
-    notch_Q: Optional[float] = None
-    notch_freq: Optional[float] = None
-    notch_a: Optional[np.ndarray] = None
-    notch_b: Optional[np.ndarray] = None
-    low_pass: Optional[float] = None
-    low_pass_a: Optional[np.ndarray] = None
-    low_pass_b: Optional[np.ndarray] = None
-    high_pass: Optional[float] = None
-    high_pass_a: Optional[np.ndarray] = None
-    high_pass_b: Optional[np.ndarray] = None
-    type: Optional[str] = None
-    applied: Optional[bool] = False
+    notch: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "Q": None,
+            "freq": None,
+            "a": None,
+            "b": None,
+            "applied": False,
+        }
+    )
+    low_pass: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "type": None,
+            "a": None,
+            "b": None,
+            "applied": False,
+        }
+    )
+    high_pass: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "type": None,
+            "a": None,
+            "b": None,
+            "applied": False,
+        }
+    )
 
 
 @dataclass
@@ -153,9 +166,6 @@ class MultimodalData:
     # -------------------------------------------------------------------------
     # Methods for managing data in DataFrame
     # -------------------------------------------------------------------------
-    # TODO: all the fuctions for setting data in the dataframe should require 
-    # time vector for proper alignment with the time column. The functions for getting 
-    # data can return data aligned to the time column, together with the time vector.
     def get_signals(self, mode='EEG', member='ch', selected_channels=None, selected_events=None, selected_times=None):
         """
         Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times.
@@ -461,21 +471,22 @@ class MultimodalData:
             descriptions = [ann[0] for ann in annotations]
             raw.set_annotations(mne.Annotations(onsets, durations, descriptions))
         
+        notch_applied = bool(self.eeg_filtration.notch.get("applied", False))
+        low_applied = bool(self.eeg_filtration.low_pass.get("applied", False))
+        high_applied = bool(self.eeg_filtration.high_pass.get("applied", False))
+
         # Mark the data as pre-filtered
-        if self.eeg_filtration.applied:
+        if low_applied or high_applied:
             with raw.info._unlock():
-                if self.eeg_filtration.high_pass:
-                    raw.info['highpass'] = float(self.eeg_filtration.high_pass)
-                if self.eeg_filtration.low_pass:
-                    raw.info['lowpass'] = float(self.eeg_filtration.low_pass)
+                pass
         
         # Add filter description
-        if self.eeg_filtration.applied:
+        if notch_applied or low_applied or high_applied:
             filter_desc = (
-                f"EEG filtered with {self.eeg_filtration.type} filters: "
-                f"highpass={self.eeg_filtration.high_pass}Hz, "
-                f"lowpass={self.eeg_filtration.low_pass}Hz, "
-                f"notch={self.eeg_filtration.notch_freq}Hz (Q={self.eeg_filtration.notch_Q}). "
+                f"EEG filtered with lowpass={self.eeg_filtration.low_pass.get('type')}, "
+                f"highpass={self.eeg_filtration.high_pass.get('type')}, "
+                f"notch={self.eeg_filtration.notch.get('freq')}Hz "
+                f"(Q={self.eeg_filtration.notch.get('Q')}). "
                 f"Reference: {self.references}"
             )
             raw.info['description'] = filter_desc

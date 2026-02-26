@@ -50,7 +50,7 @@ def create_multimodal_data(
     dyad_id,
     load_eeg=True,
     load_et=True,
-    load_meta=True,
+    load_meta=False,
     lowcut=4.0,
     highcut=40.0,
     eeg_filter_type="fir",
@@ -102,6 +102,7 @@ def create_multimodal_data(
     """
     multimodal_data = MultimodalData()
     multimodal_data.id = dyad_id
+    load_meta = False
     if load_meta:
         meta_path = os.path.join(data_base_path, 'meta_data.csv')
         df_meta = pd.read_csv(meta_path)
@@ -416,17 +417,16 @@ def _design_eeg_filters(
             db_lim=(-60, 0.1),
         )
         # add info about filtering to the multimodal data
-    multimodal_data.eeg_filtration.low_pass = highcut
-    multimodal_data.eeg_filtration.low_pass_a=a_low
-    multimodal_data.eeg_filtration.low_pass_b=b_low
-    multimodal_data.eeg_filtration.high_pass = lowcut
-    multimodal_data.eeg_filtration.high_pass_a=a_high
-    multimodal_data.eeg_filtration.high_pass_b=b_high
-    multimodal_data.eeg_filtration.notch_Q = notch_q
-    multimodal_data.eeg_filtration.notch_freq = notch_freq
-    multimodal_data.eeg_filtration.notch_a=a_notch
-    multimodal_data.eeg_filtration.notch_b=b_notch
-    multimodal_data.eeg_filtration.type = filter_type
+    multimodal_data.eeg_filtration.low_pass["type"] = filter_type
+    multimodal_data.eeg_filtration.low_pass["a"] = a_low
+    multimodal_data.eeg_filtration.low_pass["b"] = b_low
+    multimodal_data.eeg_filtration.high_pass["type"] = filter_type
+    multimodal_data.eeg_filtration.high_pass["a"] = a_high
+    multimodal_data.eeg_filtration.high_pass["b"] = b_high
+    multimodal_data.eeg_filtration.notch["Q"] = notch_q
+    multimodal_data.eeg_filtration.notch["freq"] = notch_freq
+    multimodal_data.eeg_filtration.notch["a"] = a_notch
+    multimodal_data.eeg_filtration.notch["b"] = b_notch
 
     return (b_notch, a_notch), (b_low, a_low), (b_high, a_high), filter_type
 
@@ -476,7 +476,9 @@ def _apply_filters(
             plt.xlabel("Samples")
             plt.ylabel("Amplitude (uV)")
             plt.show()
-    multimodal_data.eeg_filtration.applied = True
+    multimodal_data.eeg_filtration.notch["applied"] = True
+    multimodal_data.eeg_filtration.low_pass["applied"] = True
+    multimodal_data.eeg_filtration.high_pass["applied"] = True
 
 
 def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
