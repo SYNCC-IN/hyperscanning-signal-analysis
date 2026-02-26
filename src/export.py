@@ -8,7 +8,19 @@ import xarray as xr
 
 from .data_structures import MultimodalData
 
-def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin):  
+def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin):
+    '''Export selected signals from a MultimodalData instance to an xarray DataArray.
+    Args:
+        multimodal_data: The MultimodalData instance containing the data.
+        selected_event: The name of the event to select (e.g., 'Incredibles').
+        selected_channels: List of channel names to include in the export (e.g., ['Fp1', 'Fp2'] for EEG).
+        selected_modality: The modality to export (e.g., 'EEG', 'ECG', 'ET', 'IBI', or 'diode').
+        member: The member to select ('ch' or 'cg').
+        time_margin: Margin in seconds to include before and after the event.
+    Returns:
+        An xarray DataArray containing the selected signals for the specified event and modality, with time reset to 0 at the start of the event and metadata included as attributes.   
+        The DataArray will have dimensions 'time' and 'channel', and coordinates corresponding to the time points and channel names. Metadata attributes will include information about the dyad, member, sampling frequency, event details, and any additional notes or child information from the MultimodalData instance.
+    '''
     if selected_event not in multimodal_data.events:
         raise ValueError(f"Event '{selected_event}' not found. Available events: {list(multimodal_data.events.keys())}")
 
