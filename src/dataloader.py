@@ -1,5 +1,6 @@
+import csv
+import math
 import os
-from cmath import isnan
 from collections import deque
 import numpy as np
 import pandas as pd
@@ -26,22 +27,34 @@ def to_status(value):
     if value is None:
         return WhoEnum.Neither
     try:
-        if isnan(value):
-            return  WhoEnum.Neither
+        if isinstance(value, float) and math.isnan(value):
+            return WhoEnum.Neither
     except TypeError:
         pass
+
     if isinstance(value, str):
         v = value.strip().lower()
+        if v == "" or v in {"nan", "none"}:
+            return WhoEnum.Neither
+        v = v.replace(",", ".")
+        try:
+            v = int(float(v))
+        except ValueError:
+            return None
     else:
-        v = str(value).strip().lower()
-    if v == "tak":
-        return WhoEnum.Both
-    elif v == "tylko mama":
-        return WhoEnum.CG_Only
-    elif v == "tylko dziecko":
-        return WhoEnum.CH_Only
-    else:
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            return None
+    # 0 - nikt, 1 - obydwoje, 3 - tylko mama
+    if v == 0:
         return WhoEnum.Neither
+    elif v == 1:
+        return WhoEnum.Both
+    elif v == 3:
+        return WhoEnum.CG_Only
+    else:
+        return None
 
 # --------------  Create multimodal data instance and populate it with dat
 
@@ -104,7 +117,7 @@ def create_multimodal_data(
     multimodal_data.id = dyad_id
     if load_meta:
         meta_path = os.path.join(data_base_path, 'meta_data.csv')
-        df_meta = pd.read_csv(meta_path)
+        df_meta = pd.read_csv(meta_path,sep=";",quoting=csv.QUOTE_NONE)
         df_meta.columns = df_meta.columns.str.strip()
         df_meta["ID"] = df_meta["ID"].astype(str).str.strip()
         dyad_id = str(dyad_id).strip()
@@ -123,6 +136,9 @@ def create_multimodal_data(
         multimodal_data.tasks.dual_et.movies = to_status(row["ET Passive ET"])
         multimodal_data.tasks.dual_et.conversation = to_status(row["ET Active ET during Conversation"])
 
+        multimodal_data.tasks.dual_fnirs.movies = to_status(row["Fnirs Passive"])
+        multimodal_data.tasks.dual_fnirs.conversation = to_status(row["Fnirs Active during Conversation"])
+
         # child info
         multimodal_data.child_info.birth_date = row["Data_urodzenia"]
         multimodal_data.child_info.age_years = row["Wiek [y]"]
@@ -132,7 +148,7 @@ def create_multimodal_data(
         multimodal_data.child_info.group = row["Grupa"]
 
         # notes
-        multimodal_data.notes = row["Comments\nczerwone do wyjaśnienia (nieczytelne)"]
+        multimodal_data.notes = row["Comments"]
 
     if load_eeg:
         folder_eeg = os.path.join(data_base_path, dyad_id, "eeg")
