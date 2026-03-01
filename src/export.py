@@ -76,12 +76,33 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     data_xr.attrs['event_start_s'] = float(time_margin)
     data_xr.attrs['event_end_s'] = float(event_end - event_start)
     data_xr.attrs['time_margin_s'] = float(time_margin)
-    data_xr.attrs['notes'] = multimodal_data.notes  # Any additional notes or comments about the data
-    data_xr.attrs['child_info'] = multimodal_data.child_info  # Information about the child participant (age, gender, etc.)
+    if multimodal_data.notes is None:
+        data_xr.attrs['notes'] = "No additional notes provided."
+    else:    
+        data_xr.attrs['notes'] = multimodal_data.notes  # Any additional notes or comments about the data
+    # Information about the child participant (age, gender, etc.)
+    data_xr.attrs['child_group'] = multimodal_data.child_info.group
+    data_xr.attrs['child_age_months'] = multimodal_data.child_info.age_months
+    data_xr.attrs['child_gender'] = multimodal_data.child_info.sex
+
 
     if selected_modality == 'EEG':
-        data_xr.attrs['filtration'] = multimodal_data.eeg_filtration  # Information about EEG filtration
-        data_xr.attrs['references'] = multimodal_data.references# Information about reference electrodes
+        # Information about EEG filtration
+        # notch 
+        data_xr.attrs['filtration_notch_Q'] = multimodal_data.eeg_filtration.notch['Q']
+        data_xr.attrs['filtration_notch_freq_hz'] = multimodal_data.eeg_filtration.notch['freq']
+        data_xr.attrs['filtration_notch_a'] = multimodal_data.eeg_filtration.notch['a']
+        data_xr.attrs['filtration_notch_b'] = multimodal_data.eeg_filtration.notch['b']
+        # low_pass
+        data_xr.attrs['filtration_low_pass_type'] = multimodal_data.eeg_filtration.low_pass['type'] 
+        data_xr.attrs['filtration_low_pass.a'] = multimodal_data.eeg_filtration.low_pass['a']
+        data_xr.attrs['filtration_low_pass.b'] = multimodal_data.eeg_filtration.low_pass['b']
+        # high_pass
+        data_xr.attrs['filtration_high_pass_type'] = multimodal_data.eeg_filtration.high_pass['type']
+        data_xr.attrs['filtration_high_pass.a'] = multimodal_data.eeg_filtration.high_pass['a']
+        data_xr.attrs['filtration_high_pass.b'] = multimodal_data.eeg_filtration.high_pass['b']
+        # Information about reference electrodes
+        data_xr.attrs['references'] = multimodal_data.references
     return data_xr
 
 
