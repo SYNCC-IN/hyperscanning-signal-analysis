@@ -3,9 +3,12 @@ I/O operations for MultimodalData objects.
 
 This module handles saving and loading MultimodalData instances to/from disk.
 """
+import os
+
 import joblib
 import xarray as xr
 
+from . import dataloader
 from .data_structures import MultimodalData
 
 def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin):
@@ -136,3 +139,51 @@ def load_output_data(filename: str) -> MultimodalData | None:
     except FileNotFoundError:
         print(f"File not found {filename}")
         return None
+
+def make_uniwaw_imported(dyad_id, load_eeg=True, load_et=True, load_meta=True, lowcut=1.0, highcut=40.0, eeg_filter_type='fir',decimate_factor=8, plot_flag=False, time_margin=10, root_path="../data/UNIWAW_imported"):
+    multimodal_data = dataloader.create_multimodal_data(data_base_path = "../data",
+                                                    dyad_id = dyad_id,
+                                                    load_eeg=load_eeg,
+                                                    load_et=load_et,
+                                                    load_meta=load_meta,
+                                                    lowcut=lowcut,
+                                                    highcut=highcut,
+                                                    eeg_filter_type=eeg_filter_type,
+                                                    interpolate_et_during_blinks_threshold=0.3,
+                                                    median_filter_size=64,
+                                                    low_pass_et_order=351,
+                                                    et_pos_cutoff=128,
+                                                    et_pupil_cutoff=4,
+                                                    pupil_model_confidence=0.9,
+                                                    decimate_factor=decimate_factor,
+                                                    plot_flag=plot_flag)
+    members = {'ch': 'child', 'cg': 'caregiver'}
+    selected_channels = {
+        'EEG': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'M2', 'T5', 'P3', 'Pz',
+                'P4', 'T6', 'O1', 'O2'],
+        'ET': ['x', 'y', 'pupil', 'blinks'],
+        'ECG': ['ECG'],
+        'IBI': ['IBI']}
+    path_dyad = os.path.join(root_path, str(multimodal_data.id))
+    if not os.path.exists(path_dyad):
+        os.makedirs(path_dyad)
+
+    for modality in multimodal_data.modalities:
+        path_modality = os.path.join(path_dyad, modality)
+        if not os.path.exists(path_modality):
+            os.makedirs(path_modality)
+        for who, member in members.items():
+            path_member = os.path.join(path_modality, member)
+            if not os.path.exists(path_member):
+                os.makedirs(path_member)
+            for event in multimodal_data.events.keys():
+                data_xr = export_to_xarray(multimodal_data=multimodal_data,
+                                           selected_event=event,
+                                           selected_channels=selected_channels.get(modality),
+                                           selected_modality=modality,
+                                           member=who,
+                                           time_margin=time_margin)
+                file_path = os.path.join(path_member, f'{multimodal_data.id}_{modality}_{who}_{event}.nc')
+                data_xr.to_netcdf(file_path, engine='netcdf4')
+
+
