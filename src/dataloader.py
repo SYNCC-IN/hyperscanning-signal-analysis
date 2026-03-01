@@ -115,7 +115,6 @@ def create_multimodal_data(
     """
     multimodal_data = MultimodalData()
     multimodal_data.id = dyad_id
-    load_meta = False
     if load_meta:
         meta_path = os.path.join(data_base_path, 'meta_data.csv')
         df_meta = pd.read_csv(meta_path,sep=";",quoting=csv.QUOTE_NONE)
