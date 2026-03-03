@@ -33,6 +33,8 @@ is_low_pass_applied = multimodal_data.eeg_filtration.low_pass["applied"]
 
 For full details, see [docs/data_structure_spec.md](docs/data_structure_spec.md).
 
+For NetCDF export/import usage, see [docs/export_ncdf_guide.md](docs/export_ncdf_guide.md).
+
 ## Xarray export quickstart
 
 ```python
