@@ -74,6 +74,11 @@ class DualEEG:
     movies: Optional[WhoEnum] = None
     conversation: Optional[WhoEnum] = None
 
+@dataclass
+class DualFnirs:
+    """Stores information about dual fnirs tasks."""
+    movies: Optional[WhoEnum] = None
+    conversation: Optional[WhoEnum] = None
 
 @dataclass
 class DualET:
@@ -88,6 +93,7 @@ class Tasks:
     dual_hrv: DualHRV = field(default_factory=DualHRV)
     dual_eeg: DualEEG = field(default_factory=DualEEG)
     dual_et: DualET = field(default_factory=DualET)
+    dual_fnirs: DualFnirs = field(default_factory=DualFnirs)
 
 
 @dataclass

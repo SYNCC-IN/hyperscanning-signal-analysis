@@ -3,12 +3,88 @@ I/O operations for MultimodalData objects.
 
 This module handles saving and loading MultimodalData instances to/from disk.
 """
+import os
+import json
+import numbers
+from dataclasses import asdict, is_dataclass
+from typing import Optional
+
 import joblib
 import xarray as xr
 
+from . import dataloader
 from .data_structures import MultimodalData
 
-def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin):
+
+def _sanitize_netcdf_attr_value(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, (str, bytes, bool, int, float, numbers.Number)):
+        return value
+
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, default=str)
+
+    if isinstance(value, (list, tuple)):
+        has_nested = any(isinstance(v, (dict, list, tuple)) for v in value)
+        if has_nested:
+            return json.dumps(value, ensure_ascii=False, default=str)
+        return ["" if v is None else v for v in value]
+
+    if hasattr(value, "tolist"):
+        converted = value.tolist()
+        return _sanitize_netcdf_attr_value(converted)
+
+    return str(value)
+
+
+def _sanitize_netcdf_attrs_inplace(attrs: dict) -> None:
+    for key in list(attrs.keys()):
+        attrs[key] = _sanitize_netcdf_attr_value(attrs[key])
+
+
+def _try_decode_json_attr_value(value):
+    if not isinstance(value, str):
+        return value
+
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "[{":
+        return value
+
+    try:
+        decoded = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return value
+    return decoded
+
+
+def _decode_json_attrs_inplace(attrs: dict) -> None:
+    for key in list(attrs.keys()):
+        attrs[key] = _try_decode_json_attr_value(attrs[key])
+
+
+def _dataclass_or_dict(value):
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, dict):
+        return value
+    return None
+
+
+def _build_export_metadata(multimodal_data, selected_modality):
+    metadata = {
+        "notes": multimodal_data.notes,
+        "child_info": _dataclass_or_dict(multimodal_data.child_info),
+    }
+    if selected_modality == 'EEG':
+        metadata["eeg"] = {
+            "filtration": _dataclass_or_dict(multimodal_data.eeg_filtration),
+            "references": multimodal_data.references,
+        }
+    return metadata
+
+def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin, verbose=True, logger: Optional[object] = None):
     '''Export selected signals from a MultimodalData instance to an xarray DataArray.
     Args:
         multimodal_data: The MultimodalData instance containing the data.
@@ -17,6 +93,9 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         selected_modality: The modality to export (e.g., 'EEG', 'ECG', 'ET', 'IBI', or 'diode').
         member: The member to select ('ch' or 'cg').
         time_margin: Margin in seconds to include before and after the event.
+        verbose: If True, emit export progress messages.
+        logger: Optional logger-like object with .info(str). If provided and verbose=True,
+            messages are sent to logger.info instead of print.
     Returns:
         An xarray DataArray containing the selected signals for the specified event and modality, with time reset to 0 at the start of the event and metadata included as attributes.   
         The DataArray will have dimensions 'time' and 'channel', and coordinates corresponding to the time points and channel names. Metadata attributes will include information about the dyad, member, sampling frequency, event details, and any additional notes or child information from the MultimodalData instance.
@@ -37,27 +116,40 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         min(recording_end, event_end + time_margin),
     ]
 
-    print(f"Event '{selected_event}' starts at {event_start:.2f}s and ends at {event_end:.2f}s")
-    print(f"Selected time range with ±{time_margin}s margin: {selected_time[0]:.2f}s to {selected_time[1]:.2f}s")
+    if verbose:
+        msg_1 = f"Event '{selected_event}' starts at {event_start:.2f}s and ends at {event_end:.2f}s"
+        msg_2 = f"Selected time range with ±{time_margin}s margin: {selected_time[0]:.2f}s to {selected_time[1]:.2f}s"
+        if logger is not None:
+            logger.info(msg_1)
+            logger.info(msg_2)
+        else:
+            print(msg_1)
+            print(msg_2)
 
-    time, channels, data = multimodal_data.get_signals(
+    signals = multimodal_data.get_signals(
         mode=selected_modality,
         member=member,
         selected_channels=selected_channels,
         selected_times=selected_time
     )
+    if signals is None:
+        raise ValueError(
+            f"No signals available for modality='{selected_modality}', member='{member}', "
+            f"channels={selected_channels}, event='{selected_event}'."
+        )
+    time, channels, data = signals
 
     # convert the retrieved data to xarray DataArray, resetting time to 0 at event start
-    time = time - selected_time[0] - time_margin
+    time = time - event_start
     # strip channel names to remove EEG_{member}_ prefix if modality is EEG
     if selected_modality == 'EEG':
         channels = [ch.replace(f'EEG_{member}_', '') for ch in channels]
     elif selected_modality == 'ET':
         channels = [ch.replace(f'ET_{member}_', '') for ch in channels]
     elif selected_modality == 'IBI':
-        channels = [ch.replace(f'IBI_{member}_', '') for ch in channels]
+        channels = [ch.replace(f'IBI_{member}', 'IBI') for ch in channels]
     elif selected_modality == 'ECG':
-        channels = [ch.replace(f'ECG_{member}_', '') for ch in channels]
+        channels = [ch.replace(f'ECG_{member}', 'ECG') for ch in channels]
     elif selected_modality == 'diode':
         channels = ['diode']
 
@@ -68,21 +160,143 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         name=f'{multimodal_data.id} {selected_modality} {member} {selected_event} with ±{time_margin}s margin'
     )
 
-    # add metadata
-    data_xr.attrs['dyad_id'] = multimodal_data.id
-    data_xr.attrs['who'] = member
-    data_xr.attrs['fs_hz'] = float(multimodal_data.fs)
-    data_xr.attrs['event_name'] = selected_event
-    data_xr.attrs['event_start_s'] = float(time_margin)
-    data_xr.attrs['event_end_s'] = float(event_end - event_start)
-    data_xr.attrs['time_margin_s'] = float(time_margin)
-    data_xr.attrs['notes'] = multimodal_data.notes  # Any additional notes or comments about the data
-    data_xr.attrs['child_info'] = multimodal_data.child_info  # Information about the child participant (age, gender, etc.)
+    metadata = _build_export_metadata(multimodal_data, selected_modality)
 
-    if selected_modality == 'EEG':
-        data_xr.attrs['filtration'] = multimodal_data.eeg_filtration  # Information about EEG filtration
-        data_xr.attrs['references'] = multimodal_data.references# Information about reference electrodes
+    data_xr.attrs.update({
+        'dyad_id': multimodal_data.id,
+        'who': member,
+        'fs_hz': float(multimodal_data.fs),
+        'event_name': selected_event,
+        'event_start_s': 0.0,
+        'event_end_s': float(event_end - event_start),
+        'time_margin_s': float(time_margin),
+        'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
+    })
+
+    _sanitize_netcdf_attrs_inplace(data_xr.attrs)
     return data_xr
+
+
+def write_dyad_to_uniwaw_imported(dyad_id=None, load_eeg=True, load_et=True, load_meta=True, lowcut=1.0, highcut=40.0, eeg_filter_type='fir',decimate_factor=8, plot_flag=False, time_margin=10, input_data_path="../data", export_path="../data/UNIWAW_imported", verbose=False, logger: Optional[object] = None):
+    '''Export signals from a specified dyad to xarray DataArrays and save them as NetCDF files in a structured directory format compatible with UNIWAW_imported.
+    Args:
+        dyad_id: The ID of the dyad to export (e.g., 'W_003'). If None, a ValueError is raised'
+        load_eeg: Whether to load EEG data for the dyad.
+        load_et: Whether to load eye-tracking data for the dyad.
+        load_meta: Whether to load metadata for the dyad.
+        lowcut: The low cut frequency for EEG filtering.
+        highcut: The high cut frequency for EEG filtering.
+        eeg_filter_type: The type of EEG filter to use ('fir' or 'iir').
+        decimate_factor: The factor by which to decimate the EEG data.
+        plot_flag: Whether to plot the data during processing.
+        time_margin: The time margin to include around events.
+        input_data_path: The path to the input data directory.
+        export_path: The path to the export directory.
+        verbose: If True, emit progress messages during export.
+        logger: Optional logger-like object with .info(str). If provided and verbose=True,
+            messages are sent to logger.info instead of print.
+        '''
+    def _log(message: str) -> None:
+        if not verbose:
+            return
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
+
+    if dyad_id is None:
+        raise ValueError("dyad_id must be provided")
+
+    _log(f"Loading dyad '{dyad_id}' from '{input_data_path}'")
+    multimodal_data = dataloader.create_multimodal_data(data_base_path = input_data_path,
+                                                    dyad_id = dyad_id,
+                                                    load_eeg=load_eeg,
+                                                    load_et=load_et,
+                                                    load_meta=load_meta,
+                                                    lowcut=lowcut,
+                                                    highcut=highcut,
+                                                    eeg_filter_type=eeg_filter_type,
+                                                    interpolate_et_during_blinks_threshold=0.3,
+                                                    median_filter_size=64,
+                                                    low_pass_et_order=351,
+                                                    et_pos_cutoff=128,
+                                                    et_pupil_cutoff=4,
+                                                    pupil_model_confidence=0.9,
+                                                    decimate_factor=decimate_factor,
+                                                    plot_flag=plot_flag)
+    _log(f"Loaded dyad '{multimodal_data.id}'. Export root: '{export_path}'")
+    members = {'ch': 'child', 'cg': 'caregiver'}
+    selected_channels = {
+        'EEG': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'M2', 'T5', 'P3', 'Pz',
+                'P4', 'T6', 'O1', 'O2'],
+        'ET': ['x', 'y', 'pupil', 'blinks'],
+        'ECG': ['ECG'],
+        'IBI': ['IBI']}
+    path_dyad = os.path.join(export_path, str(multimodal_data.id))
+    if not os.path.exists(path_dyad):
+        os.makedirs(path_dyad)
+
+    for modality in multimodal_data.modalities:
+        path_modality = os.path.join(path_dyad, modality)
+        if not os.path.exists(path_modality):
+            os.makedirs(path_modality)
+        for who, member in members.items():
+            path_member = os.path.join(path_modality, member)
+            if not os.path.exists(path_member):
+                os.makedirs(path_member)
+            for event in multimodal_data.events.keys():
+                _log(f"Exporting modality='{modality}', member='{who}', event='{event}'")
+                data_xr = export_to_xarray(multimodal_data=multimodal_data,
+                                           selected_event=event,
+                                           selected_channels=selected_channels.get(modality),
+                                           selected_modality=modality,
+                                           member=who,
+                                           time_margin=time_margin,
+                                           verbose=False,
+                                           logger=logger)
+                file_path = os.path.join(path_member, f'{multimodal_data.id}_{modality}_{who}_{event}.nc')
+                data_xr.to_netcdf(file_path, engine='netcdf4')
+                _log(f"Saved: {file_path}")
+
+    _log(f"Finished export for dyad '{multimodal_data.id}'")
+
+
+
+
+
+def load_xarray_from_netcdf(filename: str, decode_json_attrs: bool = True) -> xr.DataArray:
+    """Load DataArray from a NetCDF file with optional JSON attribute decoding.
+
+    Args:
+        filename: Path to the NetCDF file.
+        decode_json_attrs: If True, decode JSON-serialized attribute strings
+            (typically dict/list values serialized during export).
+
+    Returns:
+        xarray.DataArray: Loaded DataArray.
+    """
+    data_xr = xr.load_dataarray(filename)
+    if decode_json_attrs:
+        _decode_json_attrs_inplace(data_xr.attrs)
+    return data_xr
+
+
+def get_export_metadata(data_xr: xr.DataArray) -> dict:
+    """Get structured export metadata from a DataArray attrs payload.
+
+    Args:
+        data_xr: Exported DataArray that may contain ``metadata_json`` attr.
+
+    Returns:
+        dict: Parsed metadata dictionary, or empty dict if unavailable/invalid.
+    """
+    raw_metadata = data_xr.attrs.get("metadata_json")
+    decoded_metadata = _try_decode_json_attr_value(raw_metadata)
+    if isinstance(decoded_metadata, dict):
+        return decoded_metadata
+    return {}
+
+#------------
 
 
 def save_to_file(multimodal_data: MultimodalData, output_dir: str) -> None:
@@ -96,7 +310,9 @@ def save_to_file(multimodal_data: MultimodalData, output_dir: str) -> None:
     Returns:
         None: Saves file to {output_dir}/{dyad_id}.joblib
     """
-    joblib.dump(multimodal_data, output_dir + f"/{multimodal_data.id}.joblib")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{multimodal_data.id}.joblib")
+    joblib.dump(multimodal_data, output_path)
 
 
 def load_output_data(filename: str) -> MultimodalData | None:
