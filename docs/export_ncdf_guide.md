@@ -15,11 +15,11 @@ The export/import workflow is implemented in [src/export.py](../src/export.py):
 
 A typical export path looks like this:
 
-- `data/UNIWAW_imported/<DYAD_ID>/<MODALITY>/<member_folder>/<file>.nc`
+- `data/UNIWAW_imported/<MODALITY>/<DYAD_ID>/<member_folder>/<file>.nc`
 
 Example:
 
-- `data/UNIWAW_imported/W_030/EEG/child/W_030_EEG_ch_Peppa.nc`
+- `data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc`
 
 Where:
 
@@ -32,7 +32,7 @@ Where:
 from src.export import write_dyad_to_uniwaw_imported
 
 write_dyad_to_uniwaw_imported(
-    dyad_id="W_030",
+    dyad_id_list=["W_030"],
     input_data_path="data",
     export_path="data/UNIWAW_imported",
     load_eeg=True,
@@ -88,7 +88,7 @@ selected_event = "Peppa"
 
 member_folder = {"ch": "child", "cg": "caregiver"}[selected_member]
 
-nc_path = Path("data/UNIWAW_imported") / dyad_id / selected_modality / member_folder / (
+nc_path = Path("data/UNIWAW_imported") / selected_modality / dyad_id / member_folder / (
     f"{dyad_id}_{selected_modality}_{selected_member}_{selected_event}.nc"
 )
 
@@ -100,7 +100,7 @@ print(data_xr)
 
 Exported DataArrays include:
 
-- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `fs_hz`
+- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_frequency`, `start_time`, `end_time`
 - structured metadata serialized to `metadata_json`
 
 Use helper API to access structured metadata safely:
@@ -142,7 +142,7 @@ This avoids runtime errors during `to_netcdf(...)`.
 ```python
 from src.export import load_xarray_from_netcdf, get_export_metadata
 
-path = "data/UNIWAW_imported/W_030/EEG/child/W_030_EEG_ch_Peppa.nc"
+path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
 da = load_xarray_from_netcdf(path)
 meta = get_export_metadata(da)
 

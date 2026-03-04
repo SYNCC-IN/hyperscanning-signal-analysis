@@ -165,10 +165,10 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     data_xr.attrs.update({
         'dyad_id': multimodal_data.id,
         'who': member,
-        'fs_hz': float(multimodal_data.fs),
+        'sampling_frequency': float(multimodal_data.fs),
         'event_name': selected_event,
-        'event_start_s': 0.0,
-        'event_end_s': float(event_end - event_start),
+        'start_time': 0.0,
+        'end_time': float(event_end - event_start),
         'time_margin_s': float(time_margin),
         'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
     })
@@ -177,10 +177,10 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     return data_xr
 
 
-def write_dyad_to_uniwaw_imported(dyad_id=None, load_eeg=True, load_et=True, load_meta=True, lowcut=1.0, highcut=40.0, eeg_filter_type='fir',decimate_factor=8, plot_flag=False, time_margin=10, input_data_path="../data", export_path="../data/UNIWAW_imported", verbose=False, logger: Optional[object] = None):
+def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True, load_meta=True, lowcut=1.0, highcut=40.0, eeg_filter_type='fir',decimate_factor=8, plot_flag=False, time_margin=10, input_data_path="../data", export_path="../data/UNIWAW_imported", verbose=False, logger: Optional[object] = None):
     '''Export signals from a specified dyad to xarray DataArrays and save them as NetCDF files in a structured directory format compatible with UNIWAW_imported.
     Args:
-        dyad_id: The ID of the dyad to export (e.g., 'W_003'). If None, a ValueError is raised'
+        dyad_id_list: List of the IDs of the dyads to export (e.g., ['W_003']). If None, a ValueError is raised'
         load_eeg: Whether to load EEG data for the dyad.
         load_et: Whether to load eye-tracking data for the dyad.
         load_meta: Whether to load metadata for the dyad.
@@ -204,11 +204,22 @@ def write_dyad_to_uniwaw_imported(dyad_id=None, load_eeg=True, load_et=True, loa
         else:
             print(message)
 
-    if dyad_id is None:
-        raise ValueError("dyad_id must be provided")
-
-    _log(f"Loading dyad '{dyad_id}' from '{input_data_path}'")
-    multimodal_data = dataloader.create_multimodal_data(data_base_path = input_data_path,
+    if dyad_id_list is None:
+        raise ValueError("dyad_id_list must be provided")
+    if isinstance(dyad_id_list, str):
+        dyad_id_list = [dyad_id_list]
+    if not isinstance(dyad_id_list, list) or len(dyad_id_list) == 0:
+        raise ValueError("dyad_id_list must be a non-empty list of dyad IDs to export (e.g., ['W_003']).")
+    members = {'ch': 'child', 'cg': 'caregiver'}
+    selected_channels = {
+        'EEG': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'M2', 'T5', 'P3', 'Pz',
+                'P4', 'T6', 'O1', 'O2'],
+        'ET': ['x', 'y', 'pupil', 'blinks'],
+        'ECG': ['ECG'],
+        'IBI': ['IBI']}
+    for dyad_id in dyad_id_list:
+        _log(f"Loading dyad '{dyad_id}' from '{input_data_path}'")
+        multimodal_data = dataloader.create_multimodal_data(data_base_path = input_data_path,
                                                     dyad_id = dyad_id,
                                                     load_eeg=load_eeg,
                                                     load_et=load_et,
@@ -224,41 +235,30 @@ def write_dyad_to_uniwaw_imported(dyad_id=None, load_eeg=True, load_et=True, loa
                                                     pupil_model_confidence=0.9,
                                                     decimate_factor=decimate_factor,
                                                     plot_flag=plot_flag)
-    _log(f"Loaded dyad '{multimodal_data.id}'. Export root: '{export_path}'")
-    members = {'ch': 'child', 'cg': 'caregiver'}
-    selected_channels = {
-        'EEG': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'M2', 'T5', 'P3', 'Pz',
-                'P4', 'T6', 'O1', 'O2'],
-        'ET': ['x', 'y', 'pupil', 'blinks'],
-        'ECG': ['ECG'],
-        'IBI': ['IBI']}
-    path_dyad = os.path.join(export_path, str(multimodal_data.id))
-    if not os.path.exists(path_dyad):
-        os.makedirs(path_dyad)
+        _log(f"Loaded dyad '{multimodal_data.id}'. Export root: '{export_path}'")
+        for modality in multimodal_data.modalities:
+            path_modality = os.path.join(export_path, modality,str(multimodal_data.id))
+            if not os.path.exists(path_modality):
+                os.makedirs(path_modality)
+            for who, member in members.items():
+                path_member = os.path.join(path_modality, member)
+                if not os.path.exists(path_member):
+                    os.makedirs(path_member)
+                for event in multimodal_data.events.keys():
+                    _log(f"Exporting modality='{modality}', member='{who}', event='{event}'")
+                    data_xr = export_to_xarray(multimodal_data=multimodal_data,
+                                                selected_event=event,
+                                                selected_channels=selected_channels.get(modality),
+                                                selected_modality=modality,
+                                                member=who,
+                                                time_margin=time_margin,
+                                                verbose=False,
+                                                logger=logger)
+                    file_path = os.path.join(path_member, f'{multimodal_data.id}_{modality}_{who}_{event}.nc')
+                    data_xr.to_netcdf(file_path, engine='netcdf4')
+                    _log(f"Saved: {file_path}")
 
-    for modality in multimodal_data.modalities:
-        path_modality = os.path.join(path_dyad, modality)
-        if not os.path.exists(path_modality):
-            os.makedirs(path_modality)
-        for who, member in members.items():
-            path_member = os.path.join(path_modality, member)
-            if not os.path.exists(path_member):
-                os.makedirs(path_member)
-            for event in multimodal_data.events.keys():
-                _log(f"Exporting modality='{modality}', member='{who}', event='{event}'")
-                data_xr = export_to_xarray(multimodal_data=multimodal_data,
-                                           selected_event=event,
-                                           selected_channels=selected_channels.get(modality),
-                                           selected_modality=modality,
-                                           member=who,
-                                           time_margin=time_margin,
-                                           verbose=False,
-                                           logger=logger)
-                file_path = os.path.join(path_member, f'{multimodal_data.id}_{modality}_{who}_{event}.nc')
-                data_xr.to_netcdf(file_path, engine='netcdf4')
-                _log(f"Saved: {file_path}")
-
-    _log(f"Finished export for dyad '{multimodal_data.id}'")
+        _log(f"Finished export for dyad '{multimodal_data.id}'")
 
 
 
