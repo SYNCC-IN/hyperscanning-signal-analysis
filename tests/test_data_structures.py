@@ -339,6 +339,205 @@ class TestDecimateSignals:
         assert decimated_count == expected_count
 
 
+class TestFromMneRaw:
+    """Test from_mne_raw method (inverse of to_mne_raw)."""
+
+    @pytest.fixture
+    def md_with_eeg(self):
+        """Create a MultimodalData instance with EEG data and events."""
+        md = MultimodalData()
+        md.fs = 256
+        md.id = 'test_001'
+        md.eeg_channel_names_ch = ['Fp1', 'Fp2', 'Fz']
+        md.eeg_channel_names_cg = ['Fp1_cg', 'Fp2_cg', 'Fz_cg']
+        md.modalities = ['EEG']
+
+        n_samples = 2560  # 10 seconds at 256 Hz
+        eeg_data = np.random.randn(6, n_samples)
+        channel_mapping = {
+            'Fp1': 0, 'Fp2': 1, 'Fz': 2,
+            'Fp1_cg': 3, 'Fp2_cg': 4, 'Fz_cg': 5,
+        }
+        md._set_eeg_data(eeg_data, channel_mapping)
+
+        # Add events column
+        md.data['events'] = None
+        md.data.loc[256:768, 'events'] = 'stim_A'   # 1s–3s
+        md.data.loc[1280:1792, 'events'] = 'stim_B'  # 5s–7s
+        md.events = {
+            'stim_A': {'name': 'stim_A', 'start': 1.0, 'duration': 2.0},
+            'stim_B': {'name': 'stim_B', 'start': 5.0, 'duration': 2.0},
+        }
+        return md
+
+    def test_roundtrip_preserves_shape(self, md_with_eeg):
+        """Exporting to MNE and importing back should preserve data shape."""
+        import mne
+        md = md_with_eeg
+        raw, time = md.to_mne_raw(who='ch')
+
+        # Simulate cleaning: just use raw as-is (identity transform)
+        md.from_mne_raw(raw, time, who='ch')
+
+        ch_data = md.get_eeg_data_ch()
+        assert ch_data is not None
+        assert ch_data.shape == (3, 2560)
+
+    def test_roundtrip_preserves_values(self, md_with_eeg):
+        """Roundtrip should preserve EEG values when no cleaning is applied."""
+        md = md_with_eeg
+        original_fp1 = md.data['EEG_ch_Fp1'].values.copy()
+
+        raw, time = md.to_mne_raw(who='ch')
+        md.from_mne_raw(raw, time, who='ch')
+
+        np.testing.assert_array_almost_equal(
+            md.data['EEG_ch_Fp1'].values, original_fp1
+        )
+
+    def test_cleaned_data_replaces_original(self, md_with_eeg):
+        """from_mne_raw should actually replace data with the cleaned version."""
+        import mne
+        md = md_with_eeg
+        raw, time = md.to_mne_raw(who='ch')
+
+        # Simulate cleaning: zero out all data
+        cleaned_data = np.zeros_like(raw.get_data())
+        cleaned_raw = mne.io.RawArray(cleaned_data, raw.info)
+
+        md.from_mne_raw(cleaned_raw, time, who='ch')
+
+        np.testing.assert_array_equal(
+            md.data['EEG_ch_Fp1'].values, 0.0
+        )
+        np.testing.assert_array_equal(
+            md.data['EEG_ch_Fz'].values, 0.0
+        )
+
+    def test_partial_time_range_only_replaces_segment(self, md_with_eeg):
+        """When exported with a time range, only that segment should be replaced."""
+        import mne
+        md = md_with_eeg
+        original_fp1 = md.data['EEG_ch_Fp1'].values.copy()
+
+        # Export only event segment (1s–3s with no margin)
+        raw, time = md.to_mne_raw(who='ch', event='stim_A', margin_around_event=0)
+
+        # Simulate cleaning: zero out segment
+        cleaned_data = np.zeros_like(raw.get_data())
+        cleaned_raw = mne.io.RawArray(cleaned_data, raw.info)
+
+        md.from_mne_raw(cleaned_raw, time, who='ch')
+
+        # Data outside the event should be unchanged
+        assert md.data['EEG_ch_Fp1'].iloc[0] == original_fp1[0]
+        assert md.data['EEG_ch_Fp1'].iloc[-1] == original_fp1[-1]
+
+        # Data within the event should be zeroed
+        mask = (md.data['time'] >= 1.0) & (md.data['time'] <= 3.0)
+        np.testing.assert_array_equal(
+            md.data.loc[mask, 'EEG_ch_Fp1'].values, 0.0
+        )
+
+    def test_does_not_affect_other_member(self, md_with_eeg):
+        """Replacing child EEG should not affect caregiver EEG."""
+        import mne
+        md = md_with_eeg
+        original_cg_fp1 = md.data['EEG_cg_Fp1'].values.copy()
+
+        raw, time = md.to_mne_raw(who='ch')
+        cleaned_data = np.zeros_like(raw.get_data())
+        cleaned_raw = mne.io.RawArray(cleaned_data, raw.info)
+
+        md.from_mne_raw(cleaned_raw, time, who='ch')
+
+        # Caregiver data should be untouched
+        np.testing.assert_array_equal(
+            md.data['EEG_cg_Fp1'].values, original_cg_fp1
+        )
+
+    def test_does_not_affect_other_modalities(self, md_with_eeg):
+        """Replacing EEG should not affect ECG or other modality columns."""
+        md = md_with_eeg
+        import mne
+
+        # Add ECG data
+        ecg_ch = np.random.randn(2560)
+        ecg_cg = np.random.randn(2560)
+        md.data['ECG_ch'] = ecg_ch
+        md.data['ECG_cg'] = ecg_cg
+        original_ecg = md.data['ECG_ch'].values.copy()
+
+        raw, time = md.to_mne_raw(who='ch')
+        cleaned_data = np.zeros_like(raw.get_data())
+        cleaned_raw = mne.io.RawArray(cleaned_data, raw.info)
+
+        md.from_mne_raw(cleaned_raw, time, who='ch')
+
+        np.testing.assert_array_equal(
+            md.data['ECG_ch'].values, original_ecg
+        )
+
+    def test_raises_on_length_mismatch(self, md_with_eeg):
+        """from_mne_raw should raise ValueError if signal length changed."""
+        import mne
+        md = md_with_eeg
+        raw, time = md.to_mne_raw(who='ch')
+
+        # Create a raw with different length
+        short_data = raw.get_data()[:, :100]
+        short_raw = mne.io.RawArray(short_data, raw.info)
+
+        with pytest.raises(ValueError, match="Signal length mismatch"):
+            md.from_mne_raw(short_raw, time, who='ch')
+
+    def test_raises_on_time_mismatch(self, md_with_eeg):
+        """from_mne_raw should raise ValueError if time points don't exist in data."""
+        import mne
+        md = md_with_eeg
+
+        # Create raw and time that don't match the data
+        n_samples = 100
+        fake_data = np.random.randn(3, n_samples)
+        info = mne.create_info(ch_names=['Fp1', 'Fp2', 'Fz'], sfreq=256, ch_types='eeg')
+        fake_raw = mne.io.RawArray(fake_data, info)
+        fake_time = np.linspace(100.0, 101.0, n_samples)  # times that don't exist
+
+        with pytest.raises(ValueError, match="Time alignment error"):
+            md.from_mne_raw(fake_raw, fake_time, who='ch')
+
+    def test_raises_on_unknown_channel(self, md_with_eeg):
+        """from_mne_raw should raise ValueError if channel name not in DataFrame."""
+        import mne
+        md = md_with_eeg
+        raw, time = md.to_mne_raw(who='ch')
+
+        # Create a raw with a channel name that doesn't exist
+        bad_data = np.random.randn(1, len(time))
+        info = mne.create_info(ch_names=['UNKNOWN'], sfreq=256, ch_types='eeg')
+        bad_raw = mne.io.RawArray(bad_data, info)
+
+        with pytest.raises(ValueError, match="not found in DataFrame"):
+            md.from_mne_raw(bad_raw, time, who='ch')
+
+    def test_preserves_time_and_events_columns(self, md_with_eeg):
+        """from_mne_raw should not modify time or events columns."""
+        import mne
+        md = md_with_eeg
+        original_time = md.data['time'].values.copy()
+        original_events = md.data['events'].values.copy()
+
+        raw, time = md.to_mne_raw(who='ch')
+        cleaned_data = np.zeros_like(raw.get_data())
+        cleaned_raw = mne.io.RawArray(cleaned_data, raw.info)
+
+        md.from_mne_raw(cleaned_raw, time, who='ch')
+
+        np.testing.assert_array_equal(md.data['time'].values, original_time)
+        # Events might have None which needs special comparison
+        assert list(md.data['events'].values) == list(original_events)
+
+
 class TestDataclasses:
     """Test supporting dataclasses."""
 

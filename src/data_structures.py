@@ -503,6 +503,98 @@ class MultimodalData:
         
         return raw, time
 
+    def from_mne_raw(self, raw, time: np.ndarray, who: str) -> None:
+        """
+        Import cleaned EEG data from an MNE Raw object back into the MultimodalData structure.
+
+        This is the inverse of `to_mne_raw`. After performing EEG cleaning/preprocessing
+        in MNE (e.g., ICA, artifact rejection by interpolation, re-referencing), this method
+        replaces the EEG signal data in the internal DataFrame while preserving
+        synchronization with other modalities via the time vector.
+
+        IMPORTANT: The cleaning procedure must NOT change the length of the signal.
+        The number of samples in `raw` must match the length of `time`, and each
+        time point in `time` must already exist in self.data['time']. This ensures
+        that replaced EEG samples are written back to exactly the correct positions,
+        maintaining synchronization with ECG, ET, IBI and other signals.
+
+        Args:
+            raw: MNE Raw object containing cleaned EEG data.
+                Channel names must match the standard names (e.g., 'Fp1', 'Fp2')
+                without the 'EEG_{who}_' prefix (same format as returned by `to_mne_raw`).
+            time: np.ndarray of time points in seconds, as returned by `to_mne_raw`.
+                Must have the same length as the number of samples in `raw`.
+            who: 'ch' for child, 'cg' for caregiver.
+
+        Raises:
+            ValueError: If signal length changed, time points are mismatched,
+                or no matching EEG columns are found.
+
+        Example:
+            >>> raw, time = md.to_mne_raw(who='ch', event='Incredibles', margin_around_event=5)
+            >>> # ... perform MNE cleaning (ICA, interpolation, etc.) ...
+            >>> # raw_clean = raw.copy()  # after cleaning
+            >>> md.from_mne_raw(raw_clean, time, who='ch')
+        """
+        import mne
+
+        # Validate inputs
+        eeg_data = raw.get_data()  # shape: [n_channels, n_samples]
+        n_channels, n_samples = eeg_data.shape
+
+        if n_samples != len(time):
+            raise ValueError(
+                f"Signal length mismatch: MNE Raw has {n_samples} samples "
+                f"but time vector has {len(time)} points. "
+                f"Cleaning must not change the signal length."
+            )
+
+        # Find the indices in self.data that correspond to the provided time points
+        # Use a tolerance-based match (half a sample period)
+        dt = 1.0 / self.fs
+        tolerance = dt / 2.0
+
+        data_time = self.data['time'].values
+        # For each time point in the provided time vector, find the closest match
+        indices = np.searchsorted(data_time, time)
+        # Clamp indices to valid range
+        indices = np.clip(indices, 0, len(data_time) - 1)
+
+        # Verify all time points match within tolerance
+        matched_times = data_time[indices]
+        time_diffs = np.abs(matched_times - time)
+        max_diff = np.max(time_diffs)
+        if max_diff > tolerance:
+            n_mismatched = np.sum(time_diffs > tolerance)
+            raise ValueError(
+                f"Time alignment error: {n_mismatched} out of {len(time)} time points "
+                f"could not be matched in self.data['time'] within tolerance {tolerance:.6f}s. "
+                f"Max difference: {max_diff:.6f}s. "
+                f"Make sure the time vector is the same one returned by to_mne_raw()."
+            )
+
+        # Map MNE channel names back to DataFrame column names
+        mne_ch_names = raw.ch_names
+        prefix = f'EEG_{who}_'
+
+        replaced_count = 0
+        for ch_idx, ch_name in enumerate(mne_ch_names):
+            col_name = f'{prefix}{ch_name}'
+            if col_name not in self.data.columns:
+                raise ValueError(
+                    f"Channel '{col_name}' not found in DataFrame columns. "
+                    f"Available EEG columns for '{who}': "
+                    f"{[c for c in self.data.columns if c.startswith(prefix)]}"
+                )
+            self.data.loc[self.data.index[indices], col_name] = eeg_data[ch_idx, :]
+            replaced_count += 1
+
+        if replaced_count == 0:
+            raise ValueError(
+                f"No EEG channels were replaced. MNE channel names {mne_ch_names} "
+                f"did not match any columns with prefix '{prefix}'."
+            )
+
     def _interpolate_ibi_signals(self, who, label='', plot_flag=False):
         """Extract R-peaks and interpolate IBI signals from ECG data. 
         Private method - called by _set_ibi()."""
