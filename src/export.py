@@ -165,7 +165,7 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     data_xr.attrs.update({
         'dyad_id': multimodal_data.id,
         'who': member,
-        'sampling_frequency': float(multimodal_data.fs),
+        'sampling_freq': float(multimodal_data.fs),
         'event_name': selected_event,
         'start_time': 0.0,
         'end_time': float(event_end - event_start),

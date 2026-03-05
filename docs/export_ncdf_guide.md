@@ -100,7 +100,7 @@ print(data_xr)
 
 Exported DataArrays include:
 
-- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_frequency`, `start_time`, `end_time`
+- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `start_time`, `end_time`
 - structured metadata serialized to `metadata_json`
 
 Use helper API to access structured metadata safely:
