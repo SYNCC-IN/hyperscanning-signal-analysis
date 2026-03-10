@@ -1,3 +1,5 @@
+The work was conducted as a part of the SYNCC-IN project funded by the European Union (EU) under the Horizon Europe programme (agreement No 101159414).  
+
 # HYPERSCANNING_SIGNAL_ANALYSIS
 A set of tools to analyze multimodal data recorded in hyperscanning experiments of diads in SYNCC-IN project.
 
