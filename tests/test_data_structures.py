@@ -559,8 +559,8 @@ class TestDataclasses:
     def test_child_info_defaults(self):
         """ChildInfo dataclass should have correct defaults."""
         ci = ChildInfo()
-        assert ci.birth_date is None
-        assert ci.age_years is None
+        assert ci.age_months is None
+        assert ci.group is None
         assert ci.sex is None
 
 

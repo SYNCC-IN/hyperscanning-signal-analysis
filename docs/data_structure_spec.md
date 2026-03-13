@@ -168,11 +168,7 @@ Stores child participant information:
 ```python
 @dataclass
 class ChildInfo:
-    birth_date: datetime.date or None   # Child's birth date
-    age_years: int or None              # Age in years at recording
     age_months: int or None             # Age in months at recording
-    age_days: int or None               # Additional days beyond months
-    rec_date: datetime.date or None     # Recording date
     group: str or None                  # Group: 'T' (Typical), 'ASD', 'P' (Premature)
     sex: str or None                    # Sex: 'M' (male), 'F' (female)
 ```

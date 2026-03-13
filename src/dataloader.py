@@ -140,10 +140,7 @@ def create_multimodal_data(
         multimodal_data.tasks.dual_fnirs.conversation = to_status(row["Fnirs Active during Conversation"])
 
         # child info
-        multimodal_data.child_info.birth_date = row["Data_urodzenia"]
-        multimodal_data.child_info.age_years = row["Wiek [y]"]
         multimodal_data.child_info.age_months = row["Wiek [m]"]
-        multimodal_data.child_info.rec_date = row["Study_date"]
         multimodal_data.child_info.sex = row["Płeć"]
         multimodal_data.child_info.group = row["Grupa"]
 

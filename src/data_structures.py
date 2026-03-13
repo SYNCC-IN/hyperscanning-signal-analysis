@@ -9,7 +9,6 @@ warnings.filterwarnings('ignore', category=pd.errors.ChainedAssignmentError)
 import neurokit2 as nk
 from matplotlib import pyplot as plt
 from scipy.interpolate import CubicSpline
-from datetime import date
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 
@@ -99,11 +98,7 @@ class Tasks:
 @dataclass
 class ChildInfo:
     """Stores information about the child participant."""
-    birth_date: Optional[date] = None
-    age_years: Optional[str] = None
     age_months: Optional[int] = None
-    age_days: Optional[int] = None
-    rec_date: Optional[date] = None
     group: Optional[str] = None
     sex: Optional[str] = None
 

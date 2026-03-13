@@ -19,6 +19,8 @@ ipympl==0.10.0
 # Data handling
 xmltodict==1.0.2
 joblib==1.5.3
+xarray==2025.10.1
+netCDF4==1.7.4
 networkx
 
 # Jupyter notebook support
