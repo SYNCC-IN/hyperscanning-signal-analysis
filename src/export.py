@@ -157,7 +157,7 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         data,
         coords=[time, channels],
         dims=['time', 'channel'],
-        name=f'{multimodal_data.id} {selected_modality} {member} {selected_event} with ±{time_margin}s margin'
+        name='signals'
     )
 
     metadata = _build_export_metadata(multimodal_data, selected_modality)
@@ -167,8 +167,8 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         'who': member,
         'sampling_freq': float(multimodal_data.fs),
         'event_name': selected_event,
-        'start_time': 0.0,
-        'end_time': float(event_end - event_start),
+        'event_start': 0.0,
+        'event_duration': float(event_end - event_start),
         'time_margin_s': float(time_margin),
         'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
     })
