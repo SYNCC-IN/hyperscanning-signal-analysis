@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environment
 .venv/
+.venv_SYNCCIN_local_FUW/
 venv/
 env/
 
