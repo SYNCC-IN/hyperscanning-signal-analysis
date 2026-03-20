@@ -255,7 +255,7 @@ def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True
                                                 verbose=False,
                                                 logger=logger)
                     file_path = os.path.join(path_member, f'{multimodal_data.id}_{modality}_{who}_{event}.nc')
-                    data_xr.to_netcdf(file_path, engine='netcdf4')
+                    data_xr.to_netcdf(file_path, engine='netcdf4', format='NETCDF4_CLASSIC')
                     _log(f"Saved: {file_path}")
 
         _log(f"Finished export for dyad '{multimodal_data.id}'")
