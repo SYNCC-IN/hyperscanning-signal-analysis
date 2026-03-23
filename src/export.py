@@ -153,6 +153,8 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     elif selected_modality == 'diode':
         channels = ['diode']
 
+    channel_names = [str(ch) for ch in channels]
+
     data_xr = xr.DataArray(
         data,
         coords=[time, channels],
@@ -170,6 +172,8 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         'event_start': 0.0,
         'event_duration': float(event_end - event_start),
         'time_margin_s': float(time_margin),
+        'channel_names_csv': ','.join(channel_names),
+        'channel_names_json': json.dumps(channel_names, ensure_ascii=True),
         'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
     })
 

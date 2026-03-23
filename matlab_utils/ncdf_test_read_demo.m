@@ -1,5 +1,10 @@
 fname = 'W_000_EEG_ch_Brave.nc';
 
+% Channel names read order (MATLAB R2019b compatible):
+% 1) signals:channel_names_csv
+% 2) signals:channel_names_json
+% 3) fallback to legacy coordinate variable: channel
+
 % --- Read attributes from 'signals' variable ---
 dyad_id        = ncreadatt(fname, 'signals', 'dyad_id');
 who            = ncreadatt(fname, 'signals', 'who');
@@ -39,12 +44,40 @@ fprintf('High-pass applied: %d\n',   metadata.eeg.filtration.high_pass.applied);
 % --- Read time ---
 time = ncread(fname, 'time');
 
-% --- Read channel names ---
-ncid          = netcdf.open(fname, 'NC_NOWRITE');
-varid         = netcdf.inqVarID(ncid, 'channel');
-channel       = netcdf.getVar(ncid, varid);
-channel_names = strtrim(cellstr(channel.'));
-netcdf.close(ncid);
+% --- Read channel names (MATLAB 2019b-friendly) ---
+channel_names = {};
+
+% Preferred: CSV attribute written on 'signals'
+try
+    channel_names_csv = ncreadatt(fname, 'signals', 'channel_names_csv');
+    if ischar(channel_names_csv) || isstring(channel_names_csv)
+        channel_names = strtrim(strsplit(char(channel_names_csv), ','));
+    end
+catch
+end
+
+% Alternative: JSON attribute written on 'signals'
+if isempty(channel_names)
+    try
+        channel_names_json = ncreadatt(fname, 'signals', 'channel_names_json');
+        decoded_names = jsondecode(char(channel_names_json));
+        if isstring(decoded_names)
+            channel_names = cellstr(decoded_names(:));
+        elseif iscell(decoded_names)
+            channel_names = decoded_names;
+        end
+    catch
+    end
+end
+
+% Fallback for older files: char matrix from coordinate variable 'channel'
+if isempty(channel_names)
+    ncid          = netcdf.open(fname, 'NC_NOWRITE');
+    varid         = netcdf.inqVarID(ncid, 'channel');
+    channel       = netcdf.getVar(ncid, varid);
+    channel_names = strtrim(cellstr(channel.'));
+    netcdf.close(ncid);
+end
 
 % --- Read signals ---
 signals = ncread(fname, 'signals');

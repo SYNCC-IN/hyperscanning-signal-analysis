@@ -26,6 +26,92 @@ Where:
 - `member_folder` is `child` for `ch` and `caregiver` for `cg`.
 - `<file>` follows `<DYAD_ID>_<MODALITY>_<member_code>_<EVENT>.nc`.
 
+## Naming conventions used in export
+
+This project uses the following conventions in NCDF export paths and filenames.
+
+### Dyad members
+
+- Full member names are: `child` and `caregiver`.
+- Member codes used in filenames are:
+    - `ch` = `child`
+    - `cg` = `caregiver`
+
+### Modalities
+
+- Modality names are uppercase in paths and filenames, e.g.:
+    - `EEG`
+    - `ET`
+    - `FNIRS`
+    - `IBI`
+
+### Site and dyad IDs
+
+- Site codes:
+    - `K` = Kopenhagen
+    - `W` = Warsaw
+    - `M` = Milan
+    - `H` = Heidelberg
+- Dyad numeric code uses three zero-padded digits, e.g. `003`, `030`, `125`.
+- Practical dyad ID format used in files: `<SITE>_<NNN>` (example: `W_030`).
+
+### Experimental session names
+
+- Session/event names used in exported filenames:
+    - `secore`
+    - `Talk1`
+    - `Talk2`
+    - `Peppa`
+    - `Incredibles`
+    - `Brave`
+
+Example filename built from these conventions:
+
+- `W_030_EEG_ch_Peppa.nc`
+
+## Structure of xarray data stored in exported NCDF
+
+Each exported file stores one `xarray.DataArray` named `signals`.
+
+### Data variable
+
+- Variable name: `signals`
+- Shape: `[n_time, n_channel]`
+- Meaning: signal amplitudes/samples for one selected modality, dyad member, and event.
+
+### Dimensions and coordinates
+
+- Dimensions:
+    - `time`
+    - `channel`
+- Coordinates:
+    - `time`: relative time in seconds (event start is shifted to `0.0`)
+    - `channel`: channel labels (e.g., `Fp1`, `Fp2`, `Cz`)
+
+### Attributes on `signals`
+
+Common scalar/string attributes written during export:
+
+- `dyad_id`
+- `who` (`ch` or `cg`)
+- `sampling_freq`
+- `event_name`
+- `event_start` (relative start in exported window; currently `0.0`)
+- `event_duration`
+- `time_margin_s`
+- `channel_names_csv` (MATLAB-friendly comma-separated channel names)
+- `channel_names_json` (MATLAB-friendly JSON array of channel names)
+- `metadata_json` (serialized structured metadata)
+
+### Structured metadata payload (`metadata_json`)
+
+- JSON object containing, depending on modality:
+    - `notes`
+    - `child_info`
+    - for EEG additionally: `eeg.filtration` and `eeg.references`
+
+Use `get_export_metadata(...)` to decode and access this payload safely.
+
 ## Export a full dyad to NCDF
 
 ```python
@@ -136,6 +222,28 @@ Current export behavior sanitizes attrs before writing:
 - non-serializable objects -> string representation
 
 This avoids runtime errors during `to_netcdf(...)`.
+
+## MATLAB R2019b compatibility (channel names)
+
+To make channel names easy to read in MATLAB R2019b, export now stores channel labels
+as variable attributes on `signals`:
+
+- `channel_names_csv` (comma-separated text)
+- `channel_names_json` (JSON array text)
+
+Example in MATLAB:
+
+```matlab
+ncFile = 'data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc';
+
+% easiest option
+csvNames = ncreadatt(ncFile, 'signals', 'channel_names_csv');
+channels = strsplit(csvNames, ',');
+
+% alternative: JSON payload
+jsonNames = ncreadatt(ncFile, 'signals', 'channel_names_json');
+channelsFromJson = jsondecode(jsonNames);
+```
 
 ## Minimal round-trip example
 
