@@ -58,7 +58,7 @@ This project uses the following conventions in NCDF export paths and filenames.
 ### Experimental session names
 
 - Session/event names used in exported filenames:
-    - `secore`
+    - `Secore`
     - `Talk1`
     - `Talk2`
     - `Peppa`
