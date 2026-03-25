@@ -20,10 +20,10 @@ In order to popoulate the data-structure, the expected directory-structure with 
 ```
 data_base_path/
     <dyad_id>/
-        EEG/
+        EEG/ (or eeg/)
             <dyad_id>.obci
             <dyad_id>.xml
-        ET/
+        ET/ (or et/)
             child/
                 000/
                 001/

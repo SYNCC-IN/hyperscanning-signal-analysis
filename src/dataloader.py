@@ -59,6 +59,19 @@ def to_status(value):
 
 # --------------  Create multimodal data instance and populate it with dat
 
+
+def _resolve_modality_directory(base_path: str, dyad_id: str, names: List[str]) -> str:
+    """Return the first existing dyad modality directory for provided candidate names.
+
+    If none exists, return the first candidate path to preserve previous behavior
+    and allow downstream code to raise a clear file-not-found error.
+    """
+    for name in names:
+        candidate = os.path.join(base_path, dyad_id, name)
+        if os.path.isdir(candidate):
+            return candidate
+    return os.path.join(base_path, dyad_id, names[0])
+
 def create_multimodal_data(
     data_base_path,
     dyad_id,
@@ -84,10 +97,10 @@ def create_multimodal_data(
     directory structure assumed is:
     data_base_path/
     <dyad_id>/
-        eeg/
+        EEG/ or eeg/
             <dyad_id>.obci
             <dyad_id>.xml
-        et/
+        ET/ or et/
             child/
                 000/
                 001/
@@ -158,7 +171,9 @@ def create_multimodal_data(
         multimodal_data.notes = row["Comments"]
 
     if load_eeg:
-        folder_eeg = os.path.join(data_base_path, dyad_id, "EEG")
+        folder_eeg = _resolve_modality_directory(
+            data_base_path, dyad_id, ["EEG", "eeg"]
+        )
         multimodal_data = load_eeg_data(
             multimodal_data,
             dyad_id=dyad_id,
@@ -169,7 +184,9 @@ def create_multimodal_data(
             plot_flag=plot_flag,
         )
     if load_et:
-        folder_et = os.path.join(data_base_path, dyad_id, "ET")
+        folder_et = _resolve_modality_directory(
+            data_base_path, dyad_id, ["ET", "et"]
+        )
         if multimodal_data.fs is None:
             # default EEG sampling frequency common to all signals if EEG data
             # not loaded or set before ET data
@@ -372,20 +389,20 @@ def check_consistency_of_multimodal_data(
         return event_dicts
 
     eeg_et_modalities_present = {"EEG", "ET"}.issubset(listed_modalities)
-    EEG_events_dicts = _events_from_column("EEG_events")
-    ET_events_dicts = _events_from_column("ET_event")
+    eeg_events_dicts = _events_from_column("EEG_events")
+    et_events_dicts = _events_from_column("ET_event")
 
     eeg_et_mismatches = []
     shared_event_names = []
     eeg_et_check_possible = (
         eeg_et_modalities_present
-        and len(EEG_events_dicts) > 0
-        and len(ET_events_dicts) > 0
+        and len(eeg_events_dicts) > 0
+        and len(et_events_dicts) > 0
     )
 
     if eeg_et_check_possible:
-        eeg_start_by_name = {ev["name"]: ev["start"] for ev in EEG_events_dicts}
-        et_start_by_name = {ev["name"]: ev["start"] for ev in ET_events_dicts}
+        eeg_start_by_name = {ev["name"]: ev["start"] for ev in eeg_events_dicts}
+        et_start_by_name = {ev["name"]: ev["start"] for ev in et_events_dicts}
         shared_event_names = sorted(
             list(set(eeg_start_by_name) & set(et_start_by_name))
         )
@@ -413,7 +430,9 @@ def check_consistency_of_multimodal_data(
     eeg_et_ok = eeg_et_check_possible and len(eeg_et_mismatches) == 0
 
     report = {
-        "is_consistent": modalities_ok and events_ok and eeg_et_ok,
+        "is_consistent": modalities_ok
+        and events_ok
+        and (not eeg_et_check_possible or eeg_et_ok),
         "modalities": {
             "ok": modalities_ok,
             "listed_modalities": sorted(list(listed_modalities)),
@@ -444,7 +463,10 @@ def check_consistency_of_multimodal_data(
         print(f"Modalities consistency: {modalities_ok}")
         print(f"Events structure consistency: {events_ok}")
         if not eeg_et_check_possible:
-            print("EEG/ET event-start consistency: skipped (missing EEG_events or ET_event).")
+            print(
+                "EEG/ET event-start consistency: skipped "
+                "(missing EEG/ET modality or missing EEG_events/ET_event data)."
+            )
         else:
             print(f"EEG/ET event-start consistency: {eeg_et_ok}")
         print(f"Overall consistency: {report['is_consistent']}")

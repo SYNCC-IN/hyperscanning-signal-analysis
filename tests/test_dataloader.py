@@ -456,6 +456,30 @@ class TestConsistencyValidation:
         assert report['eeg_et_start_consistency']['ok'] is False
         assert len(report['eeg_et_start_consistency']['mismatches']) == 1
 
+    def test_check_consistency_of_multimodal_data_skips_eeg_et_when_not_applicable(self):
+        """EEG/ET check should be skipped and not force overall inconsistency."""
+        md = MultimodalData()
+        md.fs = 10
+        md.modalities = ['EEG']
+
+        md.data = pd.DataFrame(
+            {
+                'time': [0.0, 0.1],
+                'time_idx': [0, 1],
+                'EEG_ch_Fp1': [1.0, 1.1],
+                'events': ['Brave', 'Brave'],
+            }
+        )
+        md.events = {
+            'Brave': {'name': 'Brave', 'start': 0.0, 'duration': 0.1},
+        }
+
+        report = dataloader.check_consistency_of_multimodal_data(md, verbose=False)
+
+        assert report['eeg_et_start_consistency']['check_possible'] is False
+        assert report['eeg_et_start_consistency']['modalities_present'] is False
+        assert report['is_consistent'] is True
+
     def test_create_multimodal_data_non_strict_does_not_raise(self, monkeypatch):
         """Non-strict mode should return data even when consistency fails."""
         monkeypatch.setattr(
