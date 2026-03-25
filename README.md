@@ -40,6 +40,47 @@ For full details, see [docs/data_structure_spec.md](docs/data_structure_spec.md)
 
 For NetCDF export/import usage, see [docs/export_ncdf_guide.md](docs/export_ncdf_guide.md).
 
+## Multimodal consistency checker
+
+The loader and dataloader module include a consistency validator:
+
+- `check_consistency_of_multimodal_data(multimodal_data, start_error=0.35, event_time_error=None, verbose=True)`
+
+It validates:
+
+- consistency between `multimodal_data.modalities` and actually present DataFrame columns,
+- consistency between `multimodal_data.events` and the `events` column,
+- consistency of matching EEG/ET event start times (`EEG_events` vs `ET_event`) within `start_error`.
+
+Important:
+
+- EEG/ET start-time validation runs only when both `EEG` and `ET` are present in `multimodal_data.modalities`.
+
+`create_multimodal_data(...)` can run this check automatically via:
+
+- `run_consistency_check=True` (default),
+- `consistency_strict=False` (if `True`, raises `ValueError` when inconsistent),
+- `consistency_start_error=0.35`.
+
+Example:
+
+```python
+from src.dataloader import create_multimodal_data, check_consistency_of_multimodal_data
+
+md = create_multimodal_data(
+	data_base_path='./data',
+	dyad_id='W_030',
+	load_eeg=True,
+	load_et=True,
+	run_consistency_check=True,
+	consistency_strict=False,
+)
+
+report = check_consistency_of_multimodal_data(md, start_error=0.35, verbose=False)
+print(report['is_consistent'])
+print(report['eeg_et_start_consistency'])
+```
+
 ## Xarray export quickstart
 
 ```python

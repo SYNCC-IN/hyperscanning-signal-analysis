@@ -395,3 +395,101 @@ class TestGetEegDataMethods:
         assert cg_data.shape[0] == len(eeg_cg_cols)
         assert cg_data.shape[1] == len(md.data)
 
+
+class TestConsistencyValidation:
+    """Test consistency validation helper and loader strict mode."""
+
+    def test_check_consistency_of_multimodal_data_happy_path(self):
+        """Consistency checker should pass for aligned modalities and events."""
+        md = MultimodalData()
+        md.fs = 10
+        md.modalities = ['EEG', 'ET']
+
+        md.data = pd.DataFrame(
+            {
+                'time': [0.0, 0.1, 0.2, 0.3],
+                'time_idx': [0, 1, 2, 3],
+                'EEG_ch_Fp1': [1.0, 1.1, 1.2, 1.3],
+                'ET_ch_x': [0.1, 0.2, 0.3, 0.4],
+                'EEG_events': ['Brave', 'Brave', 'Peppa', 'Peppa'],
+                'ET_event': ['Brave', 'Brave', 'Peppa', 'Peppa'],
+                'events': ['Brave', 'Brave', 'Peppa', 'Peppa'],
+            }
+        )
+        md.events = {
+            'Brave': {'name': 'Brave', 'start': 0.0, 'duration': 0.1},
+            'Peppa': {'name': 'Peppa', 'start': 0.2, 'duration': 0.1},
+        }
+
+        report = dataloader.check_consistency_of_multimodal_data(md, verbose=False)
+
+        assert report['is_consistent'] is True
+        assert report['modalities']['ok'] is True
+        assert report['events_structure']['ok'] is True
+        assert report['eeg_et_start_consistency']['ok'] is True
+
+    def test_check_consistency_of_multimodal_data_detects_eeg_et_mismatch(self):
+        """Checker should detect EEG/ET start mismatch above tolerance."""
+        md = MultimodalData()
+        md.fs = 10
+        md.modalities = ['EEG', 'ET']
+
+        md.data = pd.DataFrame(
+            {
+                'time': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+                'time_idx': [0, 1, 2, 3, 4, 5],
+                'EEG_ch_Fp1': [1, 1, 1, 1, 1, 1],
+                'ET_ch_x': [1, 1, 1, 1, 1, 1],
+                'EEG_events': ['Brave', 'Brave', None, None, None, None],
+                'ET_event': [None, None, None, None, 'Brave', 'Brave'],
+                'events': ['Brave', 'Brave', None, None, 'Brave', 'Brave'],
+            }
+        )
+        md.events = {
+            'Brave': {'name': 'Brave', 'start': 0.0, 'duration': 0.5},
+        }
+
+        report = dataloader.check_consistency_of_multimodal_data(
+            md, start_error=0.35, verbose=False
+        )
+
+        assert report['eeg_et_start_consistency']['ok'] is False
+        assert len(report['eeg_et_start_consistency']['mismatches']) == 1
+
+    def test_create_multimodal_data_non_strict_does_not_raise(self, monkeypatch):
+        """Non-strict mode should return data even when consistency fails."""
+        monkeypatch.setattr(
+            dataloader,
+            'check_consistency_of_multimodal_data',
+            lambda *args, **kwargs: {'is_consistent': False},
+        )
+
+        md = dataloader.create_multimodal_data(
+            data_base_path='.',
+            dyad_id='W_000',
+            load_eeg=False,
+            load_et=False,
+            run_consistency_check=True,
+            consistency_strict=False,
+        )
+
+        assert isinstance(md, MultimodalData)
+
+    def test_create_multimodal_data_strict_raises_on_inconsistency(self, monkeypatch):
+        """Strict mode should raise when consistency check reports failure."""
+        monkeypatch.setattr(
+            dataloader,
+            'check_consistency_of_multimodal_data',
+            lambda *args, **kwargs: {'is_consistent': False},
+        )
+
+        with pytest.raises(ValueError, match='Inconsistent multimodal data'):
+            dataloader.create_multimodal_data(
+                data_base_path='.',
+                dyad_id='W_000',
+                load_eeg=False,
+                load_et=False,
+                run_consistency_check=True,
+                consistency_strict=True,
+            )
+
