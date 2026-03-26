@@ -73,7 +73,7 @@ def _dataclass_or_dict(value):
 
 
 def _build_export_metadata(multimodal_data, selected_modality):
-    target_events = ["Peppa", "Incredible", "Brave"]
+    target_events = ["Peppa", "Incredibles", "Brave"]
     ordered_target_events = sorted(
         (
             (event_name, multimodal_data.events[event_name]["start"])
