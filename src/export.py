@@ -73,9 +73,20 @@ def _dataclass_or_dict(value):
 
 
 def _build_export_metadata(multimodal_data, selected_modality):
+    target_events = ["Peppa", "Incredible", "Brave"]
+    ordered_target_events = sorted(
+        (
+            (event_name, multimodal_data.events[event_name]["start"])
+            for event_name in target_events
+            if event_name in multimodal_data.events and "start" in multimodal_data.events[event_name]
+        ),
+        key=lambda item: item[1],
+    )
+
     metadata = {
         "notes": multimodal_data.notes,
         "child_info": _dataclass_or_dict(multimodal_data.child_info),
+        "event_order": [event_name for event_name, _ in ordered_target_events],
     }
     if selected_modality == 'EEG':
         metadata["eeg"] = {
@@ -97,8 +108,12 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         logger: Optional logger-like object with .info(str). If provided and verbose=True,
             messages are sent to logger.info instead of print.
     Returns:
-        An xarray DataArray containing the selected signals for the specified event and modality, with time reset to 0 at the start of the event and metadata included as attributes.   
-        The DataArray will have dimensions 'time' and 'channel', and coordinates corresponding to the time points and channel names. Metadata attributes will include information about the dyad, member, sampling frequency, event details, and any additional notes or child information from the MultimodalData instance.
+        An xarray DataArray containing the selected signals for the specified event and modality, with time reset to 0 at the start of the event and metadata included as attributes.
+        The DataArray will have dimensions 'time' and 'channel', and coordinates corresponding to the time points and channel names.
+        Metadata attributes include information about dyad, member, sampling frequency, event details, and ``metadata_json``.
+        The ``metadata_json`` payload contains ``notes`` and ``child_info`` and additionally
+        ``event_order`` with the chronological order (by start time) of available target events:
+        ``Peppa``, ``Incredible``, and ``Brave``.
     '''
     if selected_event not in multimodal_data.events:
         raise ValueError(f"Event '{selected_event}' not found. Available events: {list(multimodal_data.events.keys())}")

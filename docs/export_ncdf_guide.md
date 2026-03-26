@@ -62,7 +62,7 @@ This project uses the following conventions in NCDF export paths and filenames.
     - `Talk1`
     - `Talk2`
     - `Peppa`
-    - `Incredibles`
+    - `Incredible`
     - `Brave`
 
 Example filename built from these conventions:
@@ -108,9 +108,23 @@ Common scalar/string attributes written during export:
 - JSON object containing, depending on modality:
     - `notes`
     - `child_info`
+    - `event_order` (chronological order by event start time for available target events:
+      `Peppa`, `Incredible`, `Brave`)
     - for EEG additionally: `eeg.filtration` and `eeg.references`
 
 Use `get_export_metadata(...)` to decode and access this payload safely.
+
+#### Example: reading `event_order`
+
+```python
+from src.export import load_xarray_from_netcdf, get_export_metadata
+
+da = load_xarray_from_netcdf("data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc")
+meta = get_export_metadata(da)
+
+print(meta["event_order"])
+# e.g. ['Peppa', 'Brave', 'Incredible']
+```
 
 ## Export a full dyad to NCDF
 
