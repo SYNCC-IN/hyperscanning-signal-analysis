@@ -73,7 +73,7 @@ def _dataclass_or_dict(value):
 
 
 def _build_export_metadata(multimodal_data, selected_modality):
-    target_events = ["Peppa", "Incredible", "Brave"]
+    target_events = ["Peppa", "Incredibles", "Brave"]
     ordered_target_events = sorted(
         (
             (event_name, multimodal_data.events[event_name]["start"])
@@ -113,7 +113,7 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         Metadata attributes include information about dyad, member, sampling frequency, event details, and ``metadata_json``.
         The ``metadata_json`` payload contains ``notes`` and ``child_info`` and additionally
         ``event_order`` with the chronological order (by start time) of available target events:
-        ``Peppa``, ``Incredible``, and ``Brave``.
+        ``Peppa``, ``Incredibles``, and ``Brave``.
     '''
     if selected_event not in multimodal_data.events:
         raise ValueError(f"Event '{selected_event}' not found. Available events: {list(multimodal_data.events.keys())}")
