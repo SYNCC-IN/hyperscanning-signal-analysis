@@ -2,6 +2,35 @@
 
 This document describes how to export processed multimodal data to NetCDF (`.nc`) files and how to load it back into xarray.
 
+## Table of contents
+
+- [Overview](#overview)
+- [Output folder structure](#output-folder-structure)
+- [Naming conventions used in export](#naming-conventions-used-in-export)
+  - [Dyad members](#dyad-members)
+  - [Modalities](#modalities)
+  - [Site and dyad IDs](#site-and-dyad-ids)
+  - [Experimental session names](#experimental-session-names)
+- [Structure of xarray data stored in exported NCDF](#structure-of-xarray-data-stored-in-exported-ncdf)
+  - [Data variable](#data-variable)
+  - [Dimensions and coordinates](#dimensions-and-coordinates)
+  - [Attributes on `signals`](#attributes-on-signals)
+  - [Structured metadata payload (`metadata_json`)](#structured-metadata-payload-metadata_json)
+- [Metadata serialization format](#metadata-serialization-format)
+  - [NetCDF serialization constraints](#netcdf-serialization-constraints)
+- [Export/load data](#exportload-data)
+  - [Export a full dyad to NCDF](#export-a-full-dyad-to-ncdf)
+  - [Export one selection to xarray](#export-one-selection-to-xarray)
+  - [Load one NCDF file back to xarray](#load-one-ncdf-file-back-to-xarray)
+  - [Minimal round-trip example](#minimal-round-trip-example)
+- [EEG quality checking](#eeg-quality-checking)
+  - [Functions](#functions)
+  - [Single-file interactive demo](#single-file-interactive-demo)
+  - [Batch processing notebook](#batch-processing-notebook)
+- [MATLAB R2019b compatibility (channel names)](#matlab-r2019b-compatibility-channel-names)
+
+---
+
 ## Overview
 
 The export/import workflow is implemented in [src/export.py](../src/export.py):
@@ -112,7 +141,36 @@ Common scalar/string attributes written during export:
 
 Use `get_export_metadata(...)` to decode and access this payload safely.
 
-## Export a full dyad to NCDF
+## Metadata serialization format
+
+Exported DataArrays include:
+
+- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `event_start`, `event_duration`
+- structured metadata serialized to `metadata_json`
+
+Use helper API to access structured metadata safely:
+
+```python
+from src.export import get_export_metadata
+
+metadata = get_export_metadata(data_xr)
+print(metadata.keys())
+```
+### NetCDF serialization constraints
+
+NetCDF attributes do not support all Python object types directly.
+
+Current export behavior sanitizes attrs before writing:
+
+- `None` -> empty string
+- `dict` and nested structures -> JSON string
+- non-serializable objects -> string representation
+
+This avoids runtime errors during `to_netcdf(...)`.
+
+---
+## Export/load data
+### Export a full dyad to NCDF
 
 ```python
 from src.export import write_dyad_to_uniwaw_imported
@@ -130,12 +188,12 @@ write_dyad_to_uniwaw_imported(
 )
 ```
 
-### Notes
+#### Notes
 
 - Use `verbose=True` to see progress logs.
 - The function exports all events for all available modalities/members in the dyad.
 
-## Export one selection to xarray
+### Export one selection to xarray
 
 ```python
 from src import dataloader
@@ -161,7 +219,7 @@ data_xr = export_to_xarray(
 )
 ```
 
-## Load one NCDF file back to xarray
+### Load one NCDF file back to xarray
 
 ```python
 from pathlib import Path
@@ -182,46 +240,128 @@ data_xr = load_xarray_from_netcdf(str(nc_path))
 print(data_xr)
 ```
 
-## Metadata serialization format
+---
 
-Exported DataArrays include:
-
-- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `start_time`, `end_time`
-- structured metadata serialized to `metadata_json`
-
-Use helper API to access structured metadata safely:
+### Minimal round-trip example
 
 ```python
-from src.export import get_export_metadata
+from src.export import load_xarray_from_netcdf, get_export_metadata
 
-metadata = get_export_metadata(data_xr)
-print(metadata.keys())
+path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
+da = load_xarray_from_netcdf(path)
+meta = get_export_metadata(da)
+
+print(type(da).__name__)          # DataArray
+print("child_info" in meta)       # True for newly exported files
 ```
 
-### Important
+---
 
-In raw NetCDF attrs, `metadata_json` is a JSON string, so direct indexing like this is incorrect:
+## EEG quality checking
 
-```python
-# ❌ do not do this
-# data_xr.attrs["metadata_json"]["eeg"]
+Three functions in [src/export.py](../src/export.py) implement an AutoReject-based quality pipeline for exported EEG NCDF files.
+
+### Functions
+
+#### `load_eeg_ncdf_as_mne_raw(ncdf_path, montage, scale_to_volts, data_xr)`
+
+Loads an EEG NCDF file and returns an `mne.io.RawArray` object.
+
+- Reads the `signals` DataArray and transposes it to `[channel, time]`.
+- Infers sampling frequency from `sampling_freq` attr; falls back to median time-delta when the attr is missing.
+- Applies `scale_to_volts` (default `1e-6`, i.e. µV → V).
+- Attaches `montage` (default `"standard_1020"`); unknown channels are silently ignored.
+- `data_xr`: optional pre-loaded `xarray.DataArray`; when provided the file is not read from disk again (avoids duplicate I/O when the caller already holds the DataArray).
+
+#### `plot_eeg_with_rejected_segments(raw, rejected_windows, ..., time_offset, event_duration, time_margin_s)`
+
+Renders stacked EEG traces with rejection and margin overlays.
+
+- Time axis is shifted by `time_offset` so that **0 s = event start**.
+- Light-gray shading marks pre-event and post-event margin regions.
+- Dashed vertical lines are drawn at t = 0 and t = `event_duration`.
+- Red semi-transparent bands mark rejected windows (passed in as a DataFrame with `start_s`/`end_s` columns).
+
+#### `run_eeg_autoreject_quality_report(ncdf_path, epoch_duration_s, n_interpolate, cv, random_state, n_jobs, montage, scale_to_volts, verbose)`
+
+Full pipeline: NCDF → MNE → AutoReject → tabular summaries + visualization.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `ncdf_path` | — | Path to EEG NCDF file |
+| `epoch_duration_s` | `2.0` | Fixed epoch length in seconds |
+| `n_interpolate` | `(1, 2, 4)` | AutoReject grid for max interpolated channels |
+| `cv` | `5` | Cross-validation folds for AutoReject |
+| `random_state` | `42` | Reproducibility seed |
+| `n_jobs` | `-1` | Parallel jobs (`-1` = all CPUs) |
+| `montage` | `"standard_1020"` | MNE montage name |
+| `scale_to_volts` | `1e-6` | µV → V conversion factor |
+| `verbose` | `True` | Print MNE / AutoReject progress |
+
+Returns a `dict` with keys:
+
+| Key | Content |
+|---|---|
+| `raw` | `mne.io.RawArray` |
+| `epochs` | `mne.Epochs` (fixed-length) |
+| `autoreject` | Fitted `AutoReject` object |
+| `reject_log` | `RejectLog` from `ar.transform(return_log=True)` |
+| `epoch_summary` | `pd.DataFrame` — one row per epoch: `epoch_idx`, `start_s`, `end_s`, `interpolated_channels`, `rejected`, `in_margin` |
+| `channel_summary` | `pd.DataFrame` — one row per channel: `channel`, `interpolated_epochs`, `bad_labels`, `interpolated_pct`, `bad_labels_pct`, sorted by `bad_labels` descending |
+| `global_summary` | `dict` — `ncdf_path`, `n_channels`, `n_epochs`, `epoch_duration_s`, `rejected_epochs`, `rejected_epochs_pct`, `total_interpolations` |
+| `figure` | `matplotlib.Figure` — stacked EEG plot with rejection and margin overlays |
+| `axis` | `matplotlib.Axes` |
+
+**Note on `in_margin`:** An epoch is flagged `in_margin=True` when it lies entirely before t = 0 or entirely after t = `event_duration`. Rejected windows shown in the plot and saved to the CSV report **exclude** margin epochs.
+
+**Dependency:** requires `mne` and `autoreject` (both listed in `requirements.txt`).
+
+### Single-file interactive demo
+
+[scripts/eeg_quality_report_demo.ipynb](../scripts/eeg_quality_report_demo.ipynb) walks through the full pipeline for one EEG NCDF file:
+
+1. Auto-discovers the first EEG file in the export folder.
+2. Runs `run_eeg_autoreject_quality_report`.
+3. Displays `global_summary`, `channel_summary`, and `epoch_summary` tables.
+4. Prints a human-readable channel interpretation per channel, e.g.:  
+   `- Fp1 was problematic in 65% of epochs: 0% fixable + 65% still bad`
+5. Saves a TOML-style CSV report and a PNG plot (same folder as the NCDF file).
+
+The TOML-style CSV format:
+
+```
+section,key,value
+global,ncdf_file,"W_000_EEG_cg_Brave.nc"
+global,rejected_epochs,2
+rejected_windows,epoch_2,{start_s=4.000, end_s=6.000, interpolated_channels=10}
+global,rejected_epochs_pct,5.0
+global,epoch_duration_s,2.0
+global,total_interpolations,47
+top_channels,ch_1,{name="Fp1", problematic_pct=65, fixable_pct=0, still_bad_pct=65}
 ```
 
-Use `get_export_metadata(...)` (or `json.loads(...)`) first, then access nested fields.
-If you load data with `load_xarray_from_netcdf(..., decode_json_attrs=True)` (default),
-attrs may already be decoded to Python objects.
+Output artefacts follow the NCDF basename:
 
-## NetCDF serialization constraints
+- `<stem>_quality_report.csv`
+- `<stem>_quality_plot.png`
 
-NetCDF attributes do not support all Python object types directly.
+### Batch processing notebook
 
-Current export behavior sanitizes attrs before writing:
+[scripts/eeg_quality_report_batch.ipynb](../scripts/eeg_quality_report_batch.ipynb) processes all EEG NCDF files found under the export folder:
 
-- `None` -> empty string
-- `dict` and nested structures -> JSON string
-- non-serializable objects -> string representation
+- **Cell 3** — crawls the tree with `rglob("*.nc")`, filtering on `"_EEG_"` in the filename (538 files for the UNIWAW dataset).
+- **Cell 4** — smoke-test toggle:
+  ```python
+  smoke_test = True   # set False for full batch
+  subset_size = 12
+  ```
+- **Cell 5** — helper functions: `_toml_scalar`, `_extract_dyad_name`, `_get_top_bad_channels`, `_build_report_rows`, `_save_report_artifacts`.
+- **Cell 6** — per-file loop: shows dyad heading, runs AutoReject (`verbose=False`), displays the TOML table and plot, saves CSV + PNG artefacts, collects results.
+- **Cell 7** — final summary table saved to `EEG_quality_summary_report.csv` in the export folder root.
 
-This avoids runtime errors during `to_netcdf(...)`.
+Summary columns: `dyad`, `ncdf_file`, `status`, `rejected_epochs`, `top_bad_channels` (channels with `bad_labels_pct > 10%`). An `error` column is appended automatically when any file fails.
+
+---
 
 ## MATLAB R2019b compatibility (channel names)
 
@@ -245,15 +385,4 @@ jsonNames = ncreadatt(ncFile, 'signals', 'channel_names_json');
 channelsFromJson = jsondecode(jsonNames);
 ```
 
-## Minimal round-trip example
 
-```python
-from src.export import load_xarray_from_netcdf, get_export_metadata
-
-path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
-da = load_xarray_from_netcdf(path)
-meta = get_export_metadata(da)
-
-print(type(da).__name__)          # DataArray
-print("child_info" in meta)       # True for newly exported files
-```
