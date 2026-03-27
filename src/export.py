@@ -11,9 +11,6 @@ from dataclasses import asdict, is_dataclass
 from typing import Optional, TYPE_CHECKING
 
 import joblib
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import xarray as xr
 
 from . import dataloader
@@ -21,6 +18,8 @@ from .data_structures import MultimodalData
 
 if TYPE_CHECKING:
     import mne
+    import numpy as np
+    import pandas as pd
 
 
 def _sanitize_netcdf_attr_value(value):
@@ -308,7 +307,9 @@ def get_export_metadata(data_xr: xr.DataArray) -> dict:
     return {}
 
 
-def _infer_sfreq_from_time_coord(time_coord: np.ndarray) -> float:
+def _infer_sfreq_from_time_coord(time_coord: "np.ndarray") -> float:
+    import numpy as np
+
     if time_coord.size < 2:
         raise ValueError("Cannot infer sampling frequency: time coordinate has fewer than 2 samples.")
 
@@ -341,6 +342,8 @@ def load_eeg_ncdf_as_mne_raw(
         import mne
     except ImportError as exc:
         raise ImportError("mne is required for EEG quality analysis.") from exc
+
+    import numpy as np
 
     if data_xr is None:
         data_xr = load_xarray_from_netcdf(ncdf_path)
@@ -381,7 +384,7 @@ def load_eeg_ncdf_as_mne_raw(
 
 def plot_eeg_with_rejected_segments(
     raw: "mne.io.BaseRaw",
-    rejected_windows: Optional[pd.DataFrame] = None,
+    rejected_windows: Optional["pd.DataFrame"] = None,
     max_channels: int = 19,
     spacing: float = 8.0,
     figsize: tuple[float, float] = (16.0, 9.0),
@@ -406,6 +409,9 @@ def plot_eeg_with_rejected_segments(
     Returns:
         tuple: (figure, axis)
     """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
     picks = raw.copy().pick("eeg")
     data = picks.get_data()
     # Shift MNE's 0-based time axis to match the NCDF time coordinate.
@@ -499,6 +505,9 @@ def run_eeg_autoreject_quality_report(
         raise ImportError(
             "autoreject is required for quality reporting. Install it with: pip install autoreject"
         ) from exc
+
+    import numpy as np
+    import pandas as pd
 
     # Load NCDF once – reuse the DataArray for both metadata extraction and MNE conversion.
     _data_xr_meta = load_xarray_from_netcdf(ncdf_path)

@@ -263,7 +263,7 @@ Three functions in [src/export.py](../src/export.py) implement an AutoReject-bas
 
 ### Functions
 
-#### `load_eeg_ncdf_as_mne_raw(ncdf_path, montage, scale_to_volts)`
+#### `load_eeg_ncdf_as_mne_raw(ncdf_path, montage, scale_to_volts, data_xr)`
 
 Loads an EEG NCDF file and returns an `mne.io.RawArray` object.
 
@@ -271,6 +271,7 @@ Loads an EEG NCDF file and returns an `mne.io.RawArray` object.
 - Infers sampling frequency from `sampling_freq` attr; falls back to median time-delta when the attr is missing.
 - Applies `scale_to_volts` (default `1e-6`, i.e. µV → V).
 - Attaches `montage` (default `"standard_1020"`); unknown channels are silently ignored.
+- `data_xr`: optional pre-loaded `xarray.DataArray`; when provided the file is not read from disk again (avoids duplicate I/O when the caller already holds the DataArray).
 
 #### `plot_eeg_with_rejected_segments(raw, rejected_windows, ..., time_offset, event_duration, time_margin_s)`
 
