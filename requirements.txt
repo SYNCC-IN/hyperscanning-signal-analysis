@@ -9,6 +9,7 @@ scikit-learn==1.8.0
 # Signal processing and neurophysiology
 neurokit2==0.2.12
 mne==1.11.0
+autoreject
 PyWavelets==1.9.0
 
 # Visualization
