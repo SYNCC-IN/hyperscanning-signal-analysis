@@ -2,6 +2,35 @@
 
 This document describes how to export processed multimodal data to NetCDF (`.nc`) files and how to load it back into xarray.
 
+## Table of contents
+
+- [Overview](#overview)
+- [Output folder structure](#output-folder-structure)
+- [Naming conventions used in export](#naming-conventions-used-in-export)
+  - [Dyad members](#dyad-members)
+  - [Modalities](#modalities)
+  - [Site and dyad IDs](#site-and-dyad-ids)
+  - [Experimental session names](#experimental-session-names)
+- [Structure of xarray data stored in exported NCDF](#structure-of-xarray-data-stored-in-exported-ncdf)
+  - [Data variable](#data-variable)
+  - [Dimensions and coordinates](#dimensions-and-coordinates)
+  - [Attributes on `signals`](#attributes-on-signals)
+  - [Structured metadata payload (`metadata_json`)](#structured-metadata-payload-metadata_json)
+- [Metadata serialization format](#metadata-serialization-format)
+  - [NetCDF serialization constraints](#netcdf-serialization-constraints)
+- [Export/load data](#exportload-data)
+  - [Export a full dyad to NCDF](#export-a-full-dyad-to-ncdf)
+  - [Export one selection to xarray](#export-one-selection-to-xarray)
+  - [Load one NCDF file back to xarray](#load-one-ncdf-file-back-to-xarray)
+  - [Minimal round-trip example](#minimal-round-trip-example)
+- [EEG quality checking](#eeg-quality-checking)
+  - [Functions](#functions)
+  - [Single-file interactive demo](#single-file-interactive-demo)
+  - [Batch processing notebook](#batch-processing-notebook)
+- [MATLAB R2019b compatibility (channel names)](#matlab-r2019b-compatibility-channel-names)
+
+---
+
 ## Overview
 
 The export/import workflow is implemented in [src/export.py](../src/export.py):
@@ -112,7 +141,36 @@ Common scalar/string attributes written during export:
 
 Use `get_export_metadata(...)` to decode and access this payload safely.
 
-## Export a full dyad to NCDF
+## Metadata serialization format
+
+Exported DataArrays include:
+
+- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `start_time`, `end_time`
+- structured metadata serialized to `metadata_json`
+
+Use helper API to access structured metadata safely:
+
+```python
+from src.export import get_export_metadata
+
+metadata = get_export_metadata(data_xr)
+print(metadata.keys())
+```
+### NetCDF serialization constraints
+
+NetCDF attributes do not support all Python object types directly.
+
+Current export behavior sanitizes attrs before writing:
+
+- `None` -> empty string
+- `dict` and nested structures -> JSON string
+- non-serializable objects -> string representation
+
+This avoids runtime errors during `to_netcdf(...)`.
+
+---
+## Export/load data
+### Export a full dyad to NCDF
 
 ```python
 from src.export import write_dyad_to_uniwaw_imported
@@ -130,12 +188,12 @@ write_dyad_to_uniwaw_imported(
 )
 ```
 
-### Notes
+#### Notes
 
 - Use `verbose=True` to see progress logs.
 - The function exports all events for all available modalities/members in the dyad.
 
-## Export one selection to xarray
+### Export one selection to xarray
 
 ```python
 from src import dataloader
@@ -161,7 +219,7 @@ data_xr = export_to_xarray(
 )
 ```
 
-## Load one NCDF file back to xarray
+### Load one NCDF file back to xarray
 
 ```python
 from pathlib import Path
@@ -182,20 +240,19 @@ data_xr = load_xarray_from_netcdf(str(nc_path))
 print(data_xr)
 ```
 
-## Metadata serialization format
+---
 
-Exported DataArrays include:
-
-- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `start_time`, `end_time`
-- structured metadata serialized to `metadata_json`
-
-Use helper API to access structured metadata safely:
+### Minimal round-trip example
 
 ```python
-from src.export import get_export_metadata
+from src.export import load_xarray_from_netcdf, get_export_metadata
 
-metadata = get_export_metadata(data_xr)
-print(metadata.keys())
+path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
+da = load_xarray_from_netcdf(path)
+meta = get_export_metadata(da)
+
+print(type(da).__name__)          # DataArray
+print("child_info" in meta)       # True for newly exported files
 ```
 
 ---
@@ -303,30 +360,7 @@ Output artefacts follow the NCDF basename:
 
 Summary columns: `dyad`, `ncdf_file`, `status`, `rejected_epochs`, `top_bad_channels` (channels with `bad_labels_pct > 10%`). An `error` column is appended automatically when any file fails.
 
-### Important
-
-In raw NetCDF attrs, `metadata_json` is a JSON string, so direct indexing like this is incorrect:
-
-```python
-# ❌ do not do this
-# data_xr.attrs["metadata_json"]["eeg"]
-```
-
-Use `get_export_metadata(...)` (or `json.loads(...)`) first, then access nested fields.
-If you load data with `load_xarray_from_netcdf(..., decode_json_attrs=True)` (default),
-attrs may already be decoded to Python objects.
-
-## NetCDF serialization constraints
-
-NetCDF attributes do not support all Python object types directly.
-
-Current export behavior sanitizes attrs before writing:
-
-- `None` -> empty string
-- `dict` and nested structures -> JSON string
-- non-serializable objects -> string representation
-
-This avoids runtime errors during `to_netcdf(...)`.
+---
 
 ## MATLAB R2019b compatibility (channel names)
 
@@ -350,15 +384,4 @@ jsonNames = ncreadatt(ncFile, 'signals', 'channel_names_json');
 channelsFromJson = jsondecode(jsonNames);
 ```
 
-## Minimal round-trip example
 
-```python
-from src.export import load_xarray_from_netcdf, get_export_metadata
-
-path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
-da = load_xarray_from_netcdf(path)
-meta = get_export_metadata(da)
-
-print(type(da).__name__)          # DataArray
-print("child_info" in meta)       # True for newly exported files
-```
