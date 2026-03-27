@@ -145,7 +145,7 @@ Use `get_export_metadata(...)` to decode and access this payload safely.
 
 Exported DataArrays include:
 
-- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `start_time`, `end_time`
+- compact scalar attrs (for quick filtering), e.g. `dyad_id`, `event_name`, `who`, `sampling_freq`, `event_start`, `event_duration`
 - structured metadata serialized to `metadata_json`
 
 Use helper API to access structured metadata safely:

@@ -6,6 +6,7 @@ This module handles saving and loading MultimodalData instances to/from disk.
 import os
 import json
 import numbers
+import warnings
 from dataclasses import asdict, is_dataclass
 from typing import Optional, TYPE_CHECKING
 
@@ -323,6 +324,7 @@ def load_eeg_ncdf_as_mne_raw(
     ncdf_path: str,
     montage: Optional[str] = "standard_1020",
     scale_to_volts: float = 1e-6,
+    data_xr: Optional[xr.DataArray] = None,
 ) -> "mne.io.RawArray":
     """Load an exported EEG NetCDF file and convert it to MNE RawArray.
 
@@ -330,6 +332,7 @@ def load_eeg_ncdf_as_mne_raw(
         ncdf_path: Path to exported EEG NetCDF file.
         montage: MNE montage name. If None, montage is not set.
         scale_to_volts: Multiplicative scale to convert values to volts.
+        data_xr: Pre-loaded DataArray. If provided, the file is not loaded again.
 
     Returns:
         mne.io.RawArray: Continuous EEG signal in MNE format.
@@ -339,7 +342,8 @@ def load_eeg_ncdf_as_mne_raw(
     except ImportError as exc:
         raise ImportError("mne is required for EEG quality analysis.") from exc
 
-    data_xr = load_xarray_from_netcdf(ncdf_path)
+    if data_xr is None:
+        data_xr = load_xarray_from_netcdf(ncdf_path)
 
     if not isinstance(data_xr, xr.DataArray):
         raise TypeError(f"Expected xarray.DataArray in '{ncdf_path}', got {type(data_xr)}")
@@ -365,8 +369,12 @@ def load_eeg_ncdf_as_mne_raw(
     if montage:
         try:
             raw.set_montage(montage, on_missing="ignore")
-        except Exception:
-            pass
+        except ValueError as exc:
+            warnings.warn(
+                f"Could not set montage '{montage}': {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     return raw
 
@@ -424,7 +432,7 @@ def plot_eeg_with_rejected_segments(
         t_end = float(times[-1])
         if t_start < 0.0:
             ax.axvspan(t_start, 0.0, color="#cccccc", alpha=0.45, zorder=0, label="margin")
-        if event_duration is not None and t_end > event_duration:
+        if event_duration is not None and np.isfinite(event_duration) and t_end > event_duration:
             ax.axvspan(event_duration, t_end, color="#cccccc", alpha=0.45, zorder=0)
 
     for idx in range(n_channels):
@@ -435,7 +443,7 @@ def plot_eeg_with_rejected_segments(
             ax.axvspan(float(row["start_s"]), float(row["end_s"]), color="#d62728", alpha=0.18, zorder=2)
 
     # Dashed vertical lines at event boundaries.
-    if event_duration is not None:
+    if event_duration is not None and np.isfinite(event_duration):
         ax.axvline(0.0, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
         ax.axvline(event_duration, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
 
@@ -492,19 +500,28 @@ def run_eeg_autoreject_quality_report(
             "autoreject is required for quality reporting. Install it with: pip install autoreject"
         ) from exc
 
-    # Extract timing metadata from the NCDF attributes.
+    # Load NCDF once – reuse the DataArray for both metadata extraction and MNE conversion.
     _data_xr_meta = load_xarray_from_netcdf(ncdf_path)
     time_margin_s = float(_data_xr_meta.attrs.get("time_margin_s", 0.0))
-    event_duration = float(_data_xr_meta.attrs.get("event_duration", np.inf))
+    # Sanitize event_duration: treat missing or non-finite values as None.
+    _raw_event_duration = _data_xr_meta.attrs.get("event_duration")
+    try:
+        event_duration: Optional[float] = float(_raw_event_duration)
+    except (TypeError, ValueError):
+        event_duration = None
+    else:
+        if not np.isfinite(event_duration):
+            event_duration = None
     # First value of the time coordinate is the pre-event start (e.g. -10 s when margin=10).
     time_offset = float(np.asarray(_data_xr_meta.coords["time"].values)[0])
-    del _data_xr_meta
 
     raw = load_eeg_ncdf_as_mne_raw(
         ncdf_path=ncdf_path,
         montage=montage,
         scale_to_volts=scale_to_volts,
+        data_xr=_data_xr_meta,
     )
+    del _data_xr_meta
 
     epochs = mne.make_fixed_length_epochs(
         raw,
@@ -540,7 +557,7 @@ def run_eeg_autoreject_quality_report(
 
     # An epoch is "in margin" when it lies entirely outside the event window.
     epoch_in_margin = [
-        (end <= 0.0 or start >= event_duration)
+        (end <= 0.0 or (event_duration is not None and start >= event_duration))
         for start, end in zip(epoch_starts_actual, epoch_ends_actual)
     ]
 
