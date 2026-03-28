@@ -151,7 +151,8 @@ from src.export import load_xarray_from_netcdf, get_export_metadata
 da = load_xarray_from_netcdf("data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc")
 meta = get_export_metadata(da)
 
-print(meta["event_order"])
+event_order = meta.get("event_order", [])
+print(event_order or "event order not available")
 # e.g. ['Peppa', 'Brave', 'Incredibles']
 ```
 
