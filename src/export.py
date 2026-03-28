@@ -119,7 +119,9 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         Metadata attributes include information about dyad, member, sampling frequency, event details, and ``metadata_json``.
         The ``metadata_json`` payload contains ``notes`` and ``child_info`` and additionally
         ``event_order`` with the chronological order (by start time) of available target events:
-        ``Peppa``, ``Incredibles``, and ``Brave``.
+        ``Peppa``, ``Incredibles``, and ``Brave``. For EEG exports (``selected_modality == 'EEG'``),
+        ``metadata_json`` also includes an ``eeg`` object with details about signal ``filtration`` and
+        channel ``references``.
     '''
     if selected_event not in multimodal_data.events:
         raise ValueError(f"Event '{selected_event}' not found. Available events: {list(multimodal_data.events.keys())}")
