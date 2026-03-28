@@ -34,7 +34,7 @@ fprintf('Group:          %s\n',   metadata.child_info.group);
 fprintf('Sex:            %s\n',   metadata.child_info.sex);
 
 % --- Display movie (event) order ---
-% event_order lists Peppa / Incredible / Brave sorted by their start time
+% event_order lists Peppa / Incredibles / Brave sorted by their start time
 fprintf('\n--- Movie Order ---\n');
 if isfield(metadata, 'event_order') && ~isempty(metadata.event_order)
     event_order = metadata.event_order;
