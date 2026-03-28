@@ -20,10 +20,10 @@ In order to popoulate the data-structure, the expected directory-structure with 
 ```
 data_base_path/
     <dyad_id>/
-        eeg/
+        EEG/ (or eeg/)
             <dyad_id>.obci
             <dyad_id>.xml
-        et/
+        ET/ (or et/)
             child/
                 000/
                 001/
@@ -266,6 +266,51 @@ _ensure_data_length(length: int)
     # Creates or extends DataFrame as needed
     # Note: Private method - only called by DataLoader
 ```
+
+## Consistency Validation
+
+The dataloader module provides `check_consistency_of_multimodal_data(...)` to validate coherence of `MultimodalData` content.
+
+### What is checked
+
+1. **Modalities list vs columns**
+- Compares `multimodal_data.modalities` with modality presence inferred from DataFrame columns (`EEG_*`, `ECG_*`, `IBI_*`, `ET_*`).
+
+2. **Event structure vs events column**
+- Compares `multimodal_data.events` with the `events` DataFrame column (event names, start, duration).
+
+3. **EEG vs ET event starts**
+- Compares matching event start times between `EEG_events` and `ET_event` columns.
+- Uses tolerance `start_error` (default `0.35` seconds).
+- This check runs **only** if both `EEG` and `ET` are present in `multimodal_data.modalities`.
+
+### Return value
+
+The function returns a report dictionary with top-level keys:
+
+- `is_consistent`
+- `modalities`
+- `events_structure`
+- `eeg_et_start_consistency`
+
+`eeg_et_start_consistency` includes:
+
+- `ok`
+- `check_possible`
+- `modalities_present`
+- `start_error`
+- `shared_events`
+- `mismatches`
+
+### Integration in create_multimodal_data
+
+`create_multimodal_data(...)` supports automatic validation with:
+
+- `run_consistency_check=True`
+- `consistency_strict=False`
+- `consistency_start_error=0.35`
+
+When `consistency_strict=True`, inconsistent data raises `ValueError`.
 
 ### Data Retrieval Methods (Public)
 

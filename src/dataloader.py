@@ -2,6 +2,7 @@ import csv
 import math
 import os
 from collections import deque
+from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 import xmltodict
@@ -58,6 +59,19 @@ def to_status(value):
 
 # --------------  Create multimodal data instance and populate it with dat
 
+
+def _resolve_modality_directory(base_path: str, dyad_id: str, names: List[str]) -> str:
+    """Return the first existing dyad modality directory for provided candidate names.
+
+    If none exists, return the first candidate path to preserve previous behavior
+    and allow downstream code to raise a clear file-not-found error.
+    """
+    for name in names:
+        candidate = os.path.join(base_path, dyad_id, name)
+        if os.path.isdir(candidate):
+            return candidate
+    return os.path.join(base_path, dyad_id, names[0])
+
 def create_multimodal_data(
     data_base_path,
     dyad_id,
@@ -75,15 +89,18 @@ def create_multimodal_data(
     pupil_model_confidence=0.9,
     decimate_factor=1,
     plot_flag=False,
+    run_consistency_check=True,
+    consistency_strict=False,
+    consistency_start_error=0.35,
 ):
     """Create and populate a MultimodalData instance by loading EEG and ET data.
     directory structure assumed is:
     data_base_path/
     <dyad_id>/
-        eeg/
+        EEG/ or eeg/
             <dyad_id>.obci
             <dyad_id>.xml
-        et/
+        ET/ or et/
             child/
                 000/
                 001/
@@ -109,6 +126,12 @@ def create_multimodal_data(
         et_pupil_cutoff (float, optional): Cutoff frequency for ET pupil data low-pass filter. Defaults to 4 Hz.
         pupil_model_confidence (float, optional): Confidence level for 3D pupil model. Defaults to 0.9.
         plot_flag (bool, optional): Whether to plot intermediate results for debugging/visualization. Defaults to False.
+        run_consistency_check (bool, optional): Whether to run consistency checks
+            after loading and event structure creation. Defaults to True.
+        consistency_strict (bool, optional): If True, raise ValueError when
+            consistency check fails. Defaults to False.
+        consistency_start_error (float, optional): Allowed start-time mismatch
+            between EEG and ET corresponding events. Defaults to 0.35 seconds.
 
     Returns:
         MultimodalData: An instance populated with EEG and ET data.
@@ -148,7 +171,9 @@ def create_multimodal_data(
         multimodal_data.notes = row["Comments"]
 
     if load_eeg:
-        folder_eeg = os.path.join(data_base_path, dyad_id, "eeg")
+        folder_eeg = _resolve_modality_directory(
+            data_base_path, dyad_id, ["EEG", "eeg"]
+        )
         multimodal_data = load_eeg_data(
             multimodal_data,
             dyad_id=dyad_id,
@@ -159,7 +184,9 @@ def create_multimodal_data(
             plot_flag=plot_flag,
         )
     if load_et:
-        folder_et = os.path.join(data_base_path, dyad_id, "et")
+        folder_et = _resolve_modality_directory(
+            data_base_path, dyad_id, ["ET", "et"]
+        )
         if multimodal_data.fs is None:
             # default EEG sampling frequency common to all signals if EEG data
             # not loaded or set before ET data
@@ -181,8 +208,270 @@ def create_multimodal_data(
         multimodal_data = multimodal_data._decimate_signals(q=decimate_factor)
     multimodal_data._create_events_column()
     multimodal_data._create_event_structure()
-    #result check_consistency_of_multimodal_data(multimodal_data)
+    if run_consistency_check:
+        consistency_report = check_consistency_of_multimodal_data(
+            multimodal_data,
+            start_error=consistency_start_error,
+            verbose=plot_flag,
+        )
+        if consistency_strict and not consistency_report["is_consistent"]:
+            raise ValueError(
+                f"Inconsistent multimodal data for dyad {dyad_id}: {consistency_report}"
+            )
     return multimodal_data
+
+
+def check_consistency_of_multimodal_data(
+    multimodal_data: MultimodalData,
+    start_error: float = 0.35,
+    event_time_error: Optional[float] = None,
+    verbose: bool = True,
+) -> Dict[str, Any]:
+    """Validate consistency of a MultimodalData object.
+
+    Checks performed:
+    1. Whether modalities listed in ``multimodal_data.modalities`` are consistent
+       with modalities inferred from DataFrame column names.
+    2. Whether ``multimodal_data.events`` matches the ``events`` column content.
+    3. Whether corresponding events in ``EEG_events`` and ``ET_event`` start
+       within ``start_error`` seconds.
+
+    Args:
+        multimodal_data: Object to validate.
+        start_error: Max allowed absolute start-time difference for matching
+            EEG/ET events.
+        event_time_error: Max allowed absolute error for matching event start
+            and duration between ``events`` column and ``multimodal_data.events``.
+            If None, defaults to one sample period (``1/fs``) when available.
+        verbose: Print human-readable consistency messages.
+
+    Returns:
+        dict: Structured validation report with ``is_consistent`` flag and
+        detailed results per check.
+    """
+    if event_time_error is None:
+        if multimodal_data.fs is not None and multimodal_data.fs > 0:
+            event_time_error = 1.0 / multimodal_data.fs
+        else:
+            event_time_error = 1e-6
+
+    data_columns = set(multimodal_data.data.columns)
+    listed_modalities = set(multimodal_data.modalities or [])
+
+    modality_prefixes = {
+        "EEG": ("EEG_",),
+        "ECG": ("ECG_",),
+        "IBI": ("IBI_",),
+        "ET": ("ET_",),
+    }
+
+    inferred_modalities = set()
+    for modality, prefixes in modality_prefixes.items():
+        if any(col.startswith(prefixes) for col in data_columns):
+            inferred_modalities.add(modality)
+
+    unknown_modalities = sorted(
+        [m for m in listed_modalities if m not in modality_prefixes]
+    )
+    listed_without_columns = sorted(
+        [
+            m
+            for m in listed_modalities
+            if m in modality_prefixes
+            and not any(col.startswith(modality_prefixes[m]) for col in data_columns)
+        ]
+    )
+    present_but_not_listed = sorted(list(inferred_modalities - listed_modalities))
+
+    modalities_ok = (
+        len(unknown_modalities) == 0
+        and len(listed_without_columns) == 0
+        and len(present_but_not_listed) == 0
+    )
+
+    events_column_present = "events" in data_columns
+    events_from_column = set()
+    if events_column_present:
+        events_from_column = set(
+            multimodal_data.data["events"].dropna().astype(str).unique().tolist()
+        )
+
+    events_struct = multimodal_data.events if isinstance(multimodal_data.events, dict) else {}
+    events_from_struct = set(events_struct.keys())
+
+    events_missing_in_struct = sorted(list(events_from_column - events_from_struct))
+    events_missing_in_column = sorted(list(events_from_struct - events_from_column))
+
+    event_timing_mismatches = []
+    if events_column_present:
+        for ev_name in sorted(events_from_column & events_from_struct):
+            mask = multimodal_data.data["events"] == ev_name
+            if not mask.any():
+                continue
+            start_col = multimodal_data.data.loc[mask, "time"].min()
+            end_col = multimodal_data.data.loc[mask, "time"].max()
+            duration_col = end_col - start_col
+
+            struct_ev = events_struct.get(ev_name, {})
+            start_struct = struct_ev.get("start")
+            duration_struct = struct_ev.get("duration")
+
+            if isinstance(start_struct, (int, float)):
+                start_diff = abs(start_col - float(start_struct))
+                if start_diff > event_time_error:
+                    event_timing_mismatches.append(
+                        {
+                            "event": ev_name,
+                            "field": "start",
+                            "column_value": float(start_col),
+                            "structure_value": float(start_struct),
+                            "abs_diff": float(start_diff),
+                        }
+                    )
+            else:
+                event_timing_mismatches.append(
+                    {
+                        "event": ev_name,
+                        "field": "start",
+                        "column_value": float(start_col),
+                        "structure_value": start_struct,
+                        "abs_diff": None,
+                    }
+                )
+
+            if isinstance(duration_struct, (int, float)):
+                duration_diff = abs(duration_col - float(duration_struct))
+                if duration_diff > event_time_error:
+                    event_timing_mismatches.append(
+                        {
+                            "event": ev_name,
+                            "field": "duration",
+                            "column_value": float(duration_col),
+                            "structure_value": float(duration_struct),
+                            "abs_diff": float(duration_diff),
+                        }
+                    )
+            else:
+                event_timing_mismatches.append(
+                    {
+                        "event": ev_name,
+                        "field": "duration",
+                        "column_value": float(duration_col),
+                        "structure_value": duration_struct,
+                        "abs_diff": None,
+                    }
+                )
+
+    events_ok = (
+        events_column_present
+        and len(events_missing_in_struct) == 0
+        and len(events_missing_in_column) == 0
+        and len(event_timing_mismatches) == 0
+    )
+
+    def _events_from_column(column_name: str) -> List[Dict[str, Any]]:
+        if column_name not in multimodal_data.data.columns:
+            return []
+
+        event_dicts = []
+        event_names = multimodal_data.data[column_name].dropna().unique().tolist()
+        for ev_name in event_names:
+            mask = multimodal_data.data[column_name] == ev_name
+            start_time = multimodal_data.data.loc[mask, "time"].min()
+            end_time = multimodal_data.data.loc[mask, "time"].max()
+            event_dicts.append(
+                {
+                    "name": ev_name,
+                    "start": float(start_time),
+                    "duration": float(end_time - start_time),
+                }
+            )
+        return event_dicts
+
+    eeg_et_modalities_present = {"EEG", "ET"}.issubset(listed_modalities)
+    eeg_events_dicts = _events_from_column("EEG_events")
+    et_events_dicts = _events_from_column("ET_event")
+
+    eeg_et_mismatches = []
+    shared_event_names = []
+    eeg_et_check_possible = (
+        eeg_et_modalities_present
+        and len(eeg_events_dicts) > 0
+        and len(et_events_dicts) > 0
+    )
+
+    if eeg_et_check_possible:
+        eeg_start_by_name = {ev["name"]: ev["start"] for ev in eeg_events_dicts}
+        et_start_by_name = {ev["name"]: ev["start"] for ev in et_events_dicts}
+        shared_event_names = sorted(
+            list(set(eeg_start_by_name) & set(et_start_by_name))
+        )
+
+        for ev_name in shared_event_names:
+            diff = abs(eeg_start_by_name[ev_name] - et_start_by_name[ev_name])
+            if diff > start_error:
+                eeg_et_mismatches.append(
+                    {
+                        "event": ev_name,
+                        "eeg_start": float(eeg_start_by_name[ev_name]),
+                        "et_start": float(et_start_by_name[ev_name]),
+                        "abs_diff": float(diff),
+                    }
+                )
+                if verbose:
+                    print(
+                        f'\033[91mEvent {ev_name} differ in start times by: abs({diff}) seconds.\033[0m'
+                    )
+            elif verbose:
+                print(
+                    f'\033[92mEvent {ev_name} start times are consistent within {start_error} seconds.\033[0m'
+                )
+
+    eeg_et_ok = eeg_et_check_possible and len(eeg_et_mismatches) == 0
+
+    report = {
+        "is_consistent": modalities_ok
+        and events_ok
+        and (not eeg_et_check_possible or eeg_et_ok),
+        "modalities": {
+            "ok": modalities_ok,
+            "listed_modalities": sorted(list(listed_modalities)),
+            "inferred_from_columns": sorted(list(inferred_modalities)),
+            "unknown_modalities": unknown_modalities,
+            "listed_without_columns": listed_without_columns,
+            "present_but_not_listed": present_but_not_listed,
+        },
+        "events_structure": {
+            "ok": events_ok,
+            "events_column_present": events_column_present,
+            "events_missing_in_structure": events_missing_in_struct,
+            "events_missing_in_column": events_missing_in_column,
+            "timing_mismatches": event_timing_mismatches,
+            "event_time_error": event_time_error,
+        },
+        "eeg_et_start_consistency": {
+            "ok": eeg_et_ok,
+            "check_possible": eeg_et_check_possible,
+            "modalities_present": eeg_et_modalities_present,
+            "start_error": start_error,
+            "shared_events": shared_event_names,
+            "mismatches": eeg_et_mismatches,
+        },
+    }
+
+    if verbose:
+        print(f"Modalities consistency: {modalities_ok}")
+        print(f"Events structure consistency: {events_ok}")
+        if not eeg_et_check_possible:
+            print(
+                "EEG/ET event-start consistency: skipped "
+                "(missing EEG/ET modality or missing EEG_events/ET_event data)."
+            )
+        else:
+            print(f"EEG/ET event-start consistency: {eeg_et_ok}")
+        print(f"Overall consistency: {report['is_consistent']}")
+
+    return report
 
 
 # --------------  Load EEG and ECG data form SVAROG files -----------------
