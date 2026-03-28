@@ -6,14 +6,20 @@ This module handles saving and loading MultimodalData instances to/from disk.
 import os
 import json
 import numbers
+import warnings
 from dataclasses import asdict, is_dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import joblib
 import xarray as xr
 
 from . import dataloader
 from .data_structures import MultimodalData
+
+if TYPE_CHECKING:
+    import mne
+    import numpy as np
+    import pandas as pd
 
 
 def _sanitize_netcdf_attr_value(value):
@@ -314,6 +320,331 @@ def get_export_metadata(data_xr: xr.DataArray) -> dict:
     if isinstance(decoded_metadata, dict):
         return decoded_metadata
     return {}
+
+
+def _infer_sfreq_from_time_coord(time_coord: "np.ndarray") -> float:
+    import numpy as np
+
+    if time_coord.size < 2:
+        raise ValueError("Cannot infer sampling frequency: time coordinate has fewer than 2 samples.")
+
+    dt = np.diff(time_coord.astype(float))
+    dt = dt[dt > 0]
+    if dt.size == 0:
+        raise ValueError("Cannot infer sampling frequency: time deltas are invalid.")
+
+    return float(1.0 / np.median(dt))
+
+
+def load_eeg_ncdf_as_mne_raw(
+    ncdf_path: str,
+    montage: Optional[str] = "standard_1020",
+    scale_to_volts: float = 1e-6,
+    data_xr: Optional[xr.DataArray] = None,
+) -> "mne.io.RawArray":
+    """Load an exported EEG NetCDF file and convert it to MNE RawArray.
+
+    Args:
+        ncdf_path: Path to exported EEG NetCDF file.
+        montage: MNE montage name. If None, montage is not set.
+        scale_to_volts: Multiplicative scale to convert values to volts.
+        data_xr: Pre-loaded DataArray. If provided, the file is not loaded again.
+
+    Returns:
+        mne.io.RawArray: Continuous EEG signal in MNE format.
+    """
+    try:
+        import mne
+    except ImportError as exc:
+        raise ImportError("mne is required for EEG quality analysis.") from exc
+
+    import numpy as np
+
+    if data_xr is None:
+        data_xr = load_xarray_from_netcdf(ncdf_path)
+
+    if not isinstance(data_xr, xr.DataArray):
+        raise TypeError(f"Expected xarray.DataArray in '{ncdf_path}', got {type(data_xr)}")
+
+    if "time" not in data_xr.dims or "channel" not in data_xr.dims:
+        raise ValueError(
+            f"Expected DataArray with 'time' and 'channel' dims, got: {data_xr.dims}"
+        )
+
+    data_t = data_xr.transpose("channel", "time")
+    ch_names = [str(ch) for ch in data_t.coords["channel"].values]
+    data_values = np.asarray(data_t.values, dtype=float) * float(scale_to_volts)
+
+    sfreq_attr = data_xr.attrs.get("sampling_freq")
+    if sfreq_attr is None or (isinstance(sfreq_attr, str) and not sfreq_attr.strip()):
+        sfreq = _infer_sfreq_from_time_coord(np.asarray(data_xr.coords["time"].values))
+    else:
+        sfreq = float(sfreq_attr)
+
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=["eeg"] * len(ch_names))
+    raw = mne.io.RawArray(data_values, info, verbose=False)
+
+    if montage:
+        try:
+            raw.set_montage(montage, on_missing="ignore")
+        except ValueError as exc:
+            warnings.warn(
+                f"Could not set montage '{montage}': {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    return raw
+
+
+def plot_eeg_with_rejected_segments(
+    raw: "mne.io.BaseRaw",
+    rejected_windows: Optional["pd.DataFrame"] = None,
+    max_channels: int = 19,
+    spacing: float = 8.0,
+    figsize: tuple[float, float] = (16.0, 9.0),
+    time_offset: float = 0.0,
+    event_duration: Optional[float] = None,
+    time_margin_s: Optional[float] = None,
+):
+    """Plot stacked EEG traces and highlight rejected windows.
+
+    Args:
+        raw: MNE Raw object with EEG channels.
+        rejected_windows: DataFrame with columns ``start_s`` and ``end_s`` in NCDF time coords.
+        max_channels: Maximum number of EEG channels to display.
+        spacing: Vertical distance between channel traces.
+        figsize: Matplotlib figure size.
+        time_offset: First sample time from the NCDF time coordinate (typically negative,
+            equal to -time_margin_s). Used to shift MNE's 0-based time axis to match the
+            original NCDF time axis where 0 = event start.
+        event_duration: Duration of the event in seconds; used to shade the post-event margin.
+        time_margin_s: Margin length in seconds; enables light-gray shading of pre/post margins.
+
+    Returns:
+        tuple: (figure, axis)
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    picks = raw.copy().pick("eeg")
+    data = picks.get_data()
+    # Shift MNE's 0-based time axis to match the NCDF time coordinate.
+    times = picks.times + time_offset
+    ch_names = list(picks.ch_names)
+
+    if data.size == 0:
+        raise ValueError("No EEG channels available to plot.")
+
+    n_channels = min(max_channels, data.shape[0])
+    data = data[:n_channels]
+    ch_names = ch_names[:n_channels]
+
+    stds = np.std(data, axis=1, keepdims=True)
+    stds[stds == 0] = 1.0
+    normalized = data / stds
+
+    fig, ax = plt.subplots(figsize=figsize)
+    offsets = np.arange(n_channels) * spacing
+
+    # Light-gray shading for margin regions (drawn first, behind traces).
+    if time_margin_s is not None and time_margin_s > 0:
+        t_start = float(times[0])
+        t_end = float(times[-1])
+        if t_start < 0.0:
+            ax.axvspan(t_start, 0.0, color="#cccccc", alpha=0.45, zorder=0, label="margin")
+        if event_duration is not None and np.isfinite(event_duration) and t_end > event_duration:
+            ax.axvspan(event_duration, t_end, color="#cccccc", alpha=0.45, zorder=0)
+
+    for idx in range(n_channels):
+        ax.plot(times, normalized[idx] + offsets[idx], linewidth=0.6, color="#1f4f8b", zorder=1)
+
+    if rejected_windows is not None and not rejected_windows.empty:
+        for _, row in rejected_windows.iterrows():
+            ax.axvspan(float(row["start_s"]), float(row["end_s"]), color="#d62728", alpha=0.18, zorder=2)
+
+    # Dashed vertical lines at event boundaries.
+    if event_duration is not None and np.isfinite(event_duration):
+        ax.axvline(0.0, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
+        ax.axvline(event_duration, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
+
+    ax.set_yticks(offsets)
+    ax.set_yticklabels(ch_names)
+    ax.set_xlabel("Time [s]  (0 = event start)")
+    ax.set_ylabel("EEG channel")
+    ax.set_title("EEG traces with AutoReject suggested rejection windows")
+    ax.grid(axis="x", alpha=0.2)
+    fig.tight_layout()
+    return fig, ax
+
+
+def run_eeg_autoreject_quality_report(
+    ncdf_path: str,
+    epoch_duration_s: float = 2.0,
+    n_interpolate: tuple[int, ...] = (1, 2, 4),
+    cv: int = 5,
+    random_state: int = 42,
+    n_jobs: int = -1,
+    montage: Optional[str] = "standard_1020",
+    scale_to_volts: float = 1e-6,
+    verbose: bool = True,
+) -> dict:
+    """Create AutoReject quality report for EEG exported to NetCDF.
+
+    Steps:
+        1. Load NetCDF and convert to MNE Raw.
+        2. Split signal into fixed-length epochs.
+        3. Fit AutoReject and collect reject log.
+        4. Build tabular summaries and visualization.
+
+    Returns:
+        dict with keys:
+            - raw
+            - epochs
+            - autoreject
+            - reject_log
+            - epoch_summary
+            - channel_summary
+            - global_summary
+            - figure
+            - axis
+    """
+    try:
+        import mne
+    except ImportError as exc:
+        raise ImportError("mne is required for EEG quality analysis.") from exc
+
+    try:
+        from autoreject import AutoReject  # type: ignore[reportMissingImports]
+    except ImportError as exc:
+        raise ImportError(
+            "autoreject is required for quality reporting. Install it with: pip install autoreject"
+        ) from exc
+
+    import numpy as np
+    import pandas as pd
+
+    # Load NCDF once – reuse the DataArray for both metadata extraction and MNE conversion.
+    _data_xr_meta = load_xarray_from_netcdf(ncdf_path)
+    time_margin_s = float(_data_xr_meta.attrs.get("time_margin_s", 0.0))
+    # Sanitize event_duration: treat missing or non-finite values as None.
+    _raw_event_duration = _data_xr_meta.attrs.get("event_duration")
+    try:
+        event_duration: Optional[float] = float(_raw_event_duration)
+    except (TypeError, ValueError):
+        event_duration = None
+    else:
+        if not np.isfinite(event_duration):
+            event_duration = None
+    # First value of the time coordinate is the pre-event start (e.g. -10 s when margin=10).
+    time_offset = float(np.asarray(_data_xr_meta.coords["time"].values)[0])
+
+    raw = load_eeg_ncdf_as_mne_raw(
+        ncdf_path=ncdf_path,
+        montage=montage,
+        scale_to_volts=scale_to_volts,
+        data_xr=_data_xr_meta,
+    )
+    del _data_xr_meta
+
+    epochs = mne.make_fixed_length_epochs(
+        raw,
+        duration=float(epoch_duration_s),
+        preload=True,
+        verbose=verbose,
+    )
+
+    if len(epochs) == 0:
+        raise ValueError("No epochs created. Check signal length and epoch_duration_s.")
+
+    ar = AutoReject(
+        n_interpolate=list(n_interpolate),
+        cv=cv,
+        random_state=random_state,
+        n_jobs=n_jobs,
+        verbose=verbose,
+    )
+    ar.fit(epochs)
+
+    _, reject_log = ar.transform(epochs, return_log=True)
+    labels = np.asarray(reject_log.labels)
+
+    if hasattr(reject_log, "bad_epochs"):
+        bad_epochs = np.asarray(reject_log.bad_epochs, dtype=bool)
+    else:
+        bad_epochs = np.any(labels == 2, axis=1)
+
+    # Epoch times in MNE's 0-based frame; shift to actual NCDF time coordinate.
+    _epoch_starts_mne = (epochs.events[:, 0] - raw.first_samp) / raw.info["sfreq"]
+    epoch_starts_actual = _epoch_starts_mne + time_offset
+    epoch_ends_actual = epoch_starts_actual + float(epoch_duration_s)
+
+    # An epoch is "in margin" when it lies entirely outside the event window.
+    epoch_in_margin = [
+        (end <= 0.0 or (event_duration is not None and start >= event_duration))
+        for start, end in zip(epoch_starts_actual, epoch_ends_actual)
+    ]
+
+    epoch_summary = pd.DataFrame(
+        {
+            "epoch_idx": np.arange(len(epochs), dtype=int),
+            "start_s": epoch_starts_actual,
+            "end_s": epoch_ends_actual,
+            "interpolated_channels": (labels == 1).sum(axis=1).astype(int),
+            "rejected": bad_epochs,
+            "in_margin": epoch_in_margin,
+        }
+    )
+
+    n_epochs = len(epochs)
+    channel_summary = pd.DataFrame(
+        {
+            "channel": list(epochs.ch_names),
+            "interpolated_epochs": (labels == 1).sum(axis=0).astype(int),
+            "bad_labels": (labels == 2).sum(axis=0).astype(int),
+        }
+    )
+    channel_summary["interpolated_pct"] = 100.0 * channel_summary["interpolated_epochs"] / n_epochs
+    channel_summary["bad_labels_pct"] = 100.0 * channel_summary["bad_labels"] / n_epochs
+    channel_summary = channel_summary.sort_values(
+        ["bad_labels", "interpolated_epochs", "channel"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+    global_summary = {
+        "ncdf_path": ncdf_path,
+        "n_channels": int(len(epochs.ch_names)),
+        "n_epochs": int(n_epochs),
+        "epoch_duration_s": float(epoch_duration_s),
+        "rejected_epochs": int(bad_epochs.sum()),
+        "rejected_epochs_pct": float(100.0 * bad_epochs.mean()),
+        "total_interpolations": int((labels == 1).sum()),
+    }
+
+    # Rejected windows outside margins only — margin artifacts are expected and uninformative.
+    rejected_windows = epoch_summary.loc[
+        epoch_summary["rejected"] & ~epoch_summary["in_margin"],
+        ["start_s", "end_s"],
+    ].reset_index(drop=True)
+    fig, ax = plot_eeg_with_rejected_segments(
+        raw,
+        rejected_windows=rejected_windows,
+        time_offset=time_offset,
+        event_duration=event_duration,
+        time_margin_s=time_margin_s,
+    )
+
+    return {
+        "raw": raw,
+        "epochs": epochs,
+        "autoreject": ar,
+        "reject_log": reject_log,
+        "epoch_summary": epoch_summary,
+        "channel_summary": channel_summary,
+        "global_summary": global_summary,
+        "figure": fig,
+        "axis": ax,
+    }
 
 #------------
 
