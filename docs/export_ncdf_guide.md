@@ -137,10 +137,26 @@ Common scalar/string attributes written during export:
 - JSON object containing, depending on modality:
     - `notes`
     - `child_info`
+    - `event_order` (chronological order by event start time for available target events:
+      `Peppa`, `Incredibles`, `Brave`)
     - for EEG additionally: `eeg.filtration` and `eeg.references`
 
 Use `get_export_metadata(...)` to decode and access this payload safely.
 
+#### Example: reading `event_order`
+
+```python
+from src.export import load_xarray_from_netcdf, get_export_metadata
+
+da = load_xarray_from_netcdf("data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc")
+meta = get_export_metadata(da)
+
+event_order = meta.get("event_order", [])
+print(event_order or "event order not available")
+# e.g. ['Peppa', 'Brave', 'Incredibles']
+```
+
+## Export a full dyad to NCDF
 ## Metadata serialization format
 
 Exported DataArrays include:

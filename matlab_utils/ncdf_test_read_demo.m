@@ -33,6 +33,24 @@ fprintf('Age (months):   %.1f\n', metadata.child_info.age_months);
 fprintf('Group:          %s\n',   metadata.child_info.group);
 fprintf('Sex:            %s\n',   metadata.child_info.sex);
 
+% --- Display movie (event) order ---
+% event_order lists Peppa / Incredibles / Brave sorted by their start time
+fprintf('\n--- Movie Order ---\n');
+if isfield(metadata, 'event_order') && ~isempty(metadata.event_order)
+    event_order = metadata.event_order;
+    % Normalize to a cell array of character vectors for consistent indexing
+    if isstring(event_order)
+        event_order = cellstr(event_order);
+    elseif ischar(event_order)
+        event_order = {event_order};
+    end
+    for k = 1:numel(event_order)
+        fprintf('  %d. %s\n', k, event_order{k});
+    end
+else
+    fprintf('  (event_order not available in this file)\n');
+end
+
 % --- Display EEG processing info ---
 fprintf('\n--- EEG Processing ---\n');
 fprintf('Reference:         %s\n',   metadata.eeg.references);
