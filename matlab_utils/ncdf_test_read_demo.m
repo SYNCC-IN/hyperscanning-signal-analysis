@@ -38,7 +38,12 @@ fprintf('Sex:            %s\n',   metadata.child_info.sex);
 fprintf('\n--- Movie Order ---\n');
 if isfield(metadata, 'event_order') && ~isempty(metadata.event_order)
     event_order = metadata.event_order;
-    % jsondecode returns a cell array of strings
+    % Normalize to a cell array of character vectors for consistent indexing
+    if isstring(event_order)
+        event_order = cellstr(event_order);
+    elseif ischar(event_order)
+        event_order = {event_order};
+    end
     for k = 1:numel(event_order)
         fprintf('  %d. %s\n', k, event_order{k});
     end
