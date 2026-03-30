@@ -107,7 +107,7 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         multimodal_data: The MultimodalData instance containing the data.
         selected_event: The name of the event to select (e.g., 'Incredibles').
         selected_channels: List of channel names to include in the export (e.g., ['Fp1', 'Fp2'] for EEG).
-        selected_modality: The modality to export (e.g., 'EEG', 'ECG', 'ET', 'IBI', or 'diode').
+        selected_modality: The modality to export (e.g., 'EEG', 'ECG', 'ET', 'IBI', 'RMSSD', or 'diode').
         member: The member to select ('ch' or 'cg').
         time_margin: Margin in seconds to include before and after the event.
         verbose: If True, emit export progress messages.
@@ -171,12 +171,14 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         channels = [ch.replace(f'ET_{member}_', '') for ch in channels]
     elif selected_modality == 'IBI':
         channels = [ch.replace(f'IBI_{member}', 'IBI') for ch in channels]
+    elif selected_modality == 'RMSSD':
+        channels = [ch.replace(f'RMSSD_{member}', 'RMSSD') for ch in channels]
     elif selected_modality == 'ECG':
         channels = [ch.replace(f'ECG_{member}', 'ECG') for ch in channels]
     elif selected_modality == 'diode':
         channels = ['diode']
 
-    channel_names = [str(ch) for ch in channels]
+    channels = [str(ch) for ch in channels]
 
     data_xr = xr.DataArray(
         data,
@@ -195,8 +197,8 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
         'event_start': 0.0,
         'event_duration': float(event_end - event_start),
         'time_margin_s': float(time_margin),
-        'channel_names_csv': ','.join(channel_names),
-        'channel_names_json': json.dumps(channel_names, ensure_ascii=True),
+        'channel_names_csv': ','.join(channels),
+        'channel_names_json': json.dumps(channels, ensure_ascii=True),
         'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
     })
 
@@ -243,7 +245,8 @@ def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True
                 'P4', 'T6', 'O1', 'O2'],
         'ET': ['x', 'y', 'pupil', 'blinks'],
         'ECG': ['ECG'],
-        'IBI': ['IBI']}
+        'IBI': ['IBI'],
+        'RMSSD': ['RMSSD']}
     for dyad_id in dyad_id_list:
         _log(f"Loading dyad '{dyad_id}' from '{input_data_path}'")
         multimodal_data = dataloader.create_multimodal_data(data_base_path = input_data_path,
@@ -670,6 +673,11 @@ def save_to_file(multimodal_data: MultimodalData, output_dir: str) -> None:
 def load_output_data(filename: str) -> MultimodalData | None:
     """
     Load saved MultimodalData from a joblib file.
+
+    .. warning::
+        Uses ``joblib.load`` which relies on pickle under the hood.
+        Never load files from untrusted sources as they may execute
+        arbitrary code during deserialization.
 
     Args:
         filename: Path to the joblib file to load.

@@ -73,6 +73,7 @@ This project uses the following conventions in NCDF export paths and filenames.
     - `ET`
     - `FNIRS`
     - `IBI`
+  - `RMSSD`
 
 ### Site and dyad IDs
 
