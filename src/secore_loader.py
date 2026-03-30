@@ -28,7 +28,6 @@ def load_h10_ibi(path: str):
 
 
 def fix_and_interpolate_ibi(
-    ibi_ms,
     ibi_cum_s,
     stage,
     fs_out=8,
@@ -74,7 +73,7 @@ def fix_and_interpolate_ibi(
 
 
 def compute_signal_lag(signal1, signal2, plot=False, label1="", label2=""):
-    """Return the integer-sample lag that maximizes normalized cross-correlation."""
+    """Return the integer-sample lag that maximizes the cross-correlation."""
     s1 = signal1.flatten() - np.mean(signal1)
     s2 = signal2.flatten() - np.mean(signal2)
     xc = signal.correlate(s1, s2, mode="full")
@@ -119,7 +118,7 @@ def build_h10_ibi_rmssd_xarray(
     xr.DataArray with dims: (time, channel)
     channels: IBI_CH, IBI_CG, RMSSD_CH, RMSSD_CG, events
     """
-    dyad_id = f"W_{dyad_nr}"
+    dyad_id = f"W_{str(dyad_nr).zfill(3)}"
 
     eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
     path_ch = os.path.join(
@@ -136,10 +135,10 @@ def build_h10_ibi_rmssd_xarray(
     t_cg_cum_s = np.cumsum(ibi_cg) / 1000.0
 
     _, ibi_ch_i, stage_ch_i, _, _, rmssd_ch_i = fix_and_interpolate_ibi(
-        ibi_ch, t_ch_cum_s, stage_ch, fs_out=fs_ibi, window_size=window_size_rmssd_s
+        t_ch_cum_s, stage_ch, fs_out=fs_ibi, window_size=window_size_rmssd_s
     )
     _, ibi_cg_i, stage_cg_i, _, _, rmssd_cg_i = fix_and_interpolate_ibi(
-        ibi_cg, t_cg_cum_s, stage_cg, fs_out=fs_ibi, window_size=window_size_rmssd_s
+        t_cg_cum_s, stage_cg, fs_out=fs_ibi, window_size=window_size_rmssd_s
     )
 
     n = min(len(ibi_ch_i), len(ibi_cg_i))
@@ -343,7 +342,7 @@ def build_h10_ibi_rmssd_xarray(
 
 def _autodetect_latest_h10_recording(dyad_nr, data_base_path="../data"):
     """Return (date, time_of_recording, device_ids) for the latest dyad H10 IBI recording pair."""
-    dyad_id = f"W_{dyad_nr}"
+    dyad_id = f"W_{str(dyad_nr).zfill(3)}"
     eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
     if not os.path.isdir(eeg_dir):
         raise FileNotFoundError(f"EEG folder not found: {eeg_dir}")

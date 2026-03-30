@@ -186,7 +186,7 @@ following rules relative to phase markers T2–T4:
 The H10 and EEG clocks are not synchronized. To align them:
 
 1. EEG-derived IBI is loaded via `dataloader.create_multimodal_data()` and decimated.
-2. `compute_signal_lag(...)` computes the normalized cross-correlation between each
+2. `compute_signal_lag(...)` computes the cross-correlation between each
    H10 IBI signal and its corresponding EEG-derived IBI.
 3. The lag that maximizes cross-correlation is used to shift the signals so that
    CH and CG are temporally aligned.
@@ -264,7 +264,7 @@ Returns `(stage, computer_timestamps_s, ibi_ms)` from an H10 IBI CSV file.
 
 ```python
 fix_and_interpolate_ibi(
-    ibi_ms, ibi_cum_s, stage,
+    ibi_cum_s, stage,
     fs_out=8, samp_rate=1024, window_size=30,
 ) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray, ndarray]
 ```
