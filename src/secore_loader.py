@@ -285,7 +285,13 @@ def build_h10_ibi_rmssd_xarray(
         ]
     )
 
-    v = min(np.min(np.where(stage_cg_i == 2)), np.min(np.where(stage_ch_i == 2)))
+    idx_stage_cg = np.where(stage_cg_i == 2)[0]
+    idx_stage_ch = np.where(stage_ch_i == 2)[0]
+    if idx_stage_cg.size == 0 or idx_stage_ch.size == 0:
+        raise ValueError(
+            "Cannot align to stage 2: no samples with stage == 2 found in one or both channels."
+        )
+    v = int(min(idx_stage_cg.min(), idx_stage_ch.min()))
     t_h10 = t_h10 - t_h10[v]
 
     event_code_map = {
