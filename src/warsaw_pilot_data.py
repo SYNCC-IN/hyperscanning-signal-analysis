@@ -11,29 +11,31 @@ Date: 2025
 """
 
 import sys
-import os
+from pathlib import Path
 from typing import List, Optional
+
+# Allow running both as a module (python -m src.warsaw_pilot_data)
+# and as a script (python src/warsaw_pilot_data.py)
+if __package__ is None or __package__ == '':
+    _project_root = str(Path(__file__).resolve().parent.parent)
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
+    __package__ = "src"
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import butter, sosfiltfilt, firwin, lfilter, hilbert, welch
 from scipy.stats import zscore
 
-# Add project root to path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(script_dir)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-from src import dataloader
-from src.mtmvar import mvar_plot, multivariate_spectra, dtf_multivariate, graph_plot
-from src.utils import plot_eeg_channels_pl, overlay_eeg_channels_hyperscanning_pl
+from . import dataloader
+from .mtmvar import mvar_plot, multivariate_spectra, dtf_multivariate, graph_plot
+from .utils import plot_eeg_channels_pl, overlay_eeg_channels_hyperscanning_pl
 
 
 # ==================== Configuration Constants ====================
 
 # Default analysis parameters
-DEFAULT_DYAD_ID = "W030"
+DEFAULT_DYAD_ID = "W_030"
 DEFAULT_DATA_PATH = "../data"
 DEFAULT_EEG_LOWCUT = 1.0  # Hz
 DEFAULT_EEG_HIGHCUT = 40.0  # Hz

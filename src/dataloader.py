@@ -17,9 +17,7 @@ from scipy.signal import (
 )
 import mne
 
-import importlib
 from . import eyetracker as et
-importlib.reload(et)
 from .data_structures import MultimodalData, Tasks, WhoEnum
 from .utils import plot_filter_characteristics
 from . import export  # For backwards compatibility
@@ -87,6 +85,7 @@ def create_multimodal_data(
     et_pos_cutoff=128,
     et_pupil_cutoff=4,
     pupil_model_confidence=0.9,
+    window_size=30,
     decimate_factor=1,
     plot_flag=False,
     run_consistency_check=True,
@@ -125,6 +124,8 @@ def create_multimodal_data(
         et_pos_cutoff (float, optional): Cutoff frequency for ET position data low-pass filter. Defaults to 128 Hz.
         et_pupil_cutoff (float, optional): Cutoff frequency for ET pupil data low-pass filter. Defaults to 4 Hz.
         pupil_model_confidence (float, optional): Confidence level for 3D pupil model. Defaults to 0.9.
+        window_size (float, optional): Sliding window size in seconds used for
+            RMSSD computation from ECG. Defaults to 30.
         plot_flag (bool, optional): Whether to plot intermediate results for debugging/visualization. Defaults to False.
         run_consistency_check (bool, optional): Whether to run consistency checks
             after loading and event structure creation. Defaults to True.
@@ -181,6 +182,7 @@ def create_multimodal_data(
             lowcut=lowcut,
             highcut=highcut,
             eeg_filter_type=eeg_filter_type,
+            window_size=window_size,
             plot_flag=plot_flag,
         )
     if load_et:
@@ -262,6 +264,7 @@ def check_consistency_of_multimodal_data(
         "EEG": ("EEG_",),
         "ECG": ("ECG_",),
         "IBI": ("IBI_",),
+        "RMSSD": ("RMSSD_",),
         "ET": ("ET_",),
     }
 
@@ -484,6 +487,7 @@ def load_eeg_data(
     lowcut=4.0,
     highcut=40.0,
     eeg_filter_type="fir",
+    window_size=30,
     plot_flag=False,
 ):
     """Load and filter EEG data from SVAROG format files into MultimodalData instance.
@@ -498,6 +502,8 @@ def load_eeg_data(
         lowcut (float, optional): Low cut-off frequency for EEG filtering. Defaults to 4.0 Hz.
         highcut (float, optional): High cut-off frequency for EEG filtering. Defaults to 40.0 Hz.
         eeg_filter_type (str, optional): Type of filter to use ('fir' or 'iir'). Defaults to 'fir'.
+        window_size (float, optional): Sliding window size in seconds used for
+            RMSSD computation from ECG. Defaults to 30.
         plot_flag (bool, optional): Whether to plot intermediate results for debugging/visualization. Defaults to False.
 
     Returns:
@@ -520,12 +526,17 @@ def load_eeg_data(
     diode = raw_eeg_data[multimodal_data.eeg_channel_mapping["Diode"], :]
 
     # set the ECG modality with ECG signals (in place)
-    _extract_ecg_data(multimodal_data, raw_eeg_data)
+    _extract_ecg_data(multimodal_data, raw_eeg_data, window_size=window_size)
     
     # scan for events
-    multimodal_data.events, thresholded_diode = _scan_for_events(
+    events_list, thresholded_diode = _scan_for_events(
         diode, multimodal_data.fs, plot_flag, threshold=0.75
     )
+    # Convert to dict-of-dicts, filtering out incomplete events
+    multimodal_data.events = {
+        ev['name']: ev for ev in events_list
+        if 'start' in ev and 'duration' in ev
+    }
     print(f"Detected events: {multimodal_data.events}")
 
     # mount EEG data to M1 and M2 channels and filter the data (in place)
@@ -547,7 +558,7 @@ def load_eeg_data(
         raw_eeg_data, multimodal_data.eeg_channel_mapping
     )
     # Set EEG events column
-    multimodal_data._set_EEG_events_column(multimodal_data.events)
+    multimodal_data._set_EEG_events_column()
 
     # Store diode in DataFrame
     multimodal_data._set_diode(thresholded_diode)
@@ -782,13 +793,15 @@ def _apply_filters(
     multimodal_data.eeg_filtration.high_pass["applied"] = True
 
 
-def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
+def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data, window_size=30):
     """
     Extract and filter ECG data from raw EEG recording.
 
     Args:
         multimodal_data (MultimodalData): The multimodal data instance to populate with ECG.
         raw_eeg_data (np.ndarray): Raw EEG data containing ECG channels.
+        window_size (float, optional): Sliding window size in seconds used for
+            RMSSD computation from ECG. Defaults to 30.
 
     Returns:
         None: Modifies multimodal_data in place, adding ECG data and modality.
@@ -822,6 +835,8 @@ def _extract_ecg_data(multimodal_data: MultimodalData, raw_eeg_data):
     multimodal_data._set_ibi()
     if "IBI" not in multimodal_data.modalities:
         multimodal_data.modalities.append("IBI")
+    # compute the RMSSD feature and add it to the multimodal data
+    multimodal_data._set_RMSSD_from_ECG(window_size=window_size)
 
 def _scan_for_events(diode, eeg_fs, plot_flag, threshold=0.75):
     """Scan the diode signal to detect and identify experimental events.

@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import pandas as pd
 import warnings
@@ -15,9 +16,9 @@ from dataclasses import dataclass, field
 from scipy.signal import decimate
 
 class WhoEnum(StrEnum):
-    CG_Only = "CG_Only",
-    CH_Only = "CH_Only",
-    Both = "Both",
+    CG_Only = "CG_Only"
+    CH_Only = "CH_Only"
+    Both = "Both"
     Neither = "Neither"
 
 @dataclass
@@ -172,7 +173,7 @@ class MultimodalData:
         Retrieve signals from the DataFrame based on mode, member, selected channels, events, and times.
 
         Args:
-            mode (str): Signal modality to retrieve. Options: 'EEG', 'ECG', 'IBI', 'ET', 'diode'. Default: 'EEG'.
+            mode (str): Signal modality to retrieve. Options: 'EEG', 'ECG', 'IBI', 'RMSSD', 'ET', 'diode'. Default: 'EEG'.
             member (str): Participant role. Options: 'ch' (child), 'cg' (caregiver). Default: 'ch'.
             selected_channels (list of str, optional): List of channel names to retrieve. 
                 Required for 'EEG' and 'ET' modes. Ignored for other modes.
@@ -198,10 +199,12 @@ class MultimodalData:
             prefix = f'ECG_{member}'
         elif mode == 'IBI':
             prefix = f'IBI_{member}'
+        elif mode == 'RMSSD':
+            prefix = f'RMSSD_{member}'
         elif mode == 'diode':
             prefix = 'diode'    
         else:
-            raise ValueError("Invalid mode. Choose from 'EEG', 'ECG', 'IBI', 'ET'.")
+            raise ValueError("Invalid mode. Choose from 'EEG', 'ECG', 'IBI', 'RMSSD', 'ET', 'diode'.")
         # Filter columns based on selected channels
         if mode in ['EEG', 'ET']:
             cols = [f'{prefix}{ch}' for ch in selected_channels if f'{prefix}{ch}' in self.data.columns]
@@ -305,13 +308,13 @@ class MultimodalData:
         self._ensure_data_length(len(diode))
         self.data['diode'] = diode
 
-    def _set_EEG_events_column(self, events: List[dict]):
-        """Populate EEG_events column based on event timing and duration. 
+    def _set_EEG_events_column(self):
+        """Populate EEG_events column based on self.events (dict-of-dicts).
         Private method - should only be called by DataLoader."""
         if 'EEG_events' not in self.data.columns:
             self.data['EEG_events'] = None
 
-        for ev in events:
+        for ev in self.events.values():
             if 'start' in ev and 'duration' in ev:
                 mask = (self.data['time'] >= ev['start']) & (self.data['time'] <= ev['start'] + ev['duration'])
                 self.data.loc[mask, 'EEG_events'] = ev['name']
@@ -476,11 +479,6 @@ class MultimodalData:
         low_applied = bool(self.eeg_filtration.low_pass.get("applied", False))
         high_applied = bool(self.eeg_filtration.high_pass.get("applied", False))
 
-        # Mark the data as pre-filtered
-        if low_applied or high_applied:
-            with raw.info._unlock():
-                pass
-        
         # Add filter description
         if notch_applied or low_applied or high_applied:
             filter_desc = (
@@ -618,8 +616,6 @@ class MultimodalData:
     def _set_ibi(self):
         """Interpolate IBI signals from ECG data and store in DataFrame. 
         Private method - called by DataLoader."""
-        # ecg_ch = self.data['ECG_ch'].values
-        # ecg_cg = self.data['ECG_cg'].values
 
         self._interpolate_ibi_signals('ch')
         self._interpolate_ibi_signals('cg')
@@ -627,6 +623,82 @@ class MultimodalData:
         if 'IBI' not in self.modalities:
             self.modalities.append('IBI')
 
+    def _set_RMSSD_from_ECG(self, window_size=30):
+        """Calculate per-sample sliding-window RMSSD from ECG and store in DataFrame.
+
+        Args:
+            window_size: Window size in seconds.
+
+        Note:
+            RMSSD values are timestamp-aligned to the start of each sliding window.
+        """
+        if self.fs is None or self.fs <= 0:
+            raise ValueError("Sampling frequency fs must be set and positive.")
+        if window_size <= 0:
+            raise ValueError("window_size must be positive.")
+
+        # window_size is provided in seconds
+        window_size_samples = max(int(round(window_size * self.fs)), 1)
+
+        for who in ['ch', 'cg']:
+            ecg_col = f'ECG_{who}'
+            rmssd_col = f'RMSSD_{who}'
+
+            if ecg_col not in self.data.columns:
+                continue
+
+            _, info_ecg = nk.ecg_process(
+                self.data[ecg_col].values,
+                sampling_rate=self.fs,
+                method='neurokit'
+            )
+            r_peaks = np.asarray(info_ecg.get("ECG_R_Peaks", []), dtype=int)
+
+            n_samples = len(self.data[ecg_col])
+            rmssd_signal = np.full(n_samples, np.nan, dtype=float)
+            if len(r_peaks) >= 3 and window_size_samples <= n_samples:
+                last_start = n_samples - window_size_samples
+                # Compute only at positions where the window's R-peak content
+                # changes (when a peak enters or leaves the window), plus
+                # position 0.  Between these positions the result is constant.
+                change_positions = np.unique(np.clip(
+                    np.concatenate([[0], r_peaks, r_peaks - window_size_samples + 1]),
+                    0, last_start,
+                ))
+                change_positions.sort()
+
+                prev_val = np.nan
+                prev_pos = 0
+                for i in change_positions:
+                    left = np.searchsorted(r_peaks, i, side='left')
+                    right = np.searchsorted(r_peaks, i + window_size_samples, side='left')
+                    window_r_peaks = r_peaks[left:right]
+                    if len(window_r_peaks) < 3:
+                        val = np.nan
+                    else:
+                        window_ibi = np.diff(window_r_peaks) / self.fs * 1000.0
+                        val = np.sqrt(np.mean(np.diff(window_ibi) ** 2))
+                    # Forward-fill the previous value up to this change point
+                    if not np.isnan(prev_val):
+                        rmssd_signal[prev_pos:int(i)] = prev_val
+                    rmssd_signal[int(i)] = val
+                    prev_val = val
+                    prev_pos = int(i)
+                # Fill from last computed point to end of valid range
+                if not np.isnan(prev_val):
+                    rmssd_signal[prev_pos:last_start + 1] = prev_val
+
+            # Fill edge gaps caused by missing peaks to keep a continuous signal.
+            rmssd_interp = pd.Series(rmssd_signal).interpolate(
+                method='linear',
+                limit_direction='both'
+            )
+            self.data[rmssd_col] = rmssd_interp.values
+            
+
+        if 'RMSSD' not in self.modalities:
+            self.modalities.append('RMSSD')
+        return
 
     def _decimate_signals(self, q=8):
         """
@@ -647,16 +719,16 @@ class MultimodalData:
         multimodal_data_dec = MultimodalData()
         multimodal_data_dec.fs = self.fs / q
         multimodal_data_dec.id = self.id
-        multimodal_data_dec.eeg_channel_names_ch = self.eeg_channel_names_ch
-        multimodal_data_dec.eeg_channel_names_cg = self.eeg_channel_names_cg
-        multimodal_data_dec.eeg_channel_mapping = self.eeg_channel_mapping
+        multimodal_data_dec.eeg_channel_names_ch = list(self.eeg_channel_names_ch)
+        multimodal_data_dec.eeg_channel_names_cg = list(self.eeg_channel_names_cg)
+        multimodal_data_dec.eeg_channel_mapping = dict(self.eeg_channel_mapping)
         multimodal_data_dec.references = self.references
-        multimodal_data_dec.eeg_filtration = self.eeg_filtration
-        multimodal_data_dec.events = self.events
-        multimodal_data_dec.paths = self.paths
-        multimodal_data_dec.tasks = self.tasks
-        multimodal_data_dec.modalities = self.modalities
-        multimodal_data_dec.child_info = self.child_info
+        multimodal_data_dec.eeg_filtration = copy.deepcopy(self.eeg_filtration)
+        multimodal_data_dec.events = copy.deepcopy(self.events)
+        multimodal_data_dec.paths = copy.deepcopy(self.paths)
+        multimodal_data_dec.tasks = copy.deepcopy(self.tasks)
+        multimodal_data_dec.modalities = list(self.modalities)
+        multimodal_data_dec.child_info = copy.deepcopy(self.child_info)
         multimodal_data_dec.notes = self.notes  
 
         # decimate time, events, and diode columns by selectiging every q-th sample
@@ -672,19 +744,26 @@ class MultimodalData:
         if 'diode' in self.data.columns:
             multimodal_data_dec.data['diode'] = self.data['diode'].values[::q]
 
-        # create a list of column that need to be antialiased filtered and decimated, these are all EEG, ECG, and IBI and ET columns
-        columns_to_decimate = [ col for col in self.data.columns 
-                               if col.startswith('EEG_ch_') 
-                                 or col.startswith('EEG_cg_')
-                                 or col.startswith('ECG')   
-                               or col.startswith('IBI') 
-                               or col.startswith('ET_ch_') 
-                               or col.startswith('ET_cg_')]
+        # create a list of columns that need antialias filtering and decimation
+        columns_to_decimate = [
+            col for col in self.data.columns
+            if col.startswith('EEG_ch_')
+            or col.startswith('EEG_cg_')
+            or col.startswith('ECG')
+            or col.startswith('IBI')
+            or col.startswith('RMSSD')
+            or col.startswith('ET_ch_')
+            or col.startswith('ET_cg_')
+        ]
         for col in columns_to_decimate:
-            # check if the column contain NaN values, if so, fill them with the previous value (forward fill) before decimation
+            # Fill gaps before FIR decimation to avoid NaN propagation in output.
             if self.data[col].isnull().any():
-                print(f'Column {col} contains NaN values, applying forward fill before decimation.')
-                data_filled = self.data[col].infer_objects(copy=False).ffill().values
+                print(f'Column {col} contains NaN values, applying forward and backward fill before decimation.')
+                series_filled = self.data[col].infer_objects(copy=False).ffill().bfill()
+                if series_filled.isnull().any():
+                    # Fully-NaN columns remain NaN after ffill/bfill; use 0.0 as a stable fallback.
+                    series_filled = series_filled.fillna(0.0)
+                data_filled = series_filled.values
             else:
                 data_filled = self.data[col].values
             decimated = decimate( (data_filled).astype(float), q, ftype='fir', zero_phase=True)

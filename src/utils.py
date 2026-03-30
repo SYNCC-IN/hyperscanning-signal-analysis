@@ -172,48 +172,24 @@ def plot_eeg_channels_pl(mmd, selected_events, selected_channels, title='Filtere
         color_idx = i % len(colors)
         event_color_map[event] = colors[color_idx]
     
-    # Find continuous segments for each event
-    current_event = None
-    segment_start = None
-    prev_time = None
-    
-    for idx in range(len(mmd.data)):
-        row = mmd.data.iloc[idx]
-        event = row['events']
-        time = row['time']
-        
-        # Start a new segment when event changes or on first row
-        if event != current_event:
-            # Close previous segment if it exists
-            if current_event is not None and pd.notna(current_event) and segment_start is not None and prev_time is not None:
-                # Add rectangle for the completed segment
-                if current_event in event_color_map:
-                    fig.add_vrect(
-                        x0=segment_start,
-                        x1=prev_time,
-                        fillcolor=event_color_map[current_event],
-                        opacity=0.2,
-                        layer="below",
-                        line_width=0
-                    )
-            
-            # Start new segment
-            if pd.notna(event):
-                current_event = event
-                segment_start = time
-            else:
-                current_event = None
-                segment_start = None
-        
-        prev_time = time
-    
-    # Close the last segment
-    if current_event is not None and pd.notna(current_event) and segment_start is not None and prev_time is not None:
-        if current_event in event_color_map:
+    # Find continuous segments using vectorised diff instead of row-by-row loop
+    events_series = mmd.data['events']
+    time_series = mmd.data['time']
+    # Detect where event value changes (including NaN transitions)
+    changed = events_series.ne(events_series.shift())
+    change_idx = np.flatnonzero(changed.values)
+    # Append sentinel for the last segment
+    change_idx = np.append(change_idx, len(events_series))
+
+    for seg_i in range(len(change_idx) - 1):
+        start_idx = change_idx[seg_i]
+        end_idx = change_idx[seg_i + 1] - 1
+        ev = events_series.iat[start_idx]
+        if pd.notna(ev) and ev in event_color_map:
             fig.add_vrect(
-                x0=segment_start,
-                x1=prev_time,
-                fillcolor=event_color_map[current_event],
+                x0=time_series.iat[start_idx],
+                x1=time_series.iat[end_idx],
+                fillcolor=event_color_map[ev],
                 opacity=0.2,
                 layer="below",
                 line_width=0
