@@ -175,8 +175,12 @@ def plot_eeg_channels_pl(mmd, selected_events, selected_channels, title='Filtere
     # Find continuous segments using vectorised diff instead of row-by-row loop
     events_series = mmd.data['events']
     time_series = mmd.data['time']
-    # Detect where event value changes (including NaN transitions)
-    changed = events_series.ne(events_series.shift())
+    # Detect where event value changes, but treat consecutive NaNs as a single segment
+    value_changed = events_series.ne(events_series.shift())
+    is_na = events_series.isna()
+    shifted_is_na = is_na.shift(fill_value=False)
+    # Do not mark positions where both current and previous values are NaN as changes
+    changed = value_changed & ~(is_na & shifted_is_na)
     change_idx = np.flatnonzero(changed.values)
     # Append sentinel for the last segment
     change_idx = np.append(change_idx, len(events_series))

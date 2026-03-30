@@ -165,6 +165,11 @@ class MultimodalData:
         # Notes
         self.notes: Optional[str] = None  # notes from experiment
 
+        # Cache for ECG R-peaks, keyed by participant ('ch'/'cg'), populated by
+        # _interpolate_ibi_signals and reused by _set_RMSSD_from_ECG to avoid
+        # running nk.ecg_process twice per participant.
+        self._ecg_r_peaks: Dict[str, np.ndarray] = {}
+
     # -------------------------------------------------------------------------
     # Methods for managing data in DataFrame
     # -------------------------------------------------------------------------
@@ -187,7 +192,7 @@ class MultimodalData:
             tuple or None: Returns None if no matching columns are found. Otherwise returns:
                 - time_vector (np.ndarray): 1D array of time points in seconds
                 - channel_names (list of str): List of column names corresponding to retrieved channels
-                - data (np.ndarray): 2D array of shape [n_channels, n_samples] containing signal data
+                - data (np.ndarray): 2D array of shape [n_samples, n_channels] containing signal data
 
         """
         prefix = ''
@@ -593,6 +598,9 @@ class MultimodalData:
         Private method - called by _set_ibi()."""
         _, info_ecg = nk.ecg_process(self.data[f'ECG_{who}'].values, sampling_rate=self.fs, method='neurokit')
         r_peaks = info_ecg["ECG_R_Peaks"]
+        # Cache the R-peaks so _set_RMSSD_from_ECG can reuse them without
+        # running nk.ecg_process a second time for the same participant.
+        self._ecg_r_peaks[who] = np.asarray(r_peaks, dtype=int)
         ibi = np.diff(r_peaks) / self.fs * 1000  # IBI in ms
         times = np.cumsum(ibi) / 1000  # time vector for the IBI signals [s]
         # correct the times so that the first IBI corresponds to the time of the first R-peak
@@ -647,12 +655,17 @@ class MultimodalData:
             if ecg_col not in self.data.columns:
                 continue
 
-            _, info_ecg = nk.ecg_process(
-                self.data[ecg_col].values,
-                sampling_rate=self.fs,
-                method='neurokit'
-            )
-            r_peaks = np.asarray(info_ecg.get("ECG_R_Peaks", []), dtype=int)
+            # Reuse cached R-peaks from _interpolate_ibi_signals (called by _set_ibi)
+            # to avoid running nk.ecg_process a second time for the same participant.
+            if who in self._ecg_r_peaks:
+                r_peaks = self._ecg_r_peaks[who]
+            else:
+                _, info_ecg = nk.ecg_process(
+                    self.data[ecg_col].values,
+                    sampling_rate=self.fs,
+                    method='neurokit'
+                )
+                r_peaks = np.asarray(info_ecg.get("ECG_R_Peaks", []), dtype=int)
 
             n_samples = len(self.data[ecg_col])
             rmssd_signal = np.full(n_samples, np.nan, dtype=float)
@@ -756,17 +769,26 @@ class MultimodalData:
             or col.startswith('ET_cg_')
         ]
         for col in columns_to_decimate:
+            original_series = self.data[col]
+            is_nan = original_series.isnull()
+            has_nans = is_nan.any()
             # Fill gaps before FIR decimation to avoid NaN propagation in output.
-            if self.data[col].isnull().any():
+            if has_nans:
                 print(f'Column {col} contains NaN values, applying forward and backward fill before decimation.')
-                series_filled = self.data[col].infer_objects(copy=False).ffill().bfill()
+                series_filled = original_series.infer_objects(copy=False).ffill().bfill()
                 if series_filled.isnull().any():
-                    # Fully-NaN columns remain NaN after ffill/bfill; use 0.0 as a stable fallback.
+                    # Fully-NaN columns: fill with 0.0 as a stable placeholder for
+                    # the decimation filter; NaN positions are restored below.
                     series_filled = series_filled.fillna(0.0)
                 data_filled = series_filled.values
             else:
-                data_filled = self.data[col].values
-            decimated = decimate( (data_filled).astype(float), q, ftype='fir', zero_phase=True)
+                data_filled = original_series.values
+            decimated = decimate(data_filled.astype(float), q, ftype='fir', zero_phase=True)
+            # Restore NaN positions: subsample the original NaN mask and apply it
+            # to the decimated output so missing data remains explicit.
+            if has_nans:
+                nan_mask_dec = is_nan.values[::q]
+                decimated[nan_mask_dec] = np.nan
             multimodal_data_dec.data[col] = decimated
 
         return multimodal_data_dec
