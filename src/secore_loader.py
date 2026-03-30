@@ -10,7 +10,7 @@ import scipy.signal as signal
 import xarray as xr
 from scipy.interpolate import CubicSpline
 
-from src import dataloader
+from . import dataloader
 
 __all__ = [
     "load_h10_ibi",
