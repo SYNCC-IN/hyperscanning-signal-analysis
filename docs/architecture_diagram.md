@@ -54,6 +54,7 @@ flowchart TB
         HRV["HRV Analysis<br/>- IBI signals<br/>- DTF computation"]
         EEG_A["EEG Analysis<br/>- Multi-channel DTF<br/>- Spectral analysis"]
         COMB["Combined Analysis<br/>- EEG + HRV DTF<br/>- Theta band extraction"]
+        FAD_SPEC["Spectral Component Analysis<br/>- FAD decomposition (AR-based)<br/>- specparam / FOOOF<br/>- Oscillatory component extraction"]
     end
 
     %% Main data flow
@@ -87,7 +88,9 @@ flowchart TB
     GS --> HRV
     GS --> EEG_A
     GS --> COMB
+    GS --> FAD_SPEC
     GD --> EEG_A
+    GD --> FAD_SPEC
     
     GME --> EXT["External Tools<br/>(MNE-Python)"]
 
@@ -98,6 +101,7 @@ flowchart TB
     style PostProcess fill:#e1bee7
     style Output fill:#fff9c4
     style Analysis fill:#ffe0b2
+    style FAD_SPEC fill:#fce4ec
 ```
 
 ## Detailed Component Diagram
@@ -261,7 +265,7 @@ hyperscanning-signal-analysis/
 │   ├── data_structures.py         # MultimodalData class
 │   ├── eyetracker.py              # ET-specific processing
 │   ├── utils.py                   # Plotting & utility functions
-│   └── mtmvar.py                  # DTF computation
+    └── mtmvar.py                  # DTF computation, FAD decomposition
 │
 ├── scripts/
 │   ├── mne_export_demo.ipynb      # MNE export examples
@@ -269,8 +273,7 @@ hyperscanning-signal-analysis/
 │   ├── filter_demo.ipynb          # Filter design & testing
 │   ├── decimation_test.ipynb      # Decimation testing
 │   ├── EEG_ET_synch_test.ipynb    # Synchronization checks
-│   ├── Example_DataLoader_usage.ipynb
-│   └── warsaw_pilot_data.py       # Analysis pipeline
+│   ├── Example_DataLoader_usage.ipynb    ├── fad_demo_w030_fz.ipynb     # FAD vs specparam demo (W_030 EEG)│   └── warsaw_pilot_data.py       # Analysis pipeline
 │
 ├── tests/
 │   ├── test_dataloader.py
@@ -278,6 +281,7 @@ hyperscanning-signal-analysis/
 │
 └── docs/
     ├── data_structure_spec.md
+    ├── fad_specparam_guide.md       # FAD decomposition & specparam guide
     └── architecture_diagram.md     # This file
 ```
 

@@ -11,6 +11,7 @@ neurokit2==0.2.12
 mne==1.11.0
 autoreject
 PyWavelets==1.9.0
+specparam==2.0.0rc6
 
 # Visualization
 matplotlib==3.10.8
@@ -20,18 +21,15 @@ ipympl==0.10.0
 # Data handling
 xmltodict==1.0.2
 joblib==1.5.3
-xarray==2025.10.1
+xarray==2026.2.0
 netCDF4==1.7.4
-networkx
+networkx==3.6.1
 
 # Jupyter notebook support
 ipykernel==7.1.0
 ipython==9.9.0
 ipywidgets==8.1.8
 jupyter_client==8.8.0
-
-# Network analysis
-networkx
 
 # Utilities
 tqdm==4.67.1
