@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 MVAR Analysis Functions for EEG Connectivity Analysis
 
@@ -598,6 +599,355 @@ def mvar_criterion(data, max_model_order, crit_type='AIC', plot=False):
         plt.show()
 
     return crit, model_order_range, optimal_model_range
+
+
+# ── FAD decomposition ──────────────────────────────────────────────────────────
+
+
+def fad_decomposition(signal, fs, model_order=None, max_model_order=20,
+                      crit_type='AIC', plot=False, pair_conjugates=True,
+                      imag_tol=1e-8):
+    """
+    FAD (Frequency-Amplitude-Damping) decomposition of a univariate AR model.
+
+    Fits an AR model to the signal and decomposes the transfer function H(z) into
+    oscillatory components. Each component is characterised by:
+
+    - freq_hz      : resonance frequency (Hz)
+    - B            : amplitude  B_j = 2|C_j|
+    - beta         : damping coefficient (s⁻¹);  positive = exponential decay
+    - bandwidth_hz : half-power bandwidth proxy in Hz, matching the MATLAB
+                     FAD script convention: bandwidth_hz = beta / (2*pi)
+    - phi          : initial phase (rad)
+
+    The impulse response of the AR model is:
+        h(t) = Σ_j  B_j · exp(−β_j · t) · cos(ω_j · t + φ_j)
+
+    This corresponds to the partial-fraction expansion of the transfer function
+    (Franaszczuk et al., and Blinowska & Żygierewicz, *Practical Biomedical
+    Signal Analysis*, 2nd ed., §FAD):
+
+        H(z) = Σ_j  C_j · z / (z − z_j)
+
+        α_j = ln(z_j) / Δt,   β_j = −Re(α_j),   ω_j = Im(α_j)
+        φ_j = arg(C_j),        B_j = 2|C_j|
+
+    Parameters
+    ----------
+    signal : array_like, shape (N,) or (1, N)
+        Univariate time series.
+    fs : float
+        Sampling frequency [Hz].
+    model_order : int or None
+        AR model order p.  If None the order is chosen automatically via
+        `crit_type`.
+    max_model_order : int
+        Maximum order considered during automatic selection (default 20).
+    crit_type : str
+        Information criterion used for automatic order selection:
+        ``'AIC'`` (default), ``'HQ'``, or ``'SC'``.
+    plot : bool
+        If True, show a two-panel figure: poles in the unit circle (left) and
+        AR power spectrum annotated with FAD component frequencies (right).
+    pair_conjugates : bool
+        If True (default), expose one oscillator per complex-conjugate pole
+        pair in ``paired_components`` (positive-imaginary pole branch).
+        This is the standard FAD reporting style (p/2 oscillators for even p).
+    imag_tol : float
+        Numerical tolerance used to classify poles as complex vs. real.
+
+    Returns
+    -------
+    dict with keys
+        ``'model_order'``   – int, fitted AR order p
+        ``'poles'``         – ndarray (p,), complex poles z_j
+        ``'C'``             – ndarray (p,), complex residues C_j
+        ``'alpha'``         – ndarray (p,), α_j = ln(z_j)/Δt
+        ``'freq_hz'``       – ndarray (p,), resonance frequency [Hz]
+        ``'omega_rad_s'``   – ndarray (p,), angular frequency [rad/s]
+        ``'beta'``          – ndarray (p,), damping coefficient [s⁻¹]
+        ``'phi'``           – ndarray (p,), phase [rad]
+        ``'bandwidth_hz'``  – ndarray (p,), bandwidth in Hz
+        ``'B'``             – ndarray (p,), amplitude B_j = 2|C_j|
+        ``'noise_variance'``– float, residual noise variance σ²
+        ``'osc_mask'``      – bool ndarray (p,), True for complex poles
+        ``'ar_coeffs'``     – ndarray (p,), fitted AR coefficients a_1 … a_p
+        ``'paired_components'`` – dict containing one oscillator per conjugate
+                      pair (frequency, amplitude, damping, phase)
+    """
+    from scipy.signal import residuez
+
+    x = np.atleast_2d(np.asarray(signal, dtype=float))
+    if x.shape[0] != 1:
+        raise ValueError(
+            "fad_decomposition expects a univariate signal, shape (N,) or (1, N)."
+        )
+
+    if model_order is None:
+        _, _, model_order = mvar_criterion(x, max_model_order, crit_type, plot)
+        print(f'FAD: optimal AR model order ({crit_type}) = {model_order}')
+
+    ar_co, variance = ar_coeff(x, model_order)
+    a = ar_co[0, 0, :]  # a_1 … a_p
+
+    # Partial-fraction decomposition of H(z⁻¹) = 1 / A(z⁻¹)
+    # A(z⁻¹) = 1 − a_1·z⁻¹ − … − a_p·z⁻ᵖ
+    a_denom = np.concatenate([[1.0], -a])          # [1, −a₁, …, −aₚ]
+    C, z_poles, _ = residuez(np.array([1.0]), a_denom)
+    # residuez gives:  H = Σ C_j / (1 − z_j·z⁻¹)  =  Σ C_j · z/(z−z_j)
+
+    # FAD parameters (eq. FAD_params in the textbook)
+    dt = 1.0 / fs
+    alpha   = np.log(z_poles) / dt          # α_j = ln(z_j) / Δt
+    beta    = -np.real(alpha)               # β_j = −Re(α_j)  [s⁻¹]
+    omega   =  np.imag(alpha)               # ω_j = Im(α_j)   [rad/s]
+    freq_hz = omega / (2.0 * np.pi)         # f_j              [Hz]
+    phi     = np.angle(C)                   # φ_j = arg(C_j)  [rad]
+    B       = 2.0 * np.abs(C)              # B_j = 2|C_j|
+    bandwidth_hz = beta / (2.0 * np.pi)     # MATLAB-style bandwidth in Hz
+
+    # Oscillatory poles are complex (exclude purely real roots).
+    osc_mask = np.abs(np.imag(z_poles)) > imag_tol
+
+    # One oscillator per conjugate pair: use positive-imaginary branch only.
+    pos_idx = np.where(np.imag(z_poles) > imag_tol)[0]
+    if pos_idx.size > 0:
+        order = np.argsort(freq_hz[pos_idx])
+        pos_idx = pos_idx[order]
+
+    if pair_conjugates:
+        paired_idx = pos_idx
+    else:
+        paired_idx = np.where(osc_mask)[0]
+
+    paired_components = {
+        'pole_index': paired_idx,
+        'poles': z_poles[paired_idx],
+        'C': C[paired_idx],
+        'alpha': alpha[paired_idx],
+        'freq_hz': freq_hz[paired_idx],
+        'omega_rad_s': omega[paired_idx],
+        'beta': beta[paired_idx],
+        'bandwidth_hz': bandwidth_hz[paired_idx],
+        'phi': phi[paired_idx],
+        'B': B[paired_idx],
+    }
+
+    fad_params = {
+        'model_order'   : model_order,
+        'poles'         : z_poles,
+        'C'             : C,
+        'alpha'         : alpha,
+        'freq_hz'       : freq_hz,
+        'omega_rad_s'   : omega,
+        'beta'          : beta,
+        'bandwidth_hz'  : bandwidth_hz,
+        'phi'           : phi,
+        'B'             : B,
+        'noise_variance': float(np.real(variance[0, 0])),
+        'osc_mask'      : osc_mask,
+        'ar_coeffs'     : a,
+        'paired_components': paired_components,
+    }
+
+    if plot:
+        _fad_plot(x.ravel(), fs, fad_params)
+
+    return fad_params
+
+
+def fad_components_table(fad_params, output='dataframe', decimals=None):
+    """
+    Return compact FAD components table for export.
+
+    The function uses ``fad_params['paired_components']`` so each row
+    corresponds to one oscillator (one complex-conjugate pole pair).
+
+    Parameters
+    ----------
+    fad_params : dict
+        Output dictionary returned by ``fad_decomposition``.
+    output : str
+        Output format:
+        - ``'dataframe'`` (default): pandas DataFrame
+        - ``'ndarray'``: numeric ndarray with columns in fixed order
+    decimals : int or None
+        If provided, round numeric values to this number of decimals.
+
+    Returns
+    -------
+    pandas.DataFrame or np.ndarray
+        Table-like representation with columns:
+        [component, freq_hz, omega_rad_s, beta_s_1, bandwidth_hz, B, phi_rad,
+         pole_real, pole_imag, residue_real, residue_imag]
+
+    Notes
+    -----
+    If ``output='dataframe'`` and pandas is not installed, an ImportError
+    is raised. Use ``output='ndarray'`` for a dependency-free export path.
+    """
+    paired = fad_params.get('paired_components', None)
+    if paired is None:
+        raise ValueError("fad_params does not contain 'paired_components'.")
+
+    n = len(paired['freq_hz'])
+    component = np.arange(1, n + 1, dtype=int)
+
+    table = np.column_stack([
+        component,
+        paired['freq_hz'],
+        paired['omega_rad_s'],
+        paired['beta'],
+        paired['bandwidth_hz'],
+        paired['B'],
+        paired['phi'],
+        np.real(paired['poles']),
+        np.imag(paired['poles']),
+        np.real(paired['C']),
+        np.imag(paired['C']),
+    ])
+
+    if decimals is not None:
+        table = np.round(table, decimals=decimals)
+
+    if output == 'ndarray':
+        return table
+
+    if output == 'dataframe':
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError(
+                "pandas is required for output='dataframe'. "
+                "Use output='ndarray' instead."
+            ) from exc
+
+        columns = [
+            'component',
+            'freq_hz',
+            'omega_rad_s',
+            'beta_s_1',
+            'bandwidth_hz',
+            'B',
+            'phi_rad',
+            'pole_real',
+            'pole_imag',
+            'residue_real',
+            'residue_imag',
+        ]
+        df = pd.DataFrame(table, columns=columns)
+        df['component'] = df['component'].astype(int)
+        return df
+
+    raise ValueError("output must be 'dataframe' or 'ndarray'.")
+
+
+def _fad_plot(signal, fs, fad_params):
+    """Two-panel FAD plot: poles in the unit circle and annotated AR spectrum."""
+    a           = fad_params['ar_coeffs']
+    model_order = fad_params['model_order']
+    var         = fad_params['noise_variance']
+    z_poles     = fad_params['poles']
+    osc_mask    = fad_params['osc_mask']
+    freq_hz     = fad_params['freq_hz']
+    B           = fad_params['B']
+    beta        = fad_params['beta']
+    bandwidth_hz = fad_params['bandwidth_hz']
+    paired      = fad_params.get('paired_components', None)
+
+    # AR power spectrum: S(f) = σ² / |A(f)|²
+    n_fft  = 2048
+    f_axis = np.linspace(0, fs / 2.0, n_fft // 2 + 1)
+    A_f    = np.ones(len(f_axis), dtype=complex)
+    for m in range(model_order):
+        A_f -= a[m] * np.exp(-(m + 1) * 2j * np.pi * f_axis / fs)
+    ar_spectrum = var / np.abs(A_f) ** 2
+
+    # Colours for oscillatory components (one per conjugate pair)
+    # Always restrict to the positive-imaginary branch to avoid duplicates
+    # when pair_conjugates=False includes both halves of each conjugate pair.
+    if paired is not None and paired['pole_index'].size > 0:
+        pos_mask = np.imag(z_poles[paired['pole_index']]) > 1e-8
+        pair_idx = paired['pole_index'][pos_mask]
+        pair_f = paired['freq_hz'][pos_mask]
+        pair_B = paired['B'][pos_mask]
+        pair_beta = paired['beta'][pos_mask]
+        pair_bw_hz = paired['bandwidth_hz'][pos_mask]
+    else:
+        pair_idx = np.where(np.imag(z_poles) > 1e-8)[0]
+        pair_f = freq_hz[pair_idx]
+        pair_B = B[pair_idx]
+        pair_beta = beta[pair_idx]
+        pair_bw_hz = bandwidth_hz[pair_idx]
+
+    n_osc  = int(len(pair_idx))
+    colors = (plt.cm.viridis(np.linspace(0.15, 0.9, n_osc))
+              if n_osc > 0 else np.empty((0, 4)))
+
+    theta = np.linspace(0, 2 * np.pi, 300)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    fig.suptitle(f'FAD decomposition  (AR order p = {model_order})', fontsize=13)
+
+    # ── Panel 1: poles in the complex plane ───────────────────────────────────
+    ax0 = axes[0]
+    ax0.plot(np.cos(theta), np.sin(theta), 'k-', lw=0.9, alpha=0.4)
+    ax0.axhline(0, color='k', lw=0.5, alpha=0.4)
+    ax0.axvline(0, color='k', lw=0.5, alpha=0.4)
+
+    ci = 0
+    pair_set = set(pair_idx.tolist())
+    for j, z in enumerate(z_poles):
+        if j in pair_set:
+            c = colors[ci]
+            ax0.scatter(np.real(z), np.imag(z), color=c, s=70, zorder=5,
+                        label=f'{pair_f[ci]:.2f} Hz')
+            ax0.scatter(np.real(z), -np.imag(z), color=c, s=70, zorder=5,
+                        marker='x')
+            ci += 1
+        elif not osc_mask[j]:
+            ax0.scatter(np.real(z), np.imag(z), color='gray', s=40, zorder=4,
+                        marker='s')
+
+    ax0.set_xlim(-1.25, 1.25)
+    ax0.set_ylim(-1.25, 1.25)
+    ax0.set_aspect('equal')
+    ax0.set_xlabel('Re(z)')
+    ax0.set_ylabel('Im(z)')
+    ax0.set_title('Poles in the complex plane')
+    ax0.legend(fontsize=8, loc='upper left', title='freq [Hz]')
+    ax0.grid(True, alpha=0.3)
+
+    # ── Panel 2: AR power spectrum with FAD annotations ───────────────────────
+    ax1 = axes[1]
+    ax1.plot(f_axis, ar_spectrum, 'k-', lw=1.5, label='AR spectrum')
+
+    for ci, (f, b_val, bt, bw_hz) in enumerate(zip(pair_f, pair_B, pair_beta, pair_bw_hz)):
+        c = colors[ci]
+        peak_idx = np.argmin(np.abs(f_axis - f))
+        peak_power = ar_spectrum[peak_idx]
+        half_power = peak_power / 2.0
+        left_bw = max(0.0, f - bw_hz)
+        right_bw = min(fs / 2.0, f + bw_hz)
+
+        ax1.plot([f, f], [0, peak_power], color='r', lw=1.2, alpha=0.9)
+        ax1.plot([left_bw, right_bw], [half_power, half_power], color='m', lw=1.8, alpha=0.9)
+        ax1.scatter([f], [peak_power], color=c, s=28, zorder=6)
+        ax1.annotate(
+            f'{f:.1f} Hz\nBW={bw_hz:.2f} Hz\nB={b_val:.3g}',
+            xy=(f, peak_power), xytext=(6, 8),
+            textcoords='offset points', fontsize=7, color=c,
+        )
+
+    ax1.set_xlabel('Frequency [Hz]')
+    ax1.set_ylabel('Power spectral density')
+    ax1.set_title('AR power spectrum with peak positions and bandwidth')
+    ax1.set_xlim(0, fs / 2.0)
+    ax1.set_ylim(bottom=0)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 
 # Compute linewidths
