@@ -265,7 +265,7 @@ hyperscanning-signal-analysis/
 │   ├── data_structures.py         # MultimodalData class
 │   ├── eyetracker.py              # ET-specific processing
 │   ├── utils.py                   # Plotting & utility functions
-    └── mtmvar.py                  # DTF computation, FAD decomposition
+│   └── mtmvar.py                  # DTF computation, FAD decomposition
 │
 ├── scripts/
 │   ├── mne_export_demo.ipynb      # MNE export examples
@@ -273,7 +273,9 @@ hyperscanning-signal-analysis/
 │   ├── filter_demo.ipynb          # Filter design & testing
 │   ├── decimation_test.ipynb      # Decimation testing
 │   ├── EEG_ET_synch_test.ipynb    # Synchronization checks
-│   ├── Example_DataLoader_usage.ipynb    ├── fad_demo_w030_fz.ipynb     # FAD vs specparam demo (W_030 EEG)│   └── warsaw_pilot_data.py       # Analysis pipeline
+│   ├── Example_DataLoader_usage.ipynb
+│   ├── fad_demo_w030_fz.ipynb     # FAD vs specparam demo (W_030 EEG)
+│   └── warsaw_pilot_data.py       # Analysis pipeline
 │
 ├── tests/
 │   ├── test_dataloader.py

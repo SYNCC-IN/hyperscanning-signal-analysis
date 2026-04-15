@@ -613,12 +613,12 @@ def fad_decomposition(signal, fs, model_order=None, max_model_order=20,
     Fits an AR model to the signal and decomposes the transfer function H(z) into
     oscillatory components. Each component is characterised by:
 
-    - freq_hz  : resonance frequency (Hz)
-    - B        : amplitude  B_j = 2|C_j|
-        - beta     : damping coefficient (s⁻¹);  positive = exponential decay
-        - bandwidth_hz : half-power bandwidth proxy in Hz, matching the MATLAB
-            FAD script convention: bandwidth_hz = beta / (2*pi)
-    - phi      : initial phase (rad)
+    - freq_hz      : resonance frequency (Hz)
+    - B            : amplitude  B_j = 2|C_j|
+    - beta         : damping coefficient (s⁻¹);  positive = exponential decay
+    - bandwidth_hz : half-power bandwidth proxy in Hz, matching the MATLAB
+                     FAD script convention: bandwidth_hz = beta / (2*pi)
+    - phi          : initial phase (rad)
 
     The impulse response of the AR model is:
         h(t) = Σ_j  B_j · exp(−β_j · t) · cos(ω_j · t + φ_j)
@@ -791,7 +791,7 @@ def fad_components_table(fad_params, output='dataframe', decimals=None):
         raise ValueError("fad_params does not contain 'paired_components'.")
 
     n = len(paired['freq_hz'])
-    component = np.arange(1, n + 1, dtype=float)
+    component = np.arange(1, n + 1, dtype=int)
 
     table = np.column_stack([
         component,
@@ -835,7 +835,9 @@ def fad_components_table(fad_params, output='dataframe', decimals=None):
             'residue_real',
             'residue_imag',
         ]
-        return pd.DataFrame(table, columns=columns)
+        df = pd.DataFrame(table, columns=columns)
+        df['component'] = df['component'].astype(int)
+        return df
 
     raise ValueError("output must be 'dataframe' or 'ndarray'.")
 
@@ -862,12 +864,15 @@ def _fad_plot(signal, fs, fad_params):
     ar_spectrum = var / np.abs(A_f) ** 2
 
     # Colours for oscillatory components (one per conjugate pair)
+    # Always restrict to the positive-imaginary branch to avoid duplicates
+    # when pair_conjugates=False includes both halves of each conjugate pair.
     if paired is not None and paired['pole_index'].size > 0:
-        pair_idx = paired['pole_index']
-        pair_f = paired['freq_hz']
-        pair_B = paired['B']
-        pair_beta = paired['beta']
-        pair_bw_hz = paired['bandwidth_hz']
+        pos_mask = np.imag(z_poles[paired['pole_index']]) > 1e-8
+        pair_idx = paired['pole_index'][pos_mask]
+        pair_f = paired['freq_hz'][pos_mask]
+        pair_B = paired['B'][pos_mask]
+        pair_beta = paired['beta'][pos_mask]
+        pair_bw_hz = paired['bandwidth_hz'][pos_mask]
     else:
         pair_idx = np.where(np.imag(z_poles) > 1e-8)[0]
         pair_f = freq_hz[pair_idx]
