@@ -350,14 +350,14 @@ re-running the full pipeline.
 
 ```
 data/UNIWAW_imported/
-  IBI/
-  W_<NNN>/
-    child/      W_<NNN>_IBI_ch_Secore.nc
-    caregiver/  W_<NNN>_IBI_cg_Secore.nc
-  RMSSD/
-  W_<NNN>/
-    child/      W_<NNN>_RMSSD_ch_Secore.nc
-    caregiver/  W_<NNN>_RMSSD_cg_Secore.nc
+  Secore_IBI/
+    W_<NNN>/
+      child/      W_<NNN>_IBI_ch_Secore.nc
+      caregiver/  W_<NNN>_IBI_cg_Secore.nc
+  Secore_RMSSD/
+    W_<NNN>/
+      child/      W_<NNN>_RMSSD_ch_Secore.nc
+      caregiver/  W_<NNN>_RMSSD_cg_Secore.nc
 ```
 
 ### Stored attributes
@@ -409,13 +409,13 @@ metadata_payload = {
 time_values = h10_xarray.coords["time"].values.astype(float)
 
 export_plan = [
-  ("IBI",   "IBI_CH",   "ch", "child",     "IBI"),
-  ("IBI",   "IBI_CG",   "cg", "caregiver", "IBI"),
-  ("RMSSD", "RMSSD_CH", "ch", "child",     "RMSSD"),
-  ("RMSSD", "RMSSD_CG", "cg", "caregiver", "RMSSD"),
+  ("Secore_IBI", "IBI",   "IBI_CH",   "ch", "child",     "IBI"),
+  ("Secore_IBI", "IBI",   "IBI_CG",   "cg", "caregiver", "IBI"),
+  ("Secore_RMSSD", "RMSSD", "RMSSD_CH", "ch", "child",     "RMSSD"),
+  ("Secore_RMSSD", "RMSSD", "RMSSD_CG", "cg", "caregiver", "RMSSD"),
 ]
 
-for modality, src_channel, who, member_folder, out_channel in export_plan:
+for export_folder, modality, src_channel, who, member_folder, out_channel in export_plan:
   sig_values = h10_xarray.sel(channel=src_channel).values.astype(float)
 
   signals = xr.DataArray(
@@ -439,7 +439,7 @@ for modality, src_channel, who, member_folder, out_channel in export_plan:
     "metadata_json": json.dumps(metadata_payload),
   })
 
-  out_dir  = export_root / modality / dyad_id / member_folder
+  out_dir  = export_root / export_folder / dyad_id / member_folder
   out_dir.mkdir(parents=True, exist_ok=True)
   out_file = out_dir / f"{dyad_id}_{modality}_{who}_Secore.nc"
   signals.to_netcdf(out_file, engine="netcdf4", format="NETCDF4_CLASSIC")
@@ -462,10 +462,10 @@ import xarray as xr
 dyad_id     = "W_030"
 export_root = Path("../data/UNIWAW_imported")
 
-ibi_ch_nc   = xr.open_dataarray(export_root / "IBI"   / dyad_id / "child"     / f"{dyad_id}_IBI_ch_Secore.nc")
-ibi_cg_nc   = xr.open_dataarray(export_root / "IBI"   / dyad_id / "caregiver" / f"{dyad_id}_IBI_cg_Secore.nc")
-rmssd_ch_nc = xr.open_dataarray(export_root / "RMSSD" / dyad_id / "child"     / f"{dyad_id}_RMSSD_ch_Secore.nc")
-rmssd_cg_nc = xr.open_dataarray(export_root / "RMSSD" / dyad_id / "caregiver" / f"{dyad_id}_RMSSD_cg_Secore.nc")
+ibi_ch_nc   = xr.open_dataarray(export_root / "Secore_IBI" / dyad_id / "child" / f"{dyad_id}_IBI_ch_Secore.nc")
+ibi_cg_nc   = xr.open_dataarray(export_root / "Secore_IBI" / dyad_id / "caregiver" / f"{dyad_id}_IBI_cg_Secore.nc")
+rmssd_ch_nc = xr.open_dataarray(export_root / "Secore_RMSSD" / dyad_id / "child" / f"{dyad_id}_RMSSD_ch_Secore.nc")
+rmssd_cg_nc = xr.open_dataarray(export_root / "Secore_RMSSD" / dyad_id / "caregiver" / f"{dyad_id}_RMSSD_cg_Secore.nc")
 
 # Signal arrays
 t_nc          = ibi_ch_nc.coords["time"].values
@@ -494,5 +494,5 @@ runnable example that:
 1. Configures dyad number and device IDs.
 2. Calls `build_h10_ibi_rmssd_xarray_auto` to build the xarray.
 3. Plots IBI and RMSSD with color-coded event windows.
-4. Exports the four channels to NCDF files under `data/UNIWAW_imported/`.
+4. Exports the four channels to NCDF files under `data/UNIWAW_imported/Secore_IBI/` and `data/UNIWAW_imported/Secore_RMSSD/`.
 5. Reloads the NCDF files and reproduces the same plots as a round-trip verification.
