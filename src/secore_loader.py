@@ -246,8 +246,18 @@ def build_h10_ibi_rmssd_xarray(
     with open(timings_path) as f:
         lines = f.readlines()
 
+    # Use regex to find timing rows (T1–T4) regardless of how many camera
+    # header lines precede them.  Truncate to 7 columns to drop optional
+    # annotator comments placed in column 8+.
+    _timing_re = re.compile(r"^T\d\t")
+    timing_rows = [
+        ln.strip().split("\t")[:7]
+        for ln in lines
+        if _timing_re.match(ln) and len(ln.strip().split("\t")) >= 7
+    ]
+
     df_timings = pd.DataFrame(
-        [ln.strip().split("\t") for ln in lines[4:8] if len(ln.strip().split("\t")) >= 7],
+        timing_rows,
         columns=[
             "Label",
             "Start_HH_MM_SS",
