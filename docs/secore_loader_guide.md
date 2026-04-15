@@ -28,7 +28,14 @@ data from the SECORE experiment using the `src.secore_loader` module.
   - [compute_signal_lag](#compute_signal_lag)
 - [Plotting example](#plotting-example)
 - [Demo notebook](#demo-notebook)
-
+- [Plotting example](#plotting-example)
+- [Export to NCDF](#export-to-ncdf)
+  - [Output folder layout](#output-folder-layout)
+  - [Stored attributes](#stored-attributes)
+  - [Export code](#export-code)
+- [Load from NCDF](#load-from-ncdf)
+  - [Load code](#load-code)
+- [Demo notebook](#demo-notebook)
 ---
 
 ## Overview
@@ -330,11 +337,162 @@ plt.show()
 
 ---
 
+---
+
+## Export to NCDF
+
+After calling `build_h10_ibi_rmssd_xarray_auto` the resulting `xarray.DataArray` can
+be persisted to four separate NetCDF (`.nc`) files — one per modality/member
+combination — so that downstream analysis can reload individual signals without
+re-running the full pipeline.
+
+### Output folder layout
+
+```
+data/UNIWAW_imported/
+  IBI/
+  W_<NNN>/
+    child/      W_<NNN>_IBI_ch_Secore.nc
+    caregiver/  W_<NNN>_IBI_cg_Secore.nc
+  RMSSD/
+  W_<NNN>/
+    child/      W_<NNN>_RMSSD_ch_Secore.nc
+    caregiver/  W_<NNN>_RMSSD_cg_Secore.nc
+```
+
+### Stored attributes
+
+Each file stores a single `xarray.DataArray` named `signals` with these attributes:
+
+| Attribute | Content |
+|-----------|---------|
+| `dyad_id` | e.g. `W_030` |
+| `who` | `ch` or `cg` |
+| `sampling_freq` | sampling rate in Hz (float) |
+| `event_name` | `"Secore"` |
+| `event_start` | start of the exported time window (seconds) |
+| `event_duration` | duration of the exported time window (seconds) |
+| `channel_names_csv` | channel label as comma-separated string |
+| `channel_names_json` | JSON array of channel labels |
+| `events_start_s_json` | JSON dict mapping event name → start time (s) |
+| `events_duration_s_json` | JSON dict mapping event name → duration (s) |
+| `metadata_json` | JSON object with `event_order` and `secore_event_windows_s` |
+
+`metadata_json` is the primary source for reconstructing event windows after loading.
+It stores the same `secore_event_windows_s` dict (with `start_s`/`end_s` per event)
+that is available in `event_windows_s_json` on the original xarray.
+
+### Export code
+
+```python
+import json
+import numpy as np
+from pathlib import Path
+import xarray as xr
+
+dyad_id      = f"W_{str(DYAD_NR).zfill(3)}"
+export_root  = Path("../data/UNIWAW_imported")
+
+sampling_freq     = float(h10_xarray.attrs["sampling_frequency_Hz"])
+event_windows     = json.loads(h10_xarray.attrs["event_windows_s_json"])
+events_start_s    = {name: float(w["start_s"]) for name, w in event_windows.items()}
+events_duration_s = {name: float(w["end_s"]) - float(w["start_s"]) for name, w in event_windows.items()}
+event_order       = [k for k, _ in sorted(events_start_s.items(), key=lambda kv: kv[1])]
+
+metadata_payload = {
+  "notes": "",
+  "child_info": {},
+  "event_order": event_order,
+  "secore_event_windows_s": event_windows,
+}
+
+time_values = h10_xarray.coords["time"].values.astype(float)
+
+export_plan = [
+  ("IBI",   "IBI_CH",   "ch", "child",     "IBI"),
+  ("IBI",   "IBI_CG",   "cg", "caregiver", "IBI"),
+  ("RMSSD", "RMSSD_CH", "ch", "child",     "RMSSD"),
+  ("RMSSD", "RMSSD_CG", "cg", "caregiver", "RMSSD"),
+]
+
+for modality, src_channel, who, member_folder, out_channel in export_plan:
+  sig_values = h10_xarray.sel(channel=src_channel).values.astype(float)
+
+  signals = xr.DataArray(
+    data=sig_values[:, None],
+    coords={"time": time_values, "channel": [out_channel]},
+    dims=["time", "channel"],
+    name="signals",
+  )
+  signals.attrs.update({
+    "dyad_id": dyad_id,
+    "who": who,
+    "sampling_freq": sampling_freq,
+    "event_name": "Secore",
+    "event_start": float(time_values[0]),
+    "event_duration": float(time_values[-1] - time_values[0]),
+    "time_margin_s": 0.0,
+    "channel_names_csv": out_channel,
+    "channel_names_json": json.dumps([out_channel]),
+    "events_start_s_json": json.dumps(events_start_s),
+    "events_duration_s_json": json.dumps(events_duration_s),
+    "metadata_json": json.dumps(metadata_payload),
+  })
+
+  out_dir  = export_root / modality / dyad_id / member_folder
+  out_dir.mkdir(parents=True, exist_ok=True)
+  out_file = out_dir / f"{dyad_id}_{modality}_{who}_Secore.nc"
+  signals.to_netcdf(out_file, engine="netcdf4", format="NETCDF4_CLASSIC")
+```
+
+---
+
+## Load from NCDF
+
+The four files written above can be loaded independently with `xr.open_dataarray`.
+Event metadata is recovered from the `metadata_json` attribute.
+
+### Load code
+
+```python
+import json
+from pathlib import Path
+import xarray as xr
+
+dyad_id     = "W_030"
+export_root = Path("../data/UNIWAW_imported")
+
+ibi_ch_nc   = xr.open_dataarray(export_root / "IBI"   / dyad_id / "child"     / f"{dyad_id}_IBI_ch_Secore.nc")
+ibi_cg_nc   = xr.open_dataarray(export_root / "IBI"   / dyad_id / "caregiver" / f"{dyad_id}_IBI_cg_Secore.nc")
+rmssd_ch_nc = xr.open_dataarray(export_root / "RMSSD" / dyad_id / "child"     / f"{dyad_id}_RMSSD_ch_Secore.nc")
+rmssd_cg_nc = xr.open_dataarray(export_root / "RMSSD" / dyad_id / "caregiver" / f"{dyad_id}_RMSSD_cg_Secore.nc")
+
+# Signal arrays
+t_nc          = ibi_ch_nc.coords["time"].values
+ibi_ch_vals   = ibi_ch_nc.sel(channel="IBI").values
+ibi_cg_vals   = ibi_cg_nc.sel(channel="IBI").values
+rmssd_ch_vals = rmssd_ch_nc.sel(channel="RMSSD").values
+rmssd_cg_vals = rmssd_cg_nc.sel(channel="RMSSD").values
+
+# Event windows — reconstructed from metadata_json
+metadata_nc        = json.loads(ibi_ch_nc.attrs["metadata_json"])
+event_windows_s_nc = metadata_nc["secore_event_windows_s"]
+event_order_nc     = metadata_nc.get("event_order", sorted(event_windows_s_nc.keys()))
+```
+
+`event_windows_s_nc` is a dict with the same `{"start_s": float, "end_s": float}`
+structure as the original `event_windows_s_json` attr, so the same plotting code
+works without modification.
+
+---
+
 ## Demo notebook
 
-See [scripts/secore_import_demo.ipynb](../scripts/secore_import_demo.ipynb) for a
+See [scripts/secore_raw_import_demo.ipynb](../scripts/secore_raw_import_demo.ipynb) for a
 runnable example that:
 
 1. Configures dyad number and device IDs.
 2. Calls `build_h10_ibi_rmssd_xarray_auto` to build the xarray.
 3. Plots IBI and RMSSD with color-coded event windows.
+4. Exports the four channels to NCDF files under `data/UNIWAW_imported/`.
+5. Reloads the NCDF files and reproduces the same plots as a round-trip verification.
