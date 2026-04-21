@@ -9,6 +9,7 @@ import pandas as pd
 import scipy.signal as signal
 import xarray as xr
 from scipy.interpolate import CubicSpline
+import matplotlib.pyplot as plt
 
 from . import dataloader
 
@@ -197,7 +198,7 @@ def build_h10_ibi_rmssd_xarray(
     t_h10 = np.arange(len(ibi_cg_i)) / fs_ibi
 
     if plot:
-        import matplotlib.pyplot as plt
+        
 
         lag_cg_s = lag_cg / fs_ibi
         lag_ch_s = lag_ch / fs_ibi
@@ -210,7 +211,7 @@ def build_h10_ibi_rmssd_xarray(
         overlap_start = max(h10_start, ecg_start)
         overlap_end = min(h10_end, ecg_end)
 
-        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7))
+        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7),dpi=100)
         axes[0].plot(t_h10, ibi_cg_i, label="H10 CG (aligned)")
         axes[0].plot(t_ecg, ibi_cg_ecg, label="ECG CG", alpha=0.8)
         axes[1].plot(t_h10, ibi_ch_i, label="H10 CH (aligned)")

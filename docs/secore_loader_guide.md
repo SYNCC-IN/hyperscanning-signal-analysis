@@ -89,7 +89,7 @@ marking the start/end of experimental phases. Lines 5–8 (0-indexed: 4–7) are
 
 ## Quick start
 
-The simplest way to load SECORE data is a single function call:
+The simplest way to load the raw SECORE data is a single function call:
 
 ```python
 from src.secore_loader import build_h10_ibi_rmssd_xarray_auto
