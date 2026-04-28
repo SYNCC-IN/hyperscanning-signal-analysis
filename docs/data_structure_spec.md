@@ -106,8 +106,8 @@ Stores EEG signal filtration parameters:
 @dataclass
 class Filtration:
     notch: dict[str, Any]               # {'Q', 'freq', 'a', 'b', 'applied'}
-    low_pass: dict[str, Any]            # {'type', 'a', 'b', 'applied'}
-    high_pass: dict[str, Any]           # {'type', 'a', 'b', 'applied'}
+    low_pass: dict[str, Any]            # {'type', 'cut_f', 'order', 'f_type', 'a', 'b', 'applied'}
+    high_pass: dict[str, Any]           # {'type', 'cut_f', 'order', 'f_type', 'a', 'b', 'applied'}
 ```
 
 Nested dictionary keys:
@@ -117,6 +117,9 @@ Nested dictionary keys:
 - `notch['a']`, `notch['b']`: Notch denominator/numerator coefficients
 - `notch['applied']`: Whether notch filter was applied
 - `low_pass['type']`, `high_pass['type']`: Filter design type (`'fir'` or `'iir'`)
+- `low_pass['cut_f']`, `high_pass['cut_f']`: Cutoff frequencies (Hz)
+- `low_pass['order']`, `high_pass['order']`: Filter order
+- `low_pass['f_type']`, `high_pass['f_type']`: Concrete design function (`'firwin'` or `'butter'`)
 - `low_pass['a']`, `low_pass['b']`, `high_pass['a']`, `high_pass['b']`: filter coefficients
 - `low_pass['applied']`, `high_pass['applied']`: Whether each filter was applied
 

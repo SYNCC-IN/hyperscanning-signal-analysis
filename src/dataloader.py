@@ -688,13 +688,20 @@ def _design_eeg_filters(
             numtaps_high, lowcut, fs=multimodal_data.fs, pass_zero="highpass"
         )
         a_low = a_high = 1.0
+        low_order = numtaps_low - 1
+        high_order = numtaps_high - 1
+        f_type = "firwin"
     else:
+        butter_order = 4
         b_low, a_low = butter(
-            N=4, Wn=highcut, btype="low", fs=multimodal_data.fs
+            N=butter_order, Wn=highcut, btype="low", fs=multimodal_data.fs
         )
         b_high, a_high = butter(
-            N=4, Wn=lowcut, btype="high", fs=multimodal_data.fs
+            N=butter_order, Wn=lowcut, btype="high", fs=multimodal_data.fs
         )
+        low_order = butter_order
+        high_order = butter_order
+        f_type = "butter"
 
     if plot_flag:
         print("---- Notch filter characteristics: --------")
@@ -730,9 +737,15 @@ def _design_eeg_filters(
         )
         # add info about filtering to the multimodal data
     multimodal_data.eeg_filtration.low_pass["type"] = filter_type
+    multimodal_data.eeg_filtration.low_pass["cut_f"] = highcut
+    multimodal_data.eeg_filtration.low_pass["order"] = low_order
+    multimodal_data.eeg_filtration.low_pass["f_type"] = f_type
     multimodal_data.eeg_filtration.low_pass["a"] = a_low
     multimodal_data.eeg_filtration.low_pass["b"] = b_low
     multimodal_data.eeg_filtration.high_pass["type"] = filter_type
+    multimodal_data.eeg_filtration.high_pass["cut_f"] = lowcut
+    multimodal_data.eeg_filtration.high_pass["order"] = high_order
+    multimodal_data.eeg_filtration.high_pass["f_type"] = f_type
     multimodal_data.eeg_filtration.high_pass["a"] = a_high
     multimodal_data.eeg_filtration.high_pass["b"] = b_high
     multimodal_data.eeg_filtration.notch["Q"] = notch_q

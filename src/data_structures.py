@@ -36,6 +36,8 @@ class Filtration:
     low_pass: Dict[str, Any] = field(
         default_factory=lambda: {
             "type": None,
+            "cut_f": None,
+            "order": None,
             "a": None,
             "b": None,
             "applied": False,
@@ -44,6 +46,8 @@ class Filtration:
     high_pass: Dict[str, Any] = field(
         default_factory=lambda: {
             "type": None,
+            "cut_f": None,
+            "order": None,
             "a": None,
             "b": None,
             "applied": False,

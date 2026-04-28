@@ -265,7 +265,10 @@ def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True
                                                     pupil_model_confidence=0.9,
                                                     decimate_factor=decimate_factor,
                                                     plot_flag=plot_flag)
+        
         _log(f"Loaded dyad '{multimodal_data.id}'. Export root: '{export_path}'")
+        _event_order = _build_export_metadata(multimodal_data, 'EEG').get("event_order", [])
+        _log(f"Event order: {_event_order}")
         for modality in multimodal_data.modalities:
             path_modality = os.path.join(export_path, modality,str(multimodal_data.id))
             if not os.path.exists(path_modality):

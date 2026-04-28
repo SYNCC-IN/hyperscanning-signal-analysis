@@ -142,6 +142,16 @@ Common scalar/string attributes written during export:
       `Peppa`, `Incredibles`, `Brave`)
     - for EEG additionally: `eeg.filtration` and `eeg.references`
 
+For EEG exports, `eeg.filtration` includes nested dictionaries for `notch`, `low_pass`, and `high_pass`.
+In particular, `low_pass` and `high_pass` store:
+
+- `type`: high-level filter family used in pipeline (`fir` or `iir`)
+- `cut_f`: cutoff frequency in Hz
+- `order`: filter order
+- `f_type`: concrete design function (`firwin` or `butter`)
+- `a`, `b`: filter coefficients
+- `applied`: whether the filter was applied
+
 Use `get_export_metadata(...)` to decode and access this payload safely.
 
 #### Example: reading `event_order`
