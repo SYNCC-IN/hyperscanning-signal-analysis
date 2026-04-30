@@ -100,6 +100,7 @@ def build_h10_ibi_rmssd_xarray(
     time_of_recording,
     dev_ch,
     dev_cg,
+    video_timings, # dictionary with time to allign with the momentsbulit based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
     data_base_path="../data",
     fs_ibi=8,
     window_size_rmssd_s=30,
@@ -122,12 +123,25 @@ def build_h10_ibi_rmssd_xarray(
     dyad_id = f"W_{str(dyad_nr).zfill(3)}"
 
     eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
-    path_ch = os.path.join(
-        eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_ch}_IBI.csv"
-    )
-    path_cg = os.path.join(
-        eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_cg}_IBI.csv"
-    )
+    ch_candidates = []
+    cg_candidates = []
+    if date and time_of_recording:
+        ch_candidates.append(
+            os.path.join(eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_ch}_IBI.csv")
+        )
+        cg_candidates.append(
+            os.path.join(eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_cg}_IBI.csv")
+        )
+    ch_candidates.append(os.path.join(eeg_dir, f"{dyad_id}_{dev_ch}_IBI.csv"))
+    cg_candidates.append(os.path.join(eeg_dir, f"{dyad_id}_{dev_cg}_IBI.csv"))
+
+    path_ch = next((p for p in ch_candidates if os.path.exists(p)), None)
+    path_cg = next((p for p in cg_candidates if os.path.exists(p)), None)
+    if path_ch is None or path_cg is None:
+        raise FileNotFoundError(
+            f"Could not locate paired H10 IBI files for {dyad_id}. "
+            f"Checked CH={ch_candidates}, CG={cg_candidates}."
+        )
 
     stage_ch, _, ibi_ch = load_h10_ibi(path_ch)
     stage_cg, _, ibi_cg = load_h10_ibi(path_cg)
@@ -154,7 +168,7 @@ def build_h10_ibi_rmssd_xarray(
         data_base_path=data_base_path,
         dyad_id=dyad_id,
         load_eeg=True,
-        load_et=True,
+        load_et=False,
         lowcut=lowcut,
         highcut=highcut,
         eeg_filter_type=eeg_filter_type,
@@ -178,6 +192,7 @@ def build_h10_ibi_rmssd_xarray(
 
     lag_cg = compute_signal_lag(ibi_cg_i, ibi_cg_ecg, plot=plot, label1="H10_cg", label2="ECG_cg")
     lag_ch = compute_signal_lag(ibi_ch_i, ibi_ch_ecg, plot=plot, label1="H10_ch", label2="ECG_ch")
+    print(f"Computed lags (in seconds) to ECG: CG={lag_cg/fs_ibi}, CH={lag_ch/fs_ibi}")
 
     lag_diff = lag_ch - lag_cg
     if lag_diff > 0:
@@ -242,56 +257,58 @@ def build_h10_ibi_rmssd_xarray(
         plt.tight_layout()
         plt.show()
         plt.close(fig)
+    # Load timing annotations and define event windows based on T1–T4, which mark key moments in the interaction.
+    # timings_path = os.path.join(eeg_dir, f"{dyad_id}_1_25fps.txt")
+    # with open(timings_path) as f:
+    #     lines = f.readlines()
 
-    timings_path = os.path.join(eeg_dir, f"{dyad_id}_1_25fps.txt")
-    with open(timings_path) as f:
-        lines = f.readlines()
+    # # Use regex to find timing rows (T1–T4) regardless of how many camera
+    # # header lines precede them.  Truncate to 7 columns to drop optional
+    # # annotator comments placed in column 8+.
+    # _timing_re = re.compile(r"^T\d\t")
+    # timing_rows = [
+    #     ln.strip().split("\t")[:7]
+    #     for ln in lines
+    #     if _timing_re.match(ln) and len(ln.strip().split("\t")) >= 7
+    # ]
 
-    # Use regex to find timing rows (T1–T4) regardless of how many camera
-    # header lines precede them.  Truncate to 7 columns to drop optional
-    # annotator comments placed in column 8+.
-    _timing_re = re.compile(r"^T\d\t")
-    timing_rows = [
-        ln.strip().split("\t")[:7]
-        for ln in lines
-        if _timing_re.match(ln) and len(ln.strip().split("\t")) >= 7
-    ]
+    # df_timings = pd.DataFrame(
+    #     timing_rows,
+    #     columns=[
+    #         "Label",
+    #         "Start_HH_MM_SS",
+    #         "Start_Sec",
+    #         "End_HH_MM_SS",
+    #         "End_Sec",
+    #         "Duration_HH_MM_SS",
+    #         "Duration_Sec",
+    #     ],
+    # )
+    # df_timings[["Start_Sec", "End_Sec", "Duration_Sec"]] = (
+    #     df_timings[["Start_Sec", "End_Sec", "Duration_Sec"]].astype(float)
+    # )
+    # required_labels = {"T1", "T2", "T3", "T4"}
+    # found_labels = set(df_timings["Label"].values)
+    # missing = required_labels - found_labels
+    # if missing:
+    #     raise ValueError(
+    #         f"Timing file {timings_path} is missing labels: {sorted(missing)}"
+    #    )
+    #     t1_start = df_timings.loc[df_timings["Label"] == "T1", "Start_Sec"].iat[0]
 
-    df_timings = pd.DataFrame(
-        timing_rows,
-        columns=[
-            "Label",
-            "Start_HH_MM_SS",
-            "Start_Sec",
-            "End_HH_MM_SS",
-            "End_Sec",
-            "Duration_HH_MM_SS",
-            "Duration_Sec",
-        ],
-    )
-    df_timings[["Start_Sec", "End_Sec", "Duration_Sec"]] = (
-        df_timings[["Start_Sec", "End_Sec", "Duration_Sec"]].astype(float)
-    )
-    required_labels = {"T1", "T2", "T3", "T4"}
-    found_labels = set(df_timings["Label"].values)
-    missing = required_labels - found_labels
-    if missing:
-        raise ValueError(
-            f"Timing file {timings_path} is missing labels: {sorted(missing)}"
-        )
-    t1_start = df_timings.loc[df_timings["Label"] == "T1", "Start_Sec"].iat[0]
-    df_timings["Start_Sec"] -= t1_start
-    df_timings["End_Sec"] -= t1_start
+    
+    # df_timings["Start_Sec"] -= t1_start
+    # df_timings["End_Sec"] -= t1_start
 
-    def _t(label):
-        return df_timings.loc[df_timings["Label"] == label, "Start_Sec"].iat[0]
+    # def _t(label):
+    #     return df_timings.loc[df_timings["Label"] == label, "Start_Sec"].iat[0]
 
     moments = pd.DataFrame(
         [
-            {"moment": "puzzle", "start": _t("T2") + 1.0 * 60, "end": _t("T2") + 2.5 * 60},
-            {"moment": "cleaning", "start": _t("T3") - 1.5 * 60, "end": _t("T3")},
-            {"moment": "wrong present", "start": _t("T3"), "end": _t("T3") + 1.5 * 60},
-            {"moment": "surprise", "start": _t("T4"), "end": _t("T4") + 1.5 * 60},
+            {"moment": "puzzle", "start": video_timings["T2"] + 1.0 * 60, "end": video_timings["T2"] + 2.5 * 60},
+            {"moment": "cleaning", "start": video_timings["T3"] - 1.5 * 60, "end": video_timings["T3"]},
+            {"moment": "wrong present", "start": video_timings["T3"], "end": video_timings["T3"] + 1.5 * 60},
+            {"moment": "surprise", "start": video_timings["T4"], "end": video_timings["T4"] + 1.5 * 60},
         ]
     )
 
@@ -373,6 +390,18 @@ def _autodetect_latest_h10_recording(dyad_nr, data_base_path="../data"):
 
     valid_groups = [(k, sorted(v)) for k, v in groups.items() if len(v) >= 2]
     if not valid_groups:
+        # Fallback: support non-timestamped naming, e.g., W_003_<DEVICE>_IBI.csv
+        simple_pattern = re.compile(rf"^{dyad_id}_([A-Za-z0-9]+)_IBI\.csv$")
+        simple_devices = []
+        for fn in os.listdir(eeg_dir):
+            m = simple_pattern.match(fn)
+            if m:
+                full_path = os.path.join(eeg_dir, fn)
+                if os.path.getsize(full_path) > 0:
+                    simple_devices.append(m.group(1))
+        simple_devices = sorted(set(simple_devices))
+        if len(simple_devices) >= 2:
+            return None, None, simple_devices
         raise FileNotFoundError(f"No paired H10 IBI files found for {dyad_id} in {eeg_dir}")
 
     valid_groups.sort(key=lambda kv: datetime.strptime(f"{kv[0][0]}_{kv[0][1]}", "%d_%m_%Y_%H_%M"))
@@ -382,6 +411,7 @@ def _autodetect_latest_h10_recording(dyad_nr, data_base_path="../data"):
 
 def build_h10_ibi_rmssd_xarray_auto(
     dyad_nr,
+    video_timings, # dictionary with time to allign with the moments built based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
     data_base_path="../data",
     fs_ibi=8,
     window_size_rmssd_s=30,
@@ -406,14 +436,14 @@ def build_h10_ibi_rmssd_xarray_auto(
     dev_ch = preferred_dev_ch if preferred_dev_ch in devices else None
     dev_cg = preferred_dev_cg if preferred_dev_cg in devices else None
 
-    remaining = [d for d in devices if d not in {dev_ch, dev_cg}]
-    if dev_ch is None:
-        dev_ch = remaining.pop(0)
-    if dev_cg is None:
-        if remaining:
-            dev_cg = remaining.pop(0)
-        else:
-            dev_cg = [d for d in devices if d != dev_ch][0]
+    # remaining = [d for d in devices if d not in {dev_ch, dev_cg}]
+    # if dev_ch is None:
+    #     dev_ch = remaining.pop(0)
+    # if dev_cg is None:
+    #     if remaining:
+    #         dev_cg = remaining.pop(0)
+    #     else:
+    #         dev_cg = [d for d in devices if d != dev_ch][0]
 
     print(
         f"Auto-detected latest recording for W_{dyad_nr}: "
@@ -426,6 +456,7 @@ def build_h10_ibi_rmssd_xarray_auto(
         time_of_recording=rec_time,
         dev_ch=dev_ch,
         dev_cg=dev_cg,
+        video_timings=video_timings, # dictionary with time to allign with the moments built based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
         data_base_path=data_base_path,
         fs_ibi=fs_ibi,
         window_size_rmssd_s=window_size_rmssd_s,
