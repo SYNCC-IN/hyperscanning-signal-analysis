@@ -44,7 +44,11 @@ def fix_and_interpolate_ibi(
     """
     cum_samp = ibi_cum_s * samp_rate
     _, nn_pos = nk.signal_fixpeaks(
-        cum_samp, sampling_rate=samp_rate, iterative=True, method="Kubios", show=False
+        cum_samp, sampling_rate=samp_rate, iterative=True, 
+        method="Kubios", 
+        alpha=4,       #  default 5.2 IQR multiplier for detection threshold → SENSITIVITY
+        window_width=61, # default 91 rolling window for threshold computation (in beats)
+        medfilt_order=11 # default 11 median filter window for mRR deviation
     )
 
     nn_ms = np.diff(nn_pos) / samp_rate * 1000.0
@@ -73,13 +77,17 @@ def fix_and_interpolate_ibi(
     return t_interp, cs(t_interp), stage_interp, nn_ms, t_nn, rmssd_interp
 
 
-def compute_signal_lag(signal1, signal2, plot=False, label1="", label2=""):
+def compute_signal_lag(signal1, signal2, fs, plot=False, label1="", label2=""):
     """Return the integer-sample lag that maximizes the cross-correlation."""
-    s1 = signal1.flatten() - np.mean(signal1)
-    s2 = signal2.flatten() - np.mean(signal2)
+    b, a = signal.butter(2, 0.01 / (fs / 2), btype="high")
+    s1 = signal.filtfilt(b, a, signal1.flatten())
+    s2 = signal.filtfilt(b, a, signal2.flatten())
     xc = signal.correlate(s1, s2, mode="full")
     lags = signal.correlation_lags(s1.size, s2.size, mode="full")
-    lag = lags[np.argmax(xc)]
+    max_lag_samples = np.max(lags) - int(2000 * fs)
+    search_mask = (lags >= max_lag_samples)
+    best_idx = np.argmax(xc[search_mask])
+    lag = lags[search_mask][best_idx]
 
     if plot:
         import matplotlib.pyplot as plt
@@ -190,8 +198,8 @@ def build_h10_ibi_rmssd_xarray(
         mode="IBI", member="cg", selected_channels=[""], selected_times=list(selected_time)
     )
 
-    lag_cg = compute_signal_lag(ibi_cg_i, ibi_cg_ecg, plot=plot, label1="H10_cg", label2="ECG_cg")
-    lag_ch = compute_signal_lag(ibi_ch_i, ibi_ch_ecg, plot=plot, label1="H10_ch", label2="ECG_ch")
+    lag_cg = compute_signal_lag(ibi_cg_i, ibi_cg_ecg, fs=fs_ibi, plot=plot, label1="H10_cg", label2="ECG_cg")
+    lag_ch = compute_signal_lag(ibi_ch_i, ibi_ch_ecg, fs=fs_ibi, plot=plot, label1="H10_ch", label2="ECG_ch")
     print(f"Computed lags (in seconds) to ECG: CG={lag_cg/fs_ibi}, CH={lag_ch/fs_ibi}")
 
     lag_diff = lag_ch - lag_cg
@@ -226,6 +234,24 @@ def build_h10_ibi_rmssd_xarray(
         overlap_start = max(h10_start, ecg_start)
         overlap_end = min(h10_end, ecg_end)
 
+        # Full range plot
+        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7), dpi=100)
+        axes[0].plot(t_h10, ibi_cg_i, label="H10 CG (aligned)")
+        axes[0].plot(t_ecg, ibi_cg_ecg, label="ECG CG", alpha=0.8)
+        axes[1].plot(t_h10, ibi_ch_i, label="H10 CH (aligned)")
+        axes[1].plot(t_ecg, ibi_ch_ecg, label="ECG CH", alpha=0.8)
+        axes[0].set_ylabel("IBI [ms]")
+        axes[1].set_ylabel("IBI [ms]")
+        axes[1].set_xlabel("Time [s]")
+        axes[0].set_title(f"CG alignment (lag={lag_cg} samples, {lag_cg_s:+.2f} s)")
+        axes[1].set_title(f"CH alignment (lag={lag_ch} samples, {lag_ch_s:+.2f} s)")
+        axes[0].legend()
+        axes[1].legend()
+        fig.suptitle("Alignment check: full time range", y=1.02)
+        plt.tight_layout()
+        plt.show()
+
+        # Zoomed plot
         fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7),dpi=100)
         axes[0].plot(t_h10, ibi_cg_i, label="H10 CG (aligned)")
         axes[0].plot(t_ecg, ibi_cg_ecg, label="ECG CG", alpha=0.8)
@@ -234,6 +260,9 @@ def build_h10_ibi_rmssd_xarray(
 
         if overlap_end > overlap_start:
             axes[0].set_xlim(overlap_start, overlap_end)
+            axes[1].set_xlim(overlap_start, overlap_end)
+            axes[0].autoscale_view(scalex=False, scaley=True)
+            axes[1].autoscale_view(scalex=False, scaley=True)
 
         axes[0].set_ylabel("IBI [ms]")
         axes[1].set_ylabel("IBI [ms]")
@@ -256,7 +285,7 @@ def build_h10_ibi_rmssd_xarray(
 
         plt.tight_layout()
         plt.show()
-        plt.close(fig)
+        #plt.close(fig)
     # Load timing annotations and define event windows based on T1–T4, which mark key moments in the interaction.
     # timings_path = os.path.join(eeg_dir, f"{dyad_id}_1_25fps.txt")
     # with open(timings_path) as f:
