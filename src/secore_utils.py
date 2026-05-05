@@ -150,8 +150,13 @@ def save_secore_QC_figures(dyad_id, export_root):
     axes[0].legend(handles=event_handles + signal_handles_0, loc='upper left')
     axes[1].legend(loc='upper right')
 
-    axes[0].set_xlim(0, 1000)
-    axes[1].set_xlim(0, 1000)
+    last_event_end = max(
+        (float(w['end_s']) for w in event_windows_s_nc.values() if w.get('end_s') is not None),
+        default=float(t_nc[-1]),
+    )
+    x_max = last_event_end + 60.0
+    axes[0].set_xlim(0, x_max)
+    axes[1].set_xlim(0, x_max)
 
     plt.tight_layout()
     plt.show()

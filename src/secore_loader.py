@@ -119,6 +119,7 @@ def build_h10_ibi_rmssd_xarray(
     highcut=40.0,
     eeg_filter_type="iir",
     plot=False,
+    save_dir=None,
 ):
     """
     Build aligned H10 IBI/RMSSD xarray (with integer events channel) for one dyad.
@@ -130,7 +131,7 @@ def build_h10_ibi_rmssd_xarray(
     """
     dyad_id = f"W_{str(dyad_nr).zfill(3)}"
 
-    eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
+    eeg_dir = os.path.join(data_base_path, dyad_id, "EEG")
     ch_candidates = []
     cg_candidates = []
     if date and time_of_recording:
@@ -249,6 +250,9 @@ def build_h10_ibi_rmssd_xarray(
         axes[1].legend()
         fig.suptitle("Alignment check: full time range", y=1.02)
         plt.tight_layout()
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+            fig.savefig(os.path.join(save_dir, f"{dyad_id}_alignment_fullrange.png"), bbox_inches="tight", dpi=100)
         plt.show()
 
         # Zoomed plot
@@ -284,6 +288,8 @@ def build_h10_ibi_rmssd_xarray(
             )
 
         plt.tight_layout()
+        if save_dir is not None:
+            fig.savefig(os.path.join(save_dir, f"{dyad_id}_alignment_zoomed.png"), bbox_inches="tight", dpi=100)
         plt.show()
         #plt.close(fig)
     # Load timing annotations and define event windows based on T1–T4, which mark key moments in the interaction.
@@ -451,6 +457,7 @@ def build_h10_ibi_rmssd_xarray_auto(
     highcut=40.0,
     eeg_filter_type="iir",
     plot=False,
+    save_dir=None,
     preferred_dev_ch=None,
     preferred_dev_cg=None,
 ):
@@ -496,4 +503,5 @@ def build_h10_ibi_rmssd_xarray_auto(
         highcut=highcut,
         eeg_filter_type=eeg_filter_type,
         plot=plot,
+        save_dir=save_dir,
     )
