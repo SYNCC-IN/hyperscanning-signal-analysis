@@ -1,7 +1,7 @@
 # Hyperscanning Signal Analysis - Architecture Diagram
 
-**Version:** 1.1  
-**Last updated:** 2026-01-30  
+**Version:** 1.2  
+**Last updated:** 2026-05-06  
 **Author:** Joanna Duda-Goławska/Jarosław Żygierewicz
 
 ## System Architecture Overview
@@ -264,8 +264,9 @@ hyperscanning-signal-analysis/
 │   ├── dataloader.py              # Main data loading & processing
 │   ├── data_structures.py         # MultimodalData class
 │   ├── eyetracker.py              # ET-specific processing
+│   ├── export.py                  # NCDF export/import; EEG loaders & plots
 │   ├── utils.py                   # Plotting & utility functions
-│   └── mtmvar.py                  # DTF computation, FAD decomposition
+│   └── mtmvar.py                  # DTF computation, FAD decomposition, MVAR pipeline
 │
 ├── scripts/
 │   ├── mne_export_demo.ipynb      # MNE export examples
@@ -275,6 +276,9 @@ hyperscanning-signal-analysis/
 │   ├── EEG_ET_synch_test.ipynb    # Synchronization checks
 │   ├── Example_DataLoader_usage.ipynb
 │   ├── fad_demo_w030_fz.ipynb     # FAD vs specparam demo (W_030 EEG)
+│   ├── ESCan_drfat.ipynb          # MVAR / ffDTF batch analysis & composite figures
+│   ├── eeg_quality_report_demo.ipynb   # Single-file AutoReject quality report
+│   ├── eeg_quality_report_batch.ipynb  # Batch AutoReject quality report
 │   └── warsaw_pilot_data.py       # Analysis pipeline
 │
 ├── tests/

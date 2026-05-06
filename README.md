@@ -40,6 +40,8 @@ For full details, see [docs/data_structure_spec.md](docs/data_structure_spec.md)
 
 For NetCDF export/import usage, see [docs/export_ncdf_guide.md](docs/export_ncdf_guide.md).
 
+For MVAR/DTF analysis of exported EEG NCDF files, see the [MVAR helpers section](docs/export_ncdf_guide.md#mvar--dtf-analysis-helpers) and the batch notebook [scripts/ESCan_drfat.ipynb](scripts/ESCan_drfat.ipynb).
+
 ## Multimodal consistency checker
 
 The loader and dataloader module include a consistency validator:

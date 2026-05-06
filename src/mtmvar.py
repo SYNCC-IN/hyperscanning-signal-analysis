@@ -1001,3 +1001,128 @@ def graph_plot(connectivity_matrix, ax, freqs, freq_range, chan_names, title):
     ax.set_title(title)
 
     return graph
+
+
+def compute_and_plot_mvar(
+    ncdf_path,
+    channel_subset=None,
+    max_model_order=20,
+    optimal_model_order=None,
+    crit_type="AIC",
+    freq_min=1.0,
+    freq_max=40.0,
+    freq_step=0.5,
+    low_cutoff_hz=None,
+    high_cutoff_hz=None,
+    plot=True,
+    plot_loaded_signal=False,
+    loaded_signal_max_channels=19,
+    loaded_signal_spacing=8.0,
+    loaded_signal_figsize=(16.0, 9.0),
+):
+    """Load one EEG NetCDF file, compute ffDTF and multivariate spectra, and
+    optionally plot results.
+
+    This is a high-level pipeline that chains :func:`~src.export.load_eeg_signals`,
+    :func:`mvar_criterion`, :func:`full_freq_dtf`, :func:`multivariate_spectra`,
+    and :func:`mvar_plot`.
+
+    Args:
+        ncdf_path: Path to the exported EEG NetCDF file.
+        channel_subset: Optional list of channel names to keep (``None`` = all).
+        max_model_order: Upper bound for the model-order search.
+        optimal_model_order: Fixed model order.  If ``None``, the order is
+            chosen automatically using ``crit_type``.
+        crit_type: Information criterion for model-order selection:
+            ``'AIC'``, ``'HQ'``, or ``'SC'``.
+        freq_min: Minimum frequency of the analysis axis (Hz).
+        freq_max: Maximum frequency of the analysis axis (Hz).
+        freq_step: Frequency resolution (Hz).
+        low_cutoff_hz: High-pass filter cutoff (Hz).  ``None`` disables it.
+        high_cutoff_hz: Low-pass filter cutoff (Hz).  ``None`` disables it.
+        plot: If ``True``, display the MVAR spectra / ffDTF matrix plot.
+        plot_loaded_signal: If ``True``, display the stacked EEG trace plot
+            before running the MVAR analysis.
+        loaded_signal_max_channels: Max channels shown in the signal preview.
+        loaded_signal_spacing: Vertical spacing between traces in the preview.
+        loaded_signal_figsize: Figure size for the signal preview.
+
+    Returns:
+        tuple:
+            - **ff_dtf** (*np.ndarray*): Full-frequency DTF array.
+            - **spectra** (*np.ndarray*): Multivariate spectra array.
+            - **chan_names** (*list[str]*): Channel labels.
+            - **crit** (*np.ndarray*): Information-criterion values per model
+              order (empty array when ``optimal_model_order`` is fixed).
+            - **model_order_range** (*np.ndarray*): Tested model orders (empty
+              when ``optimal_model_order`` is fixed).
+            - **p_opt** (*int*): Selected (or provided) model order.
+    """
+    from .export import load_eeg_signals, plot_loaded_eeg_signals
+
+    signals, chan_names, fs, time_s, event_duration_s = load_eeg_signals(
+        ncdf_path,
+        channel_subset=channel_subset,
+        low_cutoff_hz=low_cutoff_hz,
+        high_cutoff_hz=high_cutoff_hz,
+    )
+
+    if plot_loaded_signal:
+        plot_loaded_eeg_signals(
+            time_s=time_s,
+            signals=signals,
+            channel_names=chan_names,
+            max_channels=loaded_signal_max_channels,
+            spacing=loaded_signal_spacing,
+            figsize=loaded_signal_figsize,
+            event_duration_s=event_duration_s,
+            title=f"Loaded EEG signal — {ncdf_path.stem if hasattr(ncdf_path, 'stem') else ncdf_path}",
+        )
+
+    freqs = np.arange(freq_min, freq_max + freq_step, freq_step)
+    attrs_label = (
+        f"{ncdf_path.stem if hasattr(ncdf_path, 'stem') else ncdf_path}"
+        f"  (fs={fs:.0f} Hz, {signals.shape[0]} ch, {signals.shape[1]} samp)"
+    )
+    print(f"\n  Channels : {chan_names}")
+    print(f"  Signals  : {signals.shape}  fs={fs} Hz")
+
+    if optimal_model_order is None:
+        crit, model_order_range, p_opt = mvar_criterion(signals, max_model_order, crit_type, plot=False)
+        print(f"  {crit_type} optimal model order: p = {p_opt}")
+    else:
+        p_opt = optimal_model_order
+        print(f"  Using fixed model order: p = {p_opt}")
+        crit = np.array([])
+        model_order_range = np.array([])
+
+    print("  Computing ffDTF ...")
+    ff_dtf = full_freq_dtf(
+        signals, freqs, fs,
+        max_model_order=max_model_order,
+        optimal_model_order=p_opt,
+        crit_type=crit_type,
+    )
+
+    print("  Computing multivariate spectra ...")
+    spectra = multivariate_spectra(
+        signals, freqs, fs,
+        max_model_order=max_model_order,
+        optimal_model_order=p_opt,
+        crit_type=crit_type,
+    )
+
+    if plot:
+        plt.figure(figsize=(10, 10))
+        mvar_plot(
+            spectra, ff_dtf, freqs,
+            x_label="", y_label="",
+            chan_names=chan_names,
+            top_title=f"MVAR Spectra and ff_DTF — {ncdf_path.stem if hasattr(ncdf_path, 'stem') else ncdf_path}",
+            scale="linear",
+        )
+        plt.suptitle(attrs_label, fontsize=8, y=1.01)
+        plt.tight_layout()
+        plt.show()
+
+    return ff_dtf, spectra, chan_names, crit, model_order_range, p_opt

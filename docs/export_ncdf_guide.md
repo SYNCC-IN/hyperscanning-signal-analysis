@@ -27,6 +27,9 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
   - [Functions](#functions)
   - [Single-file interactive demo](#single-file-interactive-demo)
   - [Batch processing notebook](#batch-processing-notebook)
+- [MVAR / DTF analysis helpers](#mvar--dtf-analysis-helpers)
+  - [load_eeg_signals](#load_eeg_signals)
+  - [plot_loaded_eeg_signals](#plot_loaded_eeg_signals)
 - [MATLAB R2019b compatibility (channel names)](#matlab-r2019b-compatibility-channel-names)
 
 ---
@@ -387,6 +390,112 @@ Output artefacts follow the NCDF basename:
 - **Cell 7** — final summary table saved to `EEG_quality_summary_report.csv` in the export folder root.
 
 Summary columns: `dyad`, `ncdf_file`, `status`, `rejected_epochs`, `top_bad_channels` (channels with `bad_labels_pct > 10%`). An `error` column is appended automatically when any file fails.
+
+---
+
+## MVAR / DTF analysis helpers
+
+Three functions support loading exported EEG NCDF files directly into the MVAR
+pipeline, without going through MNE.  They live in `src/export.py` (loaders)
+and `src/mtmvar.py` (pipeline) and are designed to be reused across analysis
+notebooks.
+
+### `load_eeg_signals`
+
+```python
+from src.export import load_eeg_signals
+
+signals, ch_names, fs, time_s, event_duration_s = load_eeg_signals(
+    ncdf_path="data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc",
+    channel_subset=["F3", "Fz", "F4", "C3", "Cz", "C4"],  # None = all channels
+    low_cutoff_hz=1.0,    # high-pass; None = skip
+    high_cutoff_hz=None,  # low-pass;  None = skip
+)
+# signals: np.ndarray (n_chan, n_samp), z-scored per channel
+# time_s:  1-D array in seconds (0 = event start)
+```
+
+Behaviour:
+
+- Filtering (Butterworth 4th order, zero-phase `filtfilt`) is applied to the **full
+  signal** (including margins) before trimming.
+- A 50 Hz IIR notch (Q = 15) is applied automatically when `fs > 100 Hz`.
+- After trimming the time margin (`t in [0, event_duration]`), `M1` and `M2`
+  mastoid reference channels are **always** removed.
+- Signals are **z-score normalised per channel** after trimming.
+
+| Return value | Type | Description |
+|---|---|---|
+| `signals` | `np.ndarray (n_chan, n_samp)` | z-scored EEG |
+| `channel_names` | `list[str]` | ordered channel labels |
+| `fs` | `float` | sampling frequency (Hz) |
+| `time_s` | `np.ndarray (n_samp,)` | time axis (0 = event start) |
+| `event_duration_s` | `float` | event window length (s) |
+
+### `plot_loaded_eeg_signals`
+
+```python
+from src.export import load_eeg_signals, plot_loaded_eeg_signals
+
+signals, ch_names, fs, time_s, event_duration_s = load_eeg_signals(ncdf_path)
+fig, ax = plot_loaded_eeg_signals(
+    time_s=time_s,
+    signals=signals,
+    channel_names=ch_names,
+    event_duration_s=event_duration_s,
+    title="EEG preview — W_030 child Peppa",
+)
+```
+
+Produces a stacked-channel plot analogous to `plot_eeg_with_rejected_segments`:
+
+- Traces are normalised to unit variance before stacking.
+- Dashed vertical lines mark t = 0 (event start) and t = `event_duration_s`.
+- No rejection overlays (use `plot_eeg_with_rejected_segments` for those).
+
+### `compute_and_plot_mvar` (`src/mtmvar.py`)
+
+```python
+from src.mtmvar import compute_and_plot_mvar
+
+ff_dtf, spectra, chan_names, crit, model_order_range, p_opt = compute_and_plot_mvar(
+    ncdf_path="data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc",
+    channel_subset=None,          # None = all (minus M1/M2)
+    max_model_order=15,
+    optimal_model_order=None,     # None = auto-select via crit_type
+    crit_type="HQ",               # 'AIC', 'HQ', or 'SC'
+    freq_min=1.0,
+    freq_max=40.0,
+    freq_step=0.5,
+    low_cutoff_hz=1.0,
+    high_cutoff_hz=None,
+    plot=True,                    # MVAR matrix plot
+    plot_loaded_signal=True,      # stacked EEG preview
+)
+```
+
+High-level pipeline:
+
+1. `load_eeg_signals` — load, filter, trim and normalise.
+2. *(optional)* `plot_loaded_eeg_signals` — preview the loaded traces.
+3. `mvar_criterion` — select optimal model order (skipped when
+   `optimal_model_order` is set; `crit` and `model_order_range` are then
+   returned as empty arrays).
+4. `full_freq_dtf` — compute full-frequency DTF.
+5. `multivariate_spectra` — compute multivariate power spectra.
+6. *(optional)* `mvar_plot` — display the spectra / connectivity matrix.
+
+| Return value | Description |
+|---|---|
+| `ff_dtf` | Full-frequency DTF `(n_chan, n_chan, n_freq)` |
+| `spectra` | Multivariate spectra `(n_chan, n_chan, n_freq)` |
+| `chan_names` | Channel labels |
+| `crit` | Information-criterion values per model order |
+| `model_order_range` | Tested model orders |
+| `p_opt` | Selected model order |
+
+See [scripts/ESCan_drfat.ipynb](../scripts/ESCan_drfat.ipynb) for a full batch
+example that processes a whole export folder and saves composite MVAR figures.
 
 ---
 

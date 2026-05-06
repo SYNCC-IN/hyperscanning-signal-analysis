@@ -486,6 +486,183 @@ def plot_eeg_with_rejected_segments(
     return fig, ax
 
 
+def load_eeg_signals(
+    ncdf_path: str,
+    channel_subset: Optional[list] = None,
+    low_cutoff_hz: Optional[float] = None,
+    high_cutoff_hz: Optional[float] = None,
+):
+    """Load an EEG NetCDF file, optionally filter it, trim the time margin,
+    drop M1/M2 mastoid channels, and return a normalised signal array.
+
+    Filtering order (zero-phase ``filtfilt``):
+
+    1. 4th-order Butterworth high-pass at ``low_cutoff_hz`` (if given).
+    2. 4th-order Butterworth low-pass at ``high_cutoff_hz`` (if given).
+    3. 50 Hz IIR notch (Q = 15) when fs > 100 Hz.
+
+    Filtering is applied to the full signal *before* the time-margin is
+    trimmed.  Signals are z-score normalised per channel after trimming.
+
+    Args:
+        ncdf_path: Path to the exported EEG NetCDF file.
+        channel_subset: Optional list of channel names to keep.  Channels not
+            present in the file are silently skipped.
+        low_cutoff_hz: High-pass cutoff frequency in Hz.
+        high_cutoff_hz: Low-pass cutoff frequency in Hz.
+
+    Returns:
+        tuple:
+            - **signals** (*np.ndarray*, shape ``(n_chan, n_samp)``): z-scored EEG.
+            - **channel_names** (*list[str]*): ordered channel labels.
+            - **fs** (*float*): sampling frequency in Hz.
+            - **time_s** (*np.ndarray*, shape ``(n_samp,)``): time axis in seconds
+              (0 = event start).
+            - **event_duration_s** (*float*): duration of the event window in seconds.
+    """
+    import numpy as np
+    from scipy.signal import butter, filtfilt, iirnotch
+
+    da = xr.open_dataarray(ncdf_path)
+    fs = float(da.attrs.get("sampling_freq", da.attrs.get("sampling_frequency_Hz", 128.0)))
+
+    da_proc = da
+
+    if low_cutoff_hz is not None or high_cutoff_hz is not None:
+        if "time" not in da.dims or "channel" not in da.dims:
+            raise ValueError(
+                f"Expected 'time' and 'channel' dimensions in {ncdf_path}, got {da.dims}"
+            )
+
+        data_tc = da.transpose("time", "channel").values.astype(np.float64)
+        nyquist = fs / 2.0
+
+        if low_cutoff_hz is not None:
+            wn_hp = float(low_cutoff_hz) / nyquist
+            if not 0.0 < wn_hp < 1.0:
+                raise ValueError(
+                    f"Invalid low_cutoff_hz={low_cutoff_hz}. "
+                    f"Must satisfy 0 < cutoff < {nyquist:.3f} Hz."
+                )
+            b_hp, a_hp = butter(4, wn_hp, btype="highpass")
+            data_tc = filtfilt(b_hp, a_hp, data_tc, axis=0)
+
+        if high_cutoff_hz is not None:
+            wn_lp = float(high_cutoff_hz) / nyquist
+            if not 0.0 < wn_lp < 1.0:
+                raise ValueError(
+                    f"Invalid high_cutoff_hz={high_cutoff_hz}. "
+                    f"Must satisfy 0 < cutoff < {nyquist:.3f} Hz."
+                )
+            b_lp, a_lp = butter(4, wn_lp, btype="lowpass")
+            data_tc = filtfilt(b_lp, a_lp, data_tc, axis=0)
+
+        notch_freq = 50.0
+        if notch_freq < nyquist:
+            b_n, a_n = iirnotch(notch_freq, Q=15, fs=fs)
+            data_tc = filtfilt(b_n, a_n, data_tc, axis=0)
+
+        da_proc = xr.DataArray(
+            data_tc,
+            dims=("time", "channel"),
+            coords={
+                "time": da.coords["time"].values,
+                "channel": da.coords["channel"].values,
+            },
+            attrs=da.attrs,
+        )
+
+    t = da_proc.coords["time"].values
+    event_duration_s = float(da_proc.attrs.get("event_duration", t[-1]))
+    mask = (t >= 0.0) & (t <= event_duration_s)
+    da_trimmed = da_proc.isel(time=mask)
+
+    drop_ch = [ch for ch in ["M1", "M2"] if ch in da_trimmed.coords["channel"].values]
+    if drop_ch:
+        da_trimmed = da_trimmed.drop_sel(channel=drop_ch)
+
+    if channel_subset is not None:
+        available = list(da_trimmed.coords["channel"].values)
+        sel = [ch for ch in channel_subset if ch in available]
+        if not sel:
+            raise ValueError(
+                f"None of the requested channels {channel_subset} found in "
+                f"{ncdf_path}. Available: {available}"
+            )
+        da_trimmed = da_trimmed.sel(channel=sel)
+
+    signals = da_trimmed.values.T.astype(np.float64)  # (n_chan, n_samp)
+    stds = np.std(signals, axis=1, keepdims=True)
+    stds[stds == 0] = 1.0
+    signals = (signals - np.mean(signals, axis=1, keepdims=True)) / stds
+
+    channel_names = list(da_trimmed.coords["channel"].values)
+    time_s = da_trimmed.coords["time"].values.astype(np.float64)
+    da.close()
+    return signals, channel_names, fs, time_s, event_duration_s
+
+
+def plot_loaded_eeg_signals(
+    time_s: "np.ndarray",
+    signals: "np.ndarray",
+    channel_names: list,
+    max_channels: int = 19,
+    spacing: float = 8.0,
+    figsize: tuple = (16.0, 9.0),
+    event_duration_s: Optional[float] = None,
+    title: str = "Loaded EEG signal (stacked channels)",
+):
+    """Plot loaded EEG traces in a stacked view analogous to
+    :func:`plot_eeg_with_rejected_segments`.
+
+    Args:
+        time_s: 1-D time axis in seconds (0 = event start).
+        signals: EEG data array of shape ``(n_chan, n_samp)``.
+        channel_names: Ordered channel labels matching ``signals`` rows.
+        max_channels: Maximum number of channels to display.
+        spacing: Vertical distance between channel traces.
+        figsize: Matplotlib figure size ``(width, height)`` in inches.
+        event_duration_s: If given, dashed vertical lines are drawn at
+            ``t = 0`` and ``t = event_duration_s``.
+        title: Figure title.
+
+    Returns:
+        tuple: ``(figure, axis)``
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    n_channels = min(max_channels, signals.shape[0])
+    if n_channels <= 0:
+        raise ValueError("No EEG channels available to plot.")
+
+    data = signals[:n_channels]
+    ch_names = list(channel_names[:n_channels])
+
+    stds = np.std(data, axis=1, keepdims=True)
+    stds[stds == 0] = 1.0
+    normalized = data / stds
+
+    fig, ax = plt.subplots(figsize=figsize)
+    offsets = np.arange(n_channels) * spacing
+
+    for idx in range(n_channels):
+        ax.plot(time_s, normalized[idx] + offsets[idx], linewidth=0.6, color="#1f4f8b", zorder=1)
+
+    if event_duration_s is not None and np.isfinite(event_duration_s):
+        ax.axvline(0.0, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
+        ax.axvline(event_duration_s, color="#444444", linewidth=0.8, linestyle="--", alpha=0.6)
+
+    ax.set_yticks(offsets)
+    ax.set_yticklabels(ch_names)
+    ax.set_xlabel("Time [s]  (0 = event start)")
+    ax.set_ylabel("EEG channel")
+    ax.set_title(title)
+    ax.grid(axis="x", alpha=0.2)
+    fig.tight_layout()
+    return fig, ax
+
+
 def run_eeg_autoreject_quality_report(
     ncdf_path: str,
     epoch_duration_s: float = 2.0,
