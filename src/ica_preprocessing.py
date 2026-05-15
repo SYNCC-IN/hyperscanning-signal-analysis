@@ -90,9 +90,11 @@ class ICAPreprocessor:
             # Wyciszenie ostrzeżeń Pythona i logów MNE na czas dopasowywania ICA
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=RuntimeWarning, module="mne")
-                mne.set_log_level('ERROR')
-                ica.fit(raw_signal)
-                mne.set_log_level('WARNING')
+                old_log_level = mne.set_log_level('ERROR', return_old_level=True)
+                try:
+                    ica.fit(raw_signal)
+                finally:
+                    mne.set_log_level(old_log_level)
 
             # Automatyczne szukanie komponentu odpowiadającego za mrugnięcia 
             eog_indices, _ = ica.find_bads_eog(
