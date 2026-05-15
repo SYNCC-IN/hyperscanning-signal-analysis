@@ -72,7 +72,11 @@ class ICAPreprocessor:
             print(f"Processing: {ncdf_path.name}")
             signals, channel_names, fs, time_s, event_duration_s = load_eeg_signals(ncdf_path)
 
-            print(signals.shape, len(channel_names), fs, time_s.shape, event_duration_s)
+            print(
+                f"Loaded EEG data: {len(channel_names)} channels, "
+                f"{signals.shape[1]} samples at {fs} Hz, "
+                f"duration {event_duration_s}s"
+            )
             self.raw_signals[label] = {'sig': signals, 'time_s': time_s, 'channel_names': channel_names, 'fs': fs, 'event_duration_s': event_duration_s}
             
             # Przygotowanie danych do MNE
