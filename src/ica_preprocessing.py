@@ -91,7 +91,7 @@ class ICAPreprocessor:
                 mne.set_log_level('WARNING')
 
             # Automatyczne szukanie komponentu odpowiadającego za mrugnięcia 
-            eog_indices, eog_scores = ica.find_bads_eog(
+            eog_indices, _ = ica.find_bads_eog(
                 raw_signal, 
                 ch_name=['Fp1', 'Fp2'], 
                 threshold=3.0
