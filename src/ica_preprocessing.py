@@ -147,9 +147,13 @@ class ICAPreprocessor:
             fs = float(data['fs'])
             event_duration_s = float(data['event_duration_s'])
 
-            sig_transposed = sig.T 
+            assert sig.ndim == 2 and sig.shape[0] == len(channel_names), (
+                f"Expected sig shape (n_channels, n_times) with n_channels={len(channel_names)}, "
+                f"got {sig.shape}"
+            )
+            sig_transposed = sig.T
 
-            # Tworzenie xarray DataArray
+            # Create xarray DataArray
             da = xr.DataArray(
                 data=sig_transposed,
                 dims=['time', 'channel'],
