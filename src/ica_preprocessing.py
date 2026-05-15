@@ -15,6 +15,7 @@ class ICAPreprocessor:
         self.figures_folder = figures_folder
         self.figures_folder.mkdir(parents=True, exist_ok=True)
         self.target_events = ['Brave', 'Peppa', 'Incredibles']
+        self.eeg_files: list = []
     
 
     def find_eeg_files(self, smoke_test: bool = True, smoke_dyads_n: int = 2):
@@ -63,6 +64,10 @@ class ICAPreprocessor:
         '''
         Preprocess EEG signals using ICA for blink artifact deletion.
         '''
+        if not self.eeg_files:
+            raise RuntimeError(
+                "No EEG files loaded. Call find_eeg_files() before preprocess_with_ica()."
+            )
         self.raw_signals = {}
         self.cleaned_signals = {}
 
