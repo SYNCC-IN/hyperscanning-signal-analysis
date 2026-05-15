@@ -68,7 +68,7 @@ class ICAPreprocessor:
 
     def preprocess_with_ica(self):
         '''
-        Preprocess EEG signals using ICA for blik artifact deletion.
+        Preprocess EEG signals using ICA for blink artifact deletion.
         '''
         self.raw_signals = {}
         self.cleaned_signals = {}
