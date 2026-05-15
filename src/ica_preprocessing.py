@@ -1,6 +1,3 @@
-import os
-import sys
-import importlib
 from pathlib import Path
 import xarray as xr
 from IPython.display import Markdown, display
@@ -9,10 +6,6 @@ import warnings
 import mne
 from mne.preprocessing import ICA
 
-sys.path.insert(0, os.path.abspath('..'))
-
-from src import export
-importlib.reload(export)
 from src.export import load_eeg_signals, plot_loaded_eeg_signals
 
 
