@@ -13,7 +13,7 @@ class ICAPreprocessor:
     def __init__(self, export_folder: Path, figures_folder: Path):
         self.export_folder = export_folder
         self.figures_folder = figures_folder
-        self.figures_folder.mkdir(exist_ok=True)
+        self.figures_folder.mkdir(parents=True, exist_ok=True)
         self.target_events = ['Brave', 'Peppa', 'Incredibles']
     
 
