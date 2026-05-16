@@ -17,7 +17,7 @@ from src.mtmvar import (
 
 
 class EEG_IBI_FFDTF_Pipeline:
-    def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1, fs_downsampled:float = 8.0, plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
+    def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1, left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0, plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
         Pipeline for dyadic EEG-IBI analysis using full freqency Direct Transfer Function (ffDTF).
 
@@ -47,6 +47,12 @@ class EEG_IBI_FFDTF_Pipeline:
         smoke_dyads_n : int, default=1
             Number of dyads used in smoke test mode.
 
+        left_frontal_eeg_channel : str, default="F3"
+            Name of the left frontal EEG channel used to compute Frontal Alpha Asymmetry (FAA).
+
+        right_frontal_eeg_channel : str, default="F4"
+            Name of the right frontal EEG channel used to compute Frontal Alpha Asymmetry (FAA).
+
         fs_downsampled : float, default=8.0
             Target sampling frequency used for signal resampling and alignment
             before ffDTF estimation.
@@ -74,6 +80,9 @@ class EEG_IBI_FFDTF_Pipeline:
         self.target_events = target_events
         self.smoke_test = smoke_test
         self.smoke_dyads_n = smoke_dyads_n
+        self.left_chan = left_frontal_eeg_channel
+        self.right_chan = right_frontal_eeg_channel
+        self.fs_ds = float(fs_downsampled)
         self.plot_global_enabled = plot_global_enabled
         self.save_global_enabled = save_global_enabled
         self.plot_windowed_enabled = plot_windowed_enabled
@@ -86,8 +95,6 @@ class EEG_IBI_FFDTF_Pipeline:
         
         # Automaticly prepare file lists after initialization
         self._prepare_file_lists()
-
-        self.fs_ds = float(fs_downsampled)
 
 
     def _prepare_file_lists(self):
@@ -269,7 +276,7 @@ class EEG_IBI_FFDTF_Pipeline:
         return filtered_data
     
 
-    def _compute_asymmetry(self, filtered_eeg, channel_names, left_chan='F3', right_chan='F4', metric='amp'):
+    def _compute_asymmetry(self, filtered_eeg, channel_names, metric='amp'):
         """
         Compute Frontal Alpha Asymmetry (FAA) using Hilbert transform.
 
@@ -282,16 +289,10 @@ class EEG_IBI_FFDTF_Pipeline:
         channel_names : list of str
             List of EEG channel names corresponding to rows in filtered_eeg.
 
-        left_chan : str, default='F3'
-            Name of the left frontal channel.
-
-        right_chan : str, default='F4'
-            Name of the right frontal channel.
-
         metric : str, default='amp'
             Type of Hilbert envelope used:
-            - 'amp'   → amplitude envelope
-            - 'power' → squared amplitude (power)
+            - 'amp'   -> amplitude envelope
+            - 'power' -> squared amplitude (power)
 
         Returns
         -------
@@ -301,10 +302,10 @@ class EEG_IBI_FFDTF_Pipeline:
             Shape: (n_samples,)
         """
         try:
-            left_idx = channel_names.index(left_chan)
-            right_idx = channel_names.index(right_chan)
+            left_idx = channel_names.index(self.left_chan)
+            right_idx = channel_names.index(self.right_chan)
         except ValueError as e:
-            raise ValueError(f"Channels {left_chan} or {right_chan} not found: {e}")
+            raise ValueError(f"Channels {self.left_chan} or {self.right_chan} not found: {e}")
 
         eeg_left = filtered_eeg[left_idx, :]
         eeg_right = filtered_eeg[right_idx, :]
@@ -603,8 +604,8 @@ class EEG_IBI_FFDTF_Pipeline:
                 filtered_eeg_ch = self._alpha_bandpass_filter(eeg_data_ch, fs_eeg)
                 filtered_eeg_cg = self._alpha_bandpass_filter(eeg_data_cg, fs_eeg)
 
-                faa_ch = self._compute_asymmetry(filtered_eeg_ch, channel_names, left_chan='F3', right_chan='F4', metric="amp")
-                faa_cg = self._compute_asymmetry(filtered_eeg_cg, channel_names, left_chan='F3', right_chan='F4', metric="amp")
+                faa_ch = self._compute_asymmetry(filtered_eeg_ch, channel_names, metric="amp")
+                faa_cg = self._compute_asymmetry(filtered_eeg_cg, channel_names, metric="amp")
 
                 ibi_ch = ibi_data_ch.squeeze()
                 ibi_cg = ibi_data_cg.squeeze()
@@ -682,6 +683,7 @@ class EEG_IBI_FFDTF_Pipeline:
                         "fs": self.fs_ds,
                         "fs_original": fs_eeg,
                         "chan_names": chan_names,
+                        "faa_chan_names": (self.left_chan, self.right_chan),
                         "windowing": {
                             "window_size": 256,
                             "n_windows": 6,
