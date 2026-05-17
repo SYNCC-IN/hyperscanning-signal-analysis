@@ -151,18 +151,21 @@ class EEG_IBI_FFDTF_Pipeline:
     def _find_file(self, file_list, dyad, film, role):
         """
         Find a single file matching dyad, film, and role metadata.
-        Returns matching file or raises error if missing/ambiguous.
+        Returns (file, True) if found, (None, False) if missing, 
+        or raises ValueError if multiple files are found.
         """
-         
+        find_flag = True
         found = [f for f in file_list if dyad in f.name and f"_{film}" in f.name and f"_{role}_" in f.name]
         
         if not found:
-            raise FileNotFoundError(f"Missing file for dyad: {dyad}, film: {film}, role: {role}")
+            find_flag = False
+            return None, find_flag
             
         if len(found) > 1:
             raise ValueError(f"Found multiple files for dyad: {dyad}, film: {film}, role: {role} -> {found}")
             
-        return found[0]
+        return found[0], find_flag
+    
 
     def _load_eeg_and_ibi(self, eeg_file, ibi_file, role):
         """
@@ -588,10 +591,22 @@ class EEG_IBI_FFDTF_Pipeline:
             for film in self.target_events:
                 print(f"--- Processing dyad: {dyad} | Film: {film} ---")
 
-                eeg_ch = self._find_file(self.eeg_files, dyad, film, "ch")
-                ibi_ch = self._find_file(self.ibi_files, dyad, film, "ch")
-                eeg_cg = self._find_file(self.eeg_files, dyad, film, "cg")
-                ibi_cg = self._find_file(self.ibi_files, dyad, film, "cg")
+                eeg_ch, find_flag_eeg_ch = self._find_file(self.eeg_files, dyad, film, "ch")
+                ibi_ch, find_flag_ibi_ch = self._find_file(self.ibi_files, dyad, film, "ch")
+                eeg_cg, find_flag_eeg_cg = self._find_file(self.eeg_files, dyad, film, "cg")
+                ibi_cg, find_flag_ibi_cg = self._find_file(self.ibi_files, dyad, film, "cg")
+
+                # Check missing files for dyad and film
+                missing_files = []
+                if not find_flag_eeg_ch: missing_files.append("EEG (ch)")
+                if not find_flag_ibi_ch: missing_files.append("IBI (ch)")
+                if not find_flag_eeg_cg: missing_files.append("EEG (cg)")
+                if not find_flag_ibi_cg: missing_files.append("IBI (cg)")
+
+                # If missing_files list isn't empty, display missing files and jump to next film
+                if missing_files:
+                    print(f"  [!] Missing files: {', '.join(missing_files)}. Skipping film: {film} for dyad: {dyad}")
+                    continue  # Jump to next film files
 
                 print(f"  Found EEG (ch): {eeg_ch.name}")
                 print(f"  Found IBI (ch): {ibi_ch.name}")
