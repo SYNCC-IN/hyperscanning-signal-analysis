@@ -361,11 +361,12 @@ class EEG_IBI_FFDTF_Pipeline:
         if fs_new >= fs:
             raise ValueError("fs_new must be lower than fs")
 
-        if fs % fs_new != 0:
+        ratio = fs / fs_new
+        if not np.isclose(ratio, round(ratio)):
             raise ValueError("fs must be divisible by fs_new")
 
         # Calculate the decimation factor (must be an integer)
-        down = int(fs // fs_new)
+        down = int(round(ratio))
 
         # resample_poly automatically applies an anti-aliasing filter by default
         signal_ds = resample_poly(signal, up=1, down=down)
@@ -403,8 +404,7 @@ class EEG_IBI_FFDTF_Pipeline:
             return [signals[:, :window_size]]
 
         max_start = T - window_size
-        positions = np.linspace(0, max_start, n_windows)
-        positions = np.unique(np.round(positions).astype(int))
+        positions = np.round(np.linspace(0, max_start, n_windows)).astype(int)
 
         windows = [
             signals[:, start:start + window_size]
@@ -643,6 +643,21 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
+                # Global ffDTF (baseline) — computed first to obtain p_opt for windowed calls
+                global_save_dir = self.output_ffDTF_folder / dyad
+                fig_name_global = f"{dyad}_{film}_ffDTF_global.png"
+
+                ff_dtf_global, spectra_global, chan_names, _, _, p_opt = self._compute_ffDTF(
+                    dyad,
+                    signals_to_ffDTF,
+                    chan_names_to_ffDTF,
+                    self.fs_ds,
+                    plot=self.plot_global_enabled,
+                    save_plot=self.save_global_enabled,
+                    save_path=global_save_dir,
+                    fig_name=fig_name_global
+                )
+
                 # Windowed ffDTF (dynamic connectivity)
                 window_size = 256
                 n_windows = 6
@@ -659,6 +674,7 @@ class EEG_IBI_FFDTF_Pipeline:
                         w,
                         chan_names_to_ffDTF,
                         self.fs_ds,
+                        optimal_model_order=p_opt,
                         plot=self.plot_windowed_enabled,
                         save_plot=self.save_windowed_enabled,
                         save_path=window_save_dir,
@@ -668,20 +684,6 @@ class EEG_IBI_FFDTF_Pipeline:
                     ffdtf_results_windowed.append(ff_dtf_w)
                     spectra_windowed.append(spectra_w)
 
-                # Global ffDTF (baseline)
-                global_save_dir = self.output_ffDTF_folder / dyad
-                fig_name_global = f"{dyad}_{film}_ffDTF_global.png"
-
-                ff_dtf_global, spectra_global, chan_names, _, _, p_opt = self._compute_ffDTF(
-                    dyad,
-                    signals_to_ffDTF,
-                    chan_names_to_ffDTF,
-                    self.fs_ds,
-                    plot=self.plot_global_enabled,
-                    save_plot=self.save_global_enabled,
-                    save_path=global_save_dir,
-                    fig_name=fig_name_global
-                )
 
                 # Build result object
                 result = {
