@@ -1,3 +1,5 @@
+import os
+from contextlib import redirect_stdout
 import json
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +19,10 @@ from src.mtmvar import (
 
 
 class EEG_IBI_FFDTF_Pipeline:
-    def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1, left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0, plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
+    def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1,
+                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0,
+                 n_windows:int = 3, window_size:int = None, ar_p:int = 5,
+                 plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
         Pipeline for dyadic EEG-IBI analysis using full freqency Direct Transfer Function (ffDTF).
 
@@ -83,6 +88,9 @@ class EEG_IBI_FFDTF_Pipeline:
         self.left_chan = left_frontal_eeg_channel
         self.right_chan = right_frontal_eeg_channel
         self.fs_ds = float(fs_downsampled)
+        self.n_windows = n_windows
+        self.window_size = window_size
+        self.ar_p = ar_p
         self.plot_global_enabled = plot_global_enabled
         self.save_global_enabled = save_global_enabled
         self.plot_windowed_enabled = plot_windowed_enabled
@@ -107,6 +115,11 @@ class EEG_IBI_FFDTF_Pipeline:
         # A set automatically ensures that dyads are not duplicated
         all_dyads_set = set()
 
+        def _extract_dyad(p):
+            """Helper to extract dyad ID from filename."""
+            parts = p.stem.split('_')
+            return f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else p.stem
+
         for sig_type in signal_types:
             folder = self.cleaned_signals_folder / sig_type
             
@@ -123,8 +136,7 @@ class EEG_IBI_FFDTF_Pipeline:
 
             # Extract dyad names from files and add them to the set
             for p in all_files:
-                parts = p.stem.split('_')
-                dyad_id = f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else p.stem
+                dyad_id = _extract_dyad(p)
                 all_dyads_set.add(dyad_id)
 
         # Sort unique dyads alphabetically
@@ -136,16 +148,22 @@ class EEG_IBI_FFDTF_Pipeline:
         else:
             self.dyads_to_process = all_dyads
 
-        # Assign separated, clean file lists to class variables
-        self.eeg_files = selected_files["EEG"]
-        self.ibi_files = selected_files["IBI"]
+        # Store total counts before filtering for logging
+        total_eeg = len(selected_files["EEG"])
+        total_ibi = len(selected_files["IBI"])
 
+        # Filter the file lists to keep ONLY the files for the dyads we are actually processing
+        self.eeg_files = [p for p in selected_files["EEG"] if _extract_dyad(p) in self.dyads_to_process]
+        self.ibi_files = [p for p in selected_files["IBI"] if _extract_dyad(p) in self.dyads_to_process]
+
+        # Prepare console output
         mode = f"SMOKE TEST (first {self.smoke_dyads_n} dyads)" if self.smoke_test else "FULL ANALYSIS"
-        print(f"### Initialization Complete: {mode} ###")
-        print(f"Target events: {self.target_events}")
-        print(f"Dyads loaded: {len(self.dyads_to_process)} ({', '.join(self.dyads_to_process)})")
-        print(f"Total EEG files ready: {len(self.eeg_files)}")
-        print(f"Total IBI files ready: {len(self.ibi_files)}\n")
+        print(f"\n=== Initialization Complete: {mode} ===")
+        print(f" [INFO] Target events : {self.target_events}")
+        # Dodałem użyte/wszystkie również do diad dla pełnej spójności
+        print(f" [INFO] Dyads loaded  : {len(self.dyads_to_process)}/{len(all_dyads)} ({', '.join(self.dyads_to_process)})")
+        print(f" [OK]   EEG files     : {len(self.eeg_files)}/{total_eeg} ready")
+        print(f" [OK]   IBI files     : {len(self.ibi_files)}/{total_ibi} ready\n")
 
 
     def _find_file(self, file_list, dyad, film, role):
@@ -219,7 +237,7 @@ class EEG_IBI_FFDTF_Pipeline:
             if raw_fs_eeg is not None:
                 fs_eeg = float(raw_fs_eeg)
             else:
-                print(f"  [!] {role}: Missing sampling frequency in EEG file. Defaulting to 128.0 Hz")
+                print(f" [WARN] {role}: Missing EEG sampling freq. Defaulting to 128.0 Hz")
                 fs_eeg = 128.0 
 
         with xr.open_dataarray(ibi_file) as da_ibi:
@@ -231,7 +249,7 @@ class EEG_IBI_FFDTF_Pipeline:
                 fs_ibi = float(raw_fs_ibi)
             else:
                 fs_ibi = fs_eeg
-                print(f"  [i] {role}: Missing sampling frequency in IBI. Copying from EEG: {fs_ibi} Hz")
+                print(f" [INFO] {role}: Missing IBI sampling freq. Copying from EEG ({fs_ibi} Hz)")
         
         return time_s, eeg_data, fs_eeg, channel_names, ibi_data, fs_ibi, event_duration_s
 
@@ -373,43 +391,114 @@ class EEG_IBI_FFDTF_Pipeline:
         return signal_ds
     
 
-    def _create_windows(self, signals, window_size=256, n_windows=6):
+    def _crop_signal(self, signal, fs, drop_front_sec=10, keep_duration_sec=60):
         """
-        Creates n_windows evenly spaced windows over the signal.
+        Crops the signal to a specific duration, dropping the initial segment.
 
-        Windows are placed deterministically at fixed time positions,
-        ensuring reproducibility and exact number of segments.
+        This method removes the first `drop_front_sec` seconds and extracts exactly the next 
+        `keep_duration_sec` seconds. The rest of the signal is discarded.
+
+        Parameters
+        ----------
+        signal : np.ndarray
+            Input signal. Time must be the last dimension 
+        fs : float
+            Current sampling frequency of the signal [Hz].
+        drop_front_sec : float, default=10
+            Seconds to drop from the beginning of the signal.
+        keep_duration_sec : float, default=60
+            Seconds to keep after the dropped front segment.
+
+        Returns
+        -------
+        np.ndarray
+            Cropped signal.
+        """
+        
+        required_sec = drop_front_sec + keep_duration_sec
+        total_samples = signal.shape[-1]
+        total_sec = total_samples / fs
+
+        if total_sec >= required_sec:
+            start_idx = int(drop_front_sec * fs)
+            end_idx = int(required_sec * fs)
+            
+            cropped_signal = signal[..., start_idx:end_idx]
+            return cropped_signal
+        else:
+            raise ValueError(
+                f"Cropping failed: The signal is too short. "
+                f"It needs to be at least {required_sec} seconds long, "
+                f"but the provided signal is only {total_sec:.2f} seconds."
+            )
+    
+
+    def _create_windows(self, signals, n_windows=3, window_size=None):
+        """
+        Creates n_windows that evenly span the entire length of the signal.
+
+        If window_size is None, the signal is divided into n_windows strictly
+        non-overlapping consecutive segments. If window_size is provided, the 
+        windows will overlap evenly to perfectly cover the entire signal from 
+        the first to the last sample.
 
         Parameters
         ----------
         signals : np.ndarray
-            Shape (channels, time)
-        window_size : int
-            Number of samples per window
-        n_windows : int
-            Exact number of windows to generate
+            Shape (channels, time). The input signal to be windowed.
+        n_windows : int, default=3
+            Exact number of windows to generate.
+        window_size : int, optional
+            Number of samples per window. If None, it is calculated automatically
+            to avoid overlap. Must be large enough so that n_windows cover the 
+            entire signal.
 
         Returns
         -------
         list of np.ndarray
+            List containing n_windows segments of the signal.
         """
-
         T = signals.shape[1]
 
-        if T < window_size:
-            raise ValueError("Signal shorter than window_size")
+        if window_size is None:
+            # Auto-calculate exact window size for zero overlap
+            if T % n_windows != 0:
+                raise ValueError(
+                    f"Cannot evenly divide signal of length {T} into {n_windows} "
+                    f"non-overlapping windows. Provide a specific window_size."
+                )
+            window_size = T // n_windows
+        else:
+            # Calculate the mathematical ceiling for minimum required size
+            min_required_size = (T + n_windows - 1) // n_windows
+            
+            if window_size < min_required_size:
+                raise ValueError(
+                    f"window_size={window_size} is too short. To cover {T} samples "
+                    f"with {n_windows} windows without leaving gaps, the minimum "
+                    f"window_size is {min_required_size}."
+                )
+            
+            if window_size > T:
+                raise ValueError(f"window_size ({window_size}) cannot exceed signal length ({T}).")
+
+        # The last window must end exactly at the end of the signal
+        max_start = T - window_size
+        
+        # Prevent generating identical, fully overlapping windows
+        if max_start < n_windows - 1 and n_windows > 1:
+            raise ValueError(
+                f"window_size={window_size} is too large to generate {n_windows} "
+                f"distinct windows. Decrease window_size or n_windows."
+            )
 
         if n_windows == 1:
-            return [signals[:, :window_size]]
+            positions = [0]
+        else:
+            positions = np.linspace(0, max_start, n_windows, dtype=int)
 
-        max_start = T - window_size
-        positions = np.linspace(0, max_start, n_windows)
-        positions = np.unique(np.round(positions).astype(int))
-
-        windows = [
-            signals[:, start:start + window_size]
-            for start in positions
-        ]
+        # Generate the list of windows based on calculated start positions
+        windows = [signals[:, start:start + window_size] for start in positions]
 
         return windows
 
@@ -421,7 +510,6 @@ class EEG_IBI_FFDTF_Pipeline:
             chan_names,
             fs,
             max_model_order=20,
-            optimal_model_order=None,
             crit_type="AIC",
             freq_min=1.0,
             freq_max=3.8,
@@ -453,9 +541,6 @@ class EEG_IBI_FFDTF_Pipeline:
 
         max_model_order : int, default=20
             Maximum MVAR model order considered.
-
-        optimal_model_order : int or None
-            If provided, overrides automatic model order selection.
 
         crit_type : str, default="AIC"
             Criterion used for model order selection.
@@ -489,51 +574,37 @@ class EEG_IBI_FFDTF_Pipeline:
         spectra : np.ndarray
             Multivariate spectra estimates.
 
-        chan_names : list
-            Channel names (passed through).
-
-        crit : np.ndarray
-            Model selection criterion values.
-
-        model_order_range : np.ndarray
-            Range of evaluated model orders.
-
         p_opt : int
             Selected optimal MVAR model order.
         """
 
         freqs = np.arange(freq_min, freq_max + freq_step, freq_step)
 
-        if optimal_model_order is None:
+        if self.ar_p is None:
             crit, model_order_range, p_opt = mvar_criterion(signals, max_model_order, crit_type, plot=False)
-            print(f"  {crit_type} optimal model order: p = {p_opt}")
         else:
-            p_opt = optimal_model_order
-            print(f"  Using fixed model order: p = {p_opt}")
+            p_opt = self.ar_p
             crit = np.array([])
             model_order_range = np.array([])
 
-        print("  Computing ffDTF ...")
-        ff_dtf = full_freq_dtf(
-            signals, freqs, fs,
-            max_model_order=max_model_order,
-            optimal_model_order=p_opt,
-            crit_type=crit_type,
-        )
+        with open(os.devnull, 'w') as f, redirect_stdout(f):
+            ff_dtf = full_freq_dtf(
+                signals, freqs, fs,
+                max_model_order=max_model_order,
+                optimal_model_order=p_opt,
+                crit_type=crit_type,
+            )
 
-        print("  Computing multivariate spectra ...")
-        spectra = multivariate_spectra(
-            signals, freqs, fs,
-            max_model_order=max_model_order,
-            optimal_model_order=p_opt,
-            crit_type=crit_type,
-        )
+            spectra = multivariate_spectra(
+                signals, freqs, fs,
+                max_model_order=max_model_order,
+                optimal_model_order=p_opt,
+                crit_type=crit_type,
+            )
 
         if plot or save_plot:
             if fig_name is None:
-                    fig_name = f"{dyad}_ffDTF.png"
-
-            plt.figure(figsize=(10, 10))
+                fig_name = f"{dyad}_ffDTF.png"
 
             mvar_plot(
                 spectra, ff_dtf, freqs,
@@ -543,21 +614,23 @@ class EEG_IBI_FFDTF_Pipeline:
                 scale="linear",
             )
 
-            plt.tight_layout()
+            fig = plt.gcf()
+            fig.tight_layout()
 
             if save_path is not None and save_plot:
                 save_path = Path(save_path)
                 save_path.mkdir(parents=True, exist_ok=True)
 
                 fig_file = save_path / fig_name
-                plt.savefig(fig_file, dpi=300, bbox_inches="tight")
+                fig.savefig(fig_file, dpi=300, bbox_inches="tight")
 
             if plot:
                 plt.show()
-            else:
-                plt.close()
+                
+            # close all for preventing memory leakage
+            plt.close('all') 
 
-        return ff_dtf, spectra, chan_names, crit, model_order_range, p_opt
+        return ff_dtf, spectra, p_opt
 
 
     def _save_single_result(self, dyad, film, result):
@@ -570,17 +643,18 @@ class EEG_IBI_FFDTF_Pipeline:
 
         file_path = dyad_dir / f"{dyad}_{film}_ffDTF.npz"
 
-        np.savez(
+        np.savez_compressed(
             file_path,
             ff_dtf_global=result["mvar"]["ff_dtf_global"],
             spectra_global=result["mvar"]["spectra_global"],
-            ff_dtf_windowed=np.array(result["mvar"]["ff_dtf_windowed"], dtype=object),
-            spectra_windowed=np.array(result["mvar"]["spectra_windowed"], dtype=object),
-            p_opt=result["mvar"]["p_opt"],
+            ff_dtf_windowed=np.array(result["mvar"]["ff_dtf_windowed"]),
+            spectra_windowed=np.array(result["mvar"]["spectra_windowed"]),
+            p_opt_g=result["mvar"]["p_opt_g"],
+            p_opt_w=result["mvar"]["p_opt_w"],
             meta=json.dumps(result["meta"])
         )
 
-        print(f"[SAVED] {dyad} | {film} --> {file_path}")
+        print(f"[SAVED] {dyad} | {film} --> {file_path}\n")
 
 
     def run_pipeline(self):
@@ -605,13 +679,13 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 # If missing_files list isn't empty, display missing files and jump to next film
                 if missing_files:
-                    print(f"  [!] Missing files: {', '.join(missing_files)}. Skipping film: {film} for dyad: {dyad}")
-                    continue  # Jump to next film files
+                    print(f" [SKIP] Missing files: {', '.join(missing_files)} -> Skipping {film}")
+                    continue
 
-                print(f"  Found EEG (ch): {eeg_ch.name}")
-                print(f"  Found IBI (ch): {ibi_ch.name}")
-                print(f"  Found EEG (cg): {eeg_cg.name}")
-                print(f"  Found IBI (cg): {ibi_cg.name}")
+                print(f" [OK] Loaded EEG (ch) : {eeg_ch.name}")
+                print(f" [OK] Loaded IBI (ch) : {ibi_ch.name}")
+                print(f" [OK] Loaded EEG (cg) : {eeg_cg.name}")
+                print(f" [OK] Loaded IBI (cg) : {ibi_cg.name}")
 
                 _ ,eeg_data_ch, fs_eeg, channel_names, ibi_data_ch, fs_ibi, _ = self._load_eeg_and_ibi(eeg_ch, ibi_ch, role = "Child")
                 _ ,eeg_data_cg, fs_eeg, channel_names, ibi_data_cg, fs_ibi, _ = self._load_eeg_and_ibi(eeg_cg, ibi_cg, role = "Care Giver")
@@ -630,31 +704,41 @@ class EEG_IBI_FFDTF_Pipeline:
                 faa_cg_ds = self._downsample_signal(faa_cg, fs_eeg, self.fs_ds)
                 ibi_cg_ds = self._downsample_signal(ibi_cg, fs_ibi, self.fs_ds)
 
-                lengths = np.array([len(faa_ch_ds), len(ibi_ch_ds), len(faa_cg_ds), len(ibi_cg_ds)])
-                if not np.all(lengths == lengths[0]):
-                    raise ValueError(f"ffDTF input mismatch lengths: {lengths.tolist()}")
 
-                signals_to_ffDTF = np.vstack([faa_ch_ds, ibi_ch_ds, faa_cg_ds, ibi_cg_ds])
+                faa_ch_croped = self._crop_signal(faa_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_ch_croped = self._crop_signal(ibi_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                faa_cg_croped = self._crop_signal(faa_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_cg_croped = self._crop_signal(ibi_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+
+                signals_to_ffDTF = np.vstack([faa_ch_croped, ibi_ch_croped, faa_cg_croped, ibi_cg_croped])
 
                 # Standardization of multivariate signals (channel-wise z-score normalization)
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
                 # and preventing scale dominance between EEG-derived FAA and physiological IBI signals
-                signals_to_ffDTF = (signals_to_ffDTF- np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
+                signals_to_ffDTF = (signals_to_ffDTF - np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
 
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
+                print(" [OK] Pre-processing complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
+
+                # Checking relation p_opt to fixed self.ar_p
+                if self.ar_p is not None:
+                    _, _, suggested_p = mvar_criterion(signals_to_ffDTF, 20, "AIC", plot=False)
+                    print(f" [INFO] AIC suggested p={suggested_p} for global signal. Forcing fixed p={self.ar_p}.")
+
                 # Windowed ffDTF (dynamic connectivity)
-                window_size = 256
-                n_windows = 6
-                windowed_signals = self._create_windows(signals_to_ffDTF, window_size, n_windows)
+                windowed_signals = self._create_windows(signals_to_ffDTF, self.n_windows, self.window_size)
 
                 ffdtf_results_windowed = []
                 spectra_windowed = []
+                tab_p_opt_w = []
 
                 window_save_dir = self.output_ffDTF_folder / dyad
 
+                print(f" [INFO] Computing windowed ffDTF ({len(windowed_signals)} windows)...")
+
                 for i, w in enumerate(windowed_signals):
-                    ff_dtf_w, spectra_w, _, _, _, _ = self._compute_ffDTF(
+                    ff_dtf_w, spectra_w, p_opt_w  = self._compute_ffDTF(
                         dyad,
                         w,
                         chan_names_to_ffDTF,
@@ -667,12 +751,15 @@ class EEG_IBI_FFDTF_Pipeline:
 
                     ffdtf_results_windowed.append(ff_dtf_w)
                     spectra_windowed.append(spectra_w)
+                    tab_p_opt_w.append(p_opt_w)
 
                 # Global ffDTF (baseline)
                 global_save_dir = self.output_ffDTF_folder / dyad
                 fig_name_global = f"{dyad}_{film}_ffDTF_global.png"
 
-                ff_dtf_global, spectra_global, chan_names, _, _, p_opt = self._compute_ffDTF(
+                print(" [INFO] Computing global ffDTF...")
+
+                ff_dtf_global, spectra_global, p_opt_g  = self._compute_ffDTF(
                     dyad,
                     signals_to_ffDTF,
                     chan_names_to_ffDTF,
@@ -690,18 +777,19 @@ class EEG_IBI_FFDTF_Pipeline:
                         "spectra_global": spectra_global,
                         "ff_dtf_windowed": ffdtf_results_windowed,
                         "spectra_windowed": spectra_windowed,
-                        "p_opt": p_opt
+                        "p_opt_g": p_opt_g,
+                        "p_opt_w": tab_p_opt_w
                     },
                     "meta": {
                         "dyad": dyad,
                         "film": film,
                         "fs": self.fs_ds,
                         "fs_original": fs_eeg,
-                        "chan_names": chan_names,
+                        "chan_names": chan_names_to_ffDTF,
                         "faa_chan_names": (self.left_chan, self.right_chan),
                         "windowing": {
-                            "window_size": 256,
-                            "n_windows": 6,
+                            "n_windows": self.n_windows,
+                            "window_size": self.window_size,
                         },
                         "computed_at": datetime.now().isoformat(),
                     }
