@@ -19,7 +19,7 @@ from src.mtmvar import (
 class EEG_IBI_FFDTF_Pipeline:
     def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1, left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0, plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
-        Pipeline for dyadic EEG-IBI analysis using full freqency Direct Transfer Function (ffDTF).
+        Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
 
         This class implements a full processing workflow for dyadic recordings,
         including EEG preprocessing, frontal alpha asymmetry (FAA) computation,
