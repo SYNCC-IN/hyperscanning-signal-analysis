@@ -88,7 +88,7 @@ class EEG_IBI_FFDTF_Pipeline:
         self.plot_windowed_enabled = plot_windowed_enabled
         self.save_windowed_enabled = save_windowed_enabled
         
-        # Tables for storing file paths and diads to process
+        # Tables for storing file paths and dyads to process
         self.eeg_files = []
         self.ibi_files = []
         self.dyads_to_process = []
