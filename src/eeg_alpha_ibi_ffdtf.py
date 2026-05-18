@@ -112,7 +112,7 @@ class EEG_IBI_FFDTF_Pipeline:
             
             all_files = sorted([
                 p for p in folder.rglob("*.nc")
-                if f"_{sig_type}_" in p.name and any(f"_{ev}" in p.name for ev in self.target_events)
+                if f"_{sig_type}_" in p.name and any(p.stem.endswith(f"_{ev}") for ev in self.target_events)
             ])
             
             if not all_files:
