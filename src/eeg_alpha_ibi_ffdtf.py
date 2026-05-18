@@ -24,7 +24,7 @@ class EEG_IBI_FFDTF_Pipeline:
                  n_windows:int = 3, window_size:int = None, ar_p:int = 5,
                  plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
-        Pipeline for dyadic EEG-IBI analysis using full freqency Direct Transfer Function (ffDTF).
+        Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
 
         This class implements a full processing workflow for dyadic recordings,
         including EEG preprocessing, frontal alpha asymmetry (FAA) computation,
@@ -96,12 +96,12 @@ class EEG_IBI_FFDTF_Pipeline:
         self.plot_windowed_enabled = plot_windowed_enabled
         self.save_windowed_enabled = save_windowed_enabled
         
-        # Tables for storing file paths and diads to process
+        # Tables for storing file paths and dyads to process
         self.eeg_files = []
         self.ibi_files = []
         self.dyads_to_process = []
         
-        # Automaticly prepare file lists after initialization
+        # Automatically prepare file lists after initialization
         self._prepare_file_lists()
 
 
@@ -125,7 +125,7 @@ class EEG_IBI_FFDTF_Pipeline:
             
             all_files = sorted([
                 p for p in folder.rglob("*.nc")
-                if f"_{sig_type}_" in p.name and any(f"_{ev}" in p.name for ev in self.target_events)
+                if f"_{sig_type}_" in p.name and any(p.stem.endswith(f"_{ev}") for ev in self.target_events)
             ])
             
             if not all_files:
@@ -355,7 +355,7 @@ class EEG_IBI_FFDTF_Pipeline:
         """
         Anti-aliased downsampling of a 1D signal.
 
-        Uses scipy's resample_poly, which automatically applies an optimal antyaliasing FIR filter
+        Uses scipy's resample_poly, which automatically applies an optimal anti-aliasing FIR filter
 
         Parameters
         ----------
@@ -379,11 +379,12 @@ class EEG_IBI_FFDTF_Pipeline:
         if fs_new >= fs:
             raise ValueError("fs_new must be lower than fs")
 
-        if fs % fs_new != 0:
+        ratio = fs / fs_new
+        if not np.isclose(ratio, round(ratio)):
             raise ValueError("fs must be divisible by fs_new")
 
         # Calculate the decimation factor (must be an integer)
-        down = int(fs // fs_new)
+        down = int(round(ratio))
 
         # resample_poly automatically applies an anti-aliasing filter by default
         signal_ds = resample_poly(signal, up=1, down=down)
@@ -743,6 +744,7 @@ class EEG_IBI_FFDTF_Pipeline:
                         w,
                         chan_names_to_ffDTF,
                         self.fs_ds,
+                        optimal_model_order=p_opt,
                         plot=self.plot_windowed_enabled,
                         save_plot=self.save_windowed_enabled,
                         save_path=window_save_dir,
