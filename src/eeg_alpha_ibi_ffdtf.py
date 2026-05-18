@@ -758,7 +758,7 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
-                print(" [OK] Pre-processing complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
+                print(" [OK] Signal conditioning complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
 
                 # Checking relation p_opt to fixed self.ar_p
                 if self.ar_p is not None:
@@ -809,11 +809,7 @@ class EEG_IBI_FFDTF_Pipeline:
                     fig_name=fig_name_global
                 )
 
-                processing_history += (
-                    " -> Butterworth bandpass filter for alpha band extraction -> Compute Frontal Alpha Asymmetry (FAA) using Hilbert transform"
-                    f" -> Downsampled signal from {fs_eeg} to {self.fs_ds} -> crop_signal to target one minute"
-                    f" -> creates {self.n_windows} windows ->computing global and windowed ffDTF")
-
+                processing_history += f" -> Alpha -> FAA -> Downsample from {fs_eeg} to {self.fs_ds} -> Crop -> Z-Score -> {self.n_windows} windowing -> Computing global and windowed ffDTF"
 
                 # Build result object
                 result = {
