@@ -93,7 +93,7 @@ class EEG_IBI_FFDTF_Pipeline:
         self.ibi_files = []
         self.dyads_to_process = []
         
-        # Automaticly prepare file lists after initialization
+        # Automatically prepare file lists after initialization
         self._prepare_file_lists()
 
 
