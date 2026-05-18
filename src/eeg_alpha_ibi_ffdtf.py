@@ -88,6 +88,12 @@ class EEG_IBI_FFDTF_Pipeline:
         self.left_chan = left_frontal_eeg_channel
         self.right_chan = right_frontal_eeg_channel
         self.fs_ds = float(fs_downsampled)
+
+        self.freq_min = 1.0                                 # Minimum frequency for analysis.
+        self.freq_step = 0.1                                # Frequency resolution.
+        nyquist_limit = self.fs_ds / 2.0
+        self.freq_max = nyquist_limit - self.freq_step      # Dynamic maximum frequency
+
         self.n_windows = n_windows
         self.window_size = window_size
         self.ar_p = ar_p
@@ -512,9 +518,6 @@ class EEG_IBI_FFDTF_Pipeline:
             fs,
             max_model_order=20,
             crit_type="AIC",
-            freq_min=1.0,
-            freq_max=3.8,
-            freq_step=0.1,
             plot=True,
             save_plot=False,
             save_path=None,
@@ -546,15 +549,6 @@ class EEG_IBI_FFDTF_Pipeline:
         crit_type : str, default="AIC"
             Criterion used for model order selection.
 
-        freq_min : float, default=1.0
-            Minimum frequency for analysis.
-
-        freq_max : float, default=3.8
-            Maximum frequency for analysis.
-
-        freq_step : float, default=0.1
-            Frequency resolution.
-
         plot : bool, default=True
             If True, generates a figure of ffDTF and spectra.
 
@@ -579,14 +573,12 @@ class EEG_IBI_FFDTF_Pipeline:
             Selected optimal MVAR model order.
         """
 
-        freqs = np.arange(freq_min, freq_max + freq_step, freq_step)
+        freqs = np.arange(self.freq_min, self.freq_max + self.freq_step, self.freq_step)
 
         if self.ar_p is None:
             crit, model_order_range, p_opt = mvar_criterion(signals, max_model_order, crit_type, plot=False)
         else:
             p_opt = self.ar_p
-            crit = np.array([])
-            model_order_range = np.array([])
 
         with open(os.devnull, 'w') as f, redirect_stdout(f):
             ff_dtf = full_freq_dtf(
