@@ -125,7 +125,7 @@ class EEG_IBI_FFDTF_Pipeline:
             
             all_files = sorted([
                 p for p in folder.rglob("*.nc")
-                if f"_{sig_type}_" in p.name and any(p.stem.endswith(f"_{ev}") for ev in self.target_events)
+                if sig_type in p.name and any(ev in p.name for ev in self.target_events)
             ])
             
             if not all_files:
@@ -744,7 +744,6 @@ class EEG_IBI_FFDTF_Pipeline:
                         w,
                         chan_names_to_ffDTF,
                         self.fs_ds,
-                        optimal_model_order=p_opt,
                         plot=self.plot_windowed_enabled,
                         save_plot=self.save_windowed_enabled,
                         save_path=window_save_dir,
