@@ -337,7 +337,7 @@ class EEG_IBI_FFDTF_Pipeline:
         """
         Anti-aliased downsampling of a 1D signal.
 
-        Uses scipy's resample_poly, which automatically applies an optimal antyaliasing FIR filter
+        Uses scipy's resample_poly, which automatically applies an optimal anti-aliasing FIR filter
 
         Parameters
         ----------
