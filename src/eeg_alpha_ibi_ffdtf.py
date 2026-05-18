@@ -193,9 +193,10 @@ class EEG_IBI_FFDTF_Pipeline:
 
     def _load_eeg_and_ibi(self, eeg_file, ibi_file, role):
         """
-        Load EEG and IBI data from .nc files.
+        Load EEG and IBI data from .nc files along with their metadata.
 
         Data are loaded and converted to NumPy arrays for processing.
+        Extensive metadata (JSON-parsed) is also extracted for provenance tracking.
 
         Parameters
         ----------
@@ -232,6 +233,22 @@ class EEG_IBI_FFDTF_Pipeline:
 
         event_duration_s : float
             Duration of the recorded event in seconds.
+            
+        notes : str or float
+            Additional notes from the metadata.
+            
+        child_info : dict
+            Dictionary containing data (age, group, sex).
+            
+        processing_history : str
+            String tracking the preprocessing steps applied to the data.
+            
+        event_order : list of str
+            List defining the chronological order of experimental films.
+            
+        eeg_settings : dict
+            Dictionary containing EEG filtration parameters and references 
+            (large filter matrices 'a' and 'b' are stripped for memory efficiency).
         """
         with xr.open_dataarray(eeg_file) as da_eeg:
             eeg_data = da_eeg.values.T.copy()
@@ -240,6 +257,35 @@ class EEG_IBI_FFDTF_Pipeline:
             event_duration_s = float(da_eeg.attrs['event_duration_s'])
             raw_fs_eeg = da_eeg.attrs.get('sampling_freq') or da_eeg.attrs.get('sfreq')
             
+            notes = da_eeg.attrs.get('notes', np.nan)
+            processing_history = da_eeg.attrs.get('processing_history', 'No information about pipeline')
+            
+            child_info = {}
+            event_order = []
+            eeg_settings = {}
+
+            if 'metadata_json' in da_eeg.attrs:
+                meta_raw = da_eeg.attrs['metadata_json']
+                if isinstance(meta_raw, str):
+                    try:
+                        clean_str = meta_raw.replace("'", '"') \
+                                            .replace('nan', 'null') \
+                                            .replace('True', 'true') \
+                                            .replace('False', 'false')
+                        meta_raw = json.loads(clean_str)
+                    except json.JSONDecodeError:
+                        meta_raw = {}
+                        
+                child_info = meta_raw.get('child_info', {})
+                event_order = meta_raw.get('event_order', [])
+                eeg_settings = meta_raw.get('eeg', {})
+                
+                if 'filtration' in eeg_settings:
+                    for filter_name, filter_params in eeg_settings['filtration'].items():
+                        if isinstance(filter_params, dict):
+                            filter_params.pop('a', None)
+                            filter_params.pop('b', None)
+
             if raw_fs_eeg is not None:
                 fs_eeg = float(raw_fs_eeg)
             else:
@@ -257,7 +303,7 @@ class EEG_IBI_FFDTF_Pipeline:
                 fs_ibi = fs_eeg
                 print(f" [INFO] {role}: Missing IBI sampling freq. Copying from EEG ({fs_ibi} Hz)")
         
-        return time_s, eeg_data, fs_eeg, channel_names, ibi_data, fs_ibi, event_duration_s
+        return time_s, eeg_data, fs_eeg, channel_names, ibi_data, fs_ibi, event_duration_s, notes, child_info, processing_history, event_order, eeg_settings
 
 
     def _alpha_bandpass_filter(self, data, fs, lowcut=8, highcut=12, order=4, axis=-1):
@@ -680,8 +726,8 @@ class EEG_IBI_FFDTF_Pipeline:
                 print(f" [OK] Loaded EEG (cg) : {eeg_cg.name}")
                 print(f" [OK] Loaded IBI (cg) : {ibi_cg.name}")
 
-                _ ,eeg_data_ch, fs_eeg, channel_names, ibi_data_ch, fs_ibi, _ = self._load_eeg_and_ibi(eeg_ch, ibi_ch, role = "Child")
-                _ ,eeg_data_cg, fs_eeg, channel_names, ibi_data_cg, fs_ibi, _ = self._load_eeg_and_ibi(eeg_cg, ibi_cg, role = "Care Giver")
+                _ ,eeg_data_ch, fs_eeg, channel_names, ibi_data_ch, fs_ibi, _, notes, child_info, processing_history, event_order, eeg_settings = self._load_eeg_and_ibi(eeg_ch, ibi_ch, role="Child")
+                _ ,eeg_data_cg, fs_eeg, channel_names, ibi_data_cg, fs_ibi, _, _, _, _, _, _ = self._load_eeg_and_ibi(eeg_cg, ibi_cg, role="Care Giver")
 
                 filtered_eeg_ch = self._alpha_bandpass_filter(eeg_data_ch, fs_eeg)
                 filtered_eeg_cg = self._alpha_bandpass_filter(eeg_data_cg, fs_eeg)
@@ -763,6 +809,12 @@ class EEG_IBI_FFDTF_Pipeline:
                     fig_name=fig_name_global
                 )
 
+                processing_history += (
+                    " -> Butterworth bandpass filter for alpha band extraction -> Compute Frontal Alpha Asymmetry (FAA) using Hilbert transform"
+                    f" -> Downsampled signal from {fs_eeg} to {self.fs_ds} -> crop_signal to target one minute"
+                    f" -> creates {self.n_windows} windows ->computing global and windowed ffDTF")
+
+
                 # Build result object
                 result = {
                     "mvar": {
@@ -784,6 +836,11 @@ class EEG_IBI_FFDTF_Pipeline:
                             "n_windows": self.n_windows,
                             "window_size": self.window_size,
                         },
+                        "notes": notes,
+                        "child_info": child_info,
+                        "event_order": event_order,
+                        "eeg_settings": eeg_settings,
+                        "processing_history": processing_history,
                         "computed_at": datetime.now().isoformat(),
                     }
                 }
