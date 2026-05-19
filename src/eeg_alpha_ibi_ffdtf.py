@@ -90,7 +90,7 @@ class EEG_IBI_FFDTF_Pipeline:
         self.fs_ds = float(fs_downsampled)
 
         self.freq_min = 1.0                                 # Minimum frequency for analysis.
-        self.freq_step = 0.1                                # Frequency resolution.
+        self.freq_step = 0.01                               # Frequency resolution.
         nyquist_limit = self.fs_ds / 2.0
         self.freq_max = nyquist_limit - self.freq_step      # Dynamic maximum frequency
 
