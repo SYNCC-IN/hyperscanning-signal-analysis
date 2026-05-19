@@ -20,8 +20,7 @@ from src.mtmvar import (
 
 class EEG_IBI_FFDTF_Pipeline:
     def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1,
-                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0,
-                 n_windows:int = 3, window_size:int = None, ar_p:int = 5,
+                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled: float = 8.0, n_windows: int = 3, window_size: int = None, ar_p: int = 5,
                  plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
         Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
@@ -89,10 +88,9 @@ class EEG_IBI_FFDTF_Pipeline:
         self.right_chan = right_frontal_eeg_channel
         self.fs_ds = float(fs_downsampled)
 
-        self.freq_min = 1.0                                 # Minimum frequency for analysis.
-        self.freq_step = 0.01                               # Frequency resolution.
-        nyquist_limit = self.fs_ds / 2.0
-        self.freq_max = nyquist_limit - self.freq_step      # Dynamic maximum frequency
+        self.freq_min = 0.01                    # Minimum frequency for analysis.
+        self.freq_step = 0.01                   # Frequency resolution.
+        self.freq_max = 2                       # Maximum frequency for analysis.
 
         self.n_windows = n_windows
         self.window_size = window_size
@@ -755,7 +753,7 @@ class EEG_IBI_FFDTF_Pipeline:
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
                 # and preventing scale dominance between EEG-derived FAA and physiological IBI signals
                 signals_to_ffDTF = (signals_to_ffDTF - np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
-
+            
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
                 print(" [OK] Signal conditioning complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
