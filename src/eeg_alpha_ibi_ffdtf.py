@@ -25,10 +25,10 @@ class EEG_IBI_FFDTF_Pipeline:
         """
         Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
 
-        This class implements a full processing workflow for dyadic recordings,
-        including EEG preprocessing, frontal alpha asymmetry (FAA) computation,
-        IBI preprocessing, signal synchronization, resampling, and preparation
-        for multivariate connectivity analysis using ffDTF.
+        This class implements a full processing workflow for dyadic EEG recordings.
+        The pipeline includes preprocessing, frontal alpha asymmetry (FAA) computation, downsampling,
+        cropping, windowing, and z-score normalization. It then computes the ffDTF for multivariate connectivity of FAA and IBI signals,
+        saving the processed data and generated plots to files to facilitate further downstream analysis.
 
         During initialization, the pipeline automatically scans the provided
         directory and loads EEG and IBI .nc files for all valid dyads and target events.
@@ -742,12 +742,12 @@ class EEG_IBI_FFDTF_Pipeline:
                 ibi_cg_ds = self._downsample_signal(ibi_cg, fs_ibi, self.fs_ds)
 
 
-                faa_ch_croped = self._crop_signal(faa_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                ibi_ch_croped = self._crop_signal(ibi_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                faa_cg_croped = self._crop_signal(faa_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                ibi_cg_croped = self._crop_signal(ibi_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                faa_ch_cropped = self._crop_signal(faa_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_ch_cropped = self._crop_signal(ibi_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                faa_cg_cropped = self._crop_signal(faa_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_cg_cropped = self._crop_signal(ibi_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
 
-                signals_to_ffDTF = np.vstack([faa_ch_croped, ibi_ch_croped, faa_cg_croped, ibi_cg_croped])
+                signals_to_ffDTF = np.vstack([faa_ch_cropped, ibi_ch_cropped, faa_cg_cropped, ibi_cg_cropped])
 
                 # Standardization of multivariate signals (channel-wise z-score normalization)
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
