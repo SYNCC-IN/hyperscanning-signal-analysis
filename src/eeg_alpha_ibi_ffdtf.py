@@ -1,4 +1,5 @@
 import os
+import gc
 from contextlib import redirect_stdout
 import json
 from datetime import datetime
@@ -6,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.signal import butter, sosfiltfilt, hilbert, resample_poly
 from scipy.fft import next_fast_len
@@ -665,7 +668,9 @@ class EEG_IBI_FFDTF_Pipeline:
                 plt.show()
                 
             # close all for preventing memory leakage
+            fig.clf() 
             plt.close('all') 
+            gc.collect()
 
         return ff_dtf, spectra, p_opt
 
