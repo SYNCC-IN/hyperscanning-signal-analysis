@@ -1,17 +1,21 @@
 import json
-import os
-import re
-from datetime import datetime
 
-import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import scipy.signal as signal
 import xarray as xr
-from scipy.interpolate import CubicSpline
-import matplotlib.pyplot as plt
 
 from . import dataloader
+from .secore_helpers import (
+    align_h10_pairs_by_lag,
+    autodetect_latest_h10_recording,
+    load_h10_ibi,
+    resolve_h10_ibi_pair_paths,
+)
+from .statistics_helpers import (
+    compute_signal_lag,
+    fix_and_interpolate_ibi,
+    plot_h10_ecg_alignment,
+)
 
 __all__ = [
     "load_h10_ibi",
@@ -20,86 +24,6 @@ __all__ = [
     "build_h10_ibi_rmssd_xarray",
     "build_h10_ibi_rmssd_xarray_auto",
 ]
-
-
-def load_h10_ibi(path: str):
-    """Load H10 CSV file and return (stage, computer_timestamps_s, ibi_ms)."""
-    data = np.genfromtxt(path, delimiter=",")
-    return data[:, 0], data[:, 1], data[:, 2]
-
-
-def fix_and_interpolate_ibi(
-    ibi_cum_s,
-    stage,
-    fs_out=8,
-    samp_rate=1024,
-    window_size=30,
-):
-    """
-    Correct ectopic beats, interpolate IBI to a uniform grid, and compute RMSSD.
-
-    Returns
-    -------
-    t_interp, ibi_interp, stage_interp, nn_ms, t_nn, rmssd_interp
-    """
-    cum_samp = ibi_cum_s * samp_rate
-    _, nn_pos = nk.signal_fixpeaks(
-        cum_samp, sampling_rate=samp_rate, iterative=True, 
-        method="Kubios", 
-        alpha=4,       #  default 5.2 IQR multiplier for detection threshold → SENSITIVITY
-        window_width=61, # default 91 rolling window for threshold computation (in beats)
-        medfilt_order=11 # default 11 median filter window for mRR deviation
-    )
-
-    nn_ms = np.diff(nn_pos) / samp_rate * 1000.0
-    t_nn = np.cumsum(nn_ms) / 1000.0
-    cs = CubicSpline(t_nn, nn_ms)
-    t_interp = np.arange(0, ibi_cum_s[-1], 1 / fs_out)
-
-    rmssd_interp = np.full_like(t_interp, np.nan, dtype=float)
-    for i, t in enumerate(t_interp):
-        window_start = t - window_size
-        mask = (t_nn > window_start) & (t_nn <= t)
-        peaks_in_window = t_nn[mask]
-
-        if len(peaks_in_window) >= 3:
-            ibi_in_window = np.diff(peaks_in_window) * 1000.0
-            rmssd_interp[i] = np.sqrt(np.mean(np.diff(ibi_in_window) ** 2))
-
-    rmssd_series = pd.Series(rmssd_interp)
-    rmssd_interp = (
-        rmssd_series.interpolate(method="linear", limit_direction="both")
-        .fillna(0.0)
-        .values
-    )
-
-    stage_interp = np.round(np.interp(t_interp, ibi_cum_s, stage)).astype(int)
-    return t_interp, cs(t_interp), stage_interp, nn_ms, t_nn, rmssd_interp
-
-
-def compute_signal_lag(signal1, signal2, fs, plot=False, label1="", label2=""):
-    """Return the integer-sample lag that maximizes the cross-correlation."""
-    b, a = signal.butter(2, 0.01 / (fs / 2), btype="high")
-    s1 = signal.filtfilt(b, a, signal1.flatten())
-    s2 = signal.filtfilt(b, a, signal2.flatten())
-    xc = signal.correlate(s1, s2, mode="full")
-    lags = signal.correlation_lags(s1.size, s2.size, mode="full")
-    max_lag_samples = np.max(lags) - int(2000 * fs)
-    search_mask = (lags >= max_lag_samples)
-    best_idx = np.argmax(xc[search_mask])
-    lag = lags[search_mask][best_idx]
-
-    if plot:
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(lags, xc)
-        ax.set_title(f"Cross-correlation - {label1} vs {label2}")
-        fig.tight_layout()
-        plt.show()
-        plt.close(fig)
-
-    return lag
 
 
 def build_h10_ibi_rmssd_xarray(
@@ -131,26 +55,14 @@ def build_h10_ibi_rmssd_xarray(
     """
     dyad_id = f"W_{str(dyad_nr).zfill(3)}"
 
-    eeg_dir = os.path.join(data_base_path, dyad_id, "EEG")
-    ch_candidates = []
-    cg_candidates = []
-    if date and time_of_recording:
-        ch_candidates.append(
-            os.path.join(eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_ch}_IBI.csv")
-        )
-        cg_candidates.append(
-            os.path.join(eeg_dir, f"{dyad_id}_{date}_{time_of_recording}_{dev_cg}_IBI.csv")
-        )
-    ch_candidates.append(os.path.join(eeg_dir, f"{dyad_id}_{dev_ch}_IBI.csv"))
-    cg_candidates.append(os.path.join(eeg_dir, f"{dyad_id}_{dev_cg}_IBI.csv"))
-
-    path_ch = next((p for p in ch_candidates if os.path.exists(p)), None)
-    path_cg = next((p for p in cg_candidates if os.path.exists(p)), None)
-    if path_ch is None or path_cg is None:
-        raise FileNotFoundError(
-            f"Could not locate paired H10 IBI files for {dyad_id}. "
-            f"Checked CH={ch_candidates}, CG={cg_candidates}."
-        )
+    path_ch, path_cg = resolve_h10_ibi_pair_paths(
+        data_base_path=data_base_path,
+        dyad_id=dyad_id,
+        date=date,
+        time_of_recording=time_of_recording,
+        dev_ch=dev_ch,
+        dev_cg=dev_cg,
+    )
 
     stage_ch, _, ibi_ch = load_h10_ibi(path_ch)
     stage_cg, _, ibi_cg = load_h10_ibi(path_cg)
@@ -204,94 +116,38 @@ def build_h10_ibi_rmssd_xarray(
     print(f"Computed lags (in seconds) to ECG: CG={lag_cg/fs_ibi}, CH={lag_ch/fs_ibi}")
 
     lag_diff = lag_ch - lag_cg
-    if lag_diff > 0:
-        ibi_ch_i = ibi_ch_i[lag_diff:]
-        ibi_cg_i = ibi_cg_i[:-lag_diff]
-        rmssd_ch_i = rmssd_ch_i[lag_diff:]
-        rmssd_cg_i = rmssd_cg_i[:-lag_diff]
-        stage_ch_i = stage_ch_i[lag_diff:]
-        stage_cg_i = stage_cg_i[:-lag_diff]
-    elif lag_diff < 0:
-        ibi_cg_i = ibi_cg_i[-lag_diff:]
-        ibi_ch_i = ibi_ch_i[:lag_diff]
-        rmssd_cg_i = rmssd_cg_i[-lag_diff:]
-        rmssd_ch_i = rmssd_ch_i[:lag_diff]
-        stage_cg_i = stage_cg_i[-lag_diff:]
-        stage_ch_i = stage_ch_i[:lag_diff]
+    (
+        ibi_ch_i,
+        ibi_cg_i,
+        rmssd_ch_i,
+        rmssd_cg_i,
+        stage_ch_i,
+        stage_cg_i,
+    ) = align_h10_pairs_by_lag(
+        ibi_ch_i=ibi_ch_i,
+        ibi_cg_i=ibi_cg_i,
+        rmssd_ch_i=rmssd_ch_i,
+        rmssd_cg_i=rmssd_cg_i,
+        stage_ch_i=stage_ch_i,
+        stage_cg_i=stage_cg_i,
+        lag_diff=lag_diff,
+    )
 
     t_h10 = np.arange(len(ibi_cg_i)) / fs_ibi
 
     if plot:
-        
-
-        lag_cg_s = lag_cg / fs_ibi
-        lag_ch_s = lag_ch / fs_ibi
-
-        start_t = min(lag_ch, lag_cg)
-        t_ecg = np.arange(start_t, start_t + len(ibi_ch_ecg)) / fs_ibi
-
-        h10_start, h10_end = float(t_h10[0]), float(t_h10[-1])
-        ecg_start, ecg_end = float(t_ecg[0]), float(t_ecg[-1])
-        overlap_start = max(h10_start, ecg_start)
-        overlap_end = min(h10_end, ecg_end)
-
-        # Full range plot
-        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7), dpi=100)
-        axes[0].plot(t_h10, ibi_cg_i, label="H10 CG (aligned)")
-        axes[0].plot(t_ecg, ibi_cg_ecg, label="ECG CG", alpha=0.8)
-        axes[1].plot(t_h10, ibi_ch_i, label="H10 CH (aligned)")
-        axes[1].plot(t_ecg, ibi_ch_ecg, label="ECG CH", alpha=0.8)
-        axes[0].set_ylabel("IBI [ms]")
-        axes[1].set_ylabel("IBI [ms]")
-        axes[1].set_xlabel("Time [s]")
-        axes[0].set_title(f"CG alignment (lag={lag_cg} samples, {lag_cg_s:+.2f} s)")
-        axes[1].set_title(f"CH alignment (lag={lag_ch} samples, {lag_ch_s:+.2f} s)")
-        axes[0].legend()
-        axes[1].legend()
-        fig.suptitle("Alignment check: full time range", y=1.02)
-        plt.tight_layout()
-        if save_dir is not None:
-            os.makedirs(save_dir, exist_ok=True)
-            fig.savefig(os.path.join(save_dir, f"{dyad_id}_alignment_fullrange.png"), bbox_inches="tight", dpi=100)
-        plt.show()
-
-        # Zoomed plot
-        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 7),dpi=100)
-        axes[0].plot(t_h10, ibi_cg_i, label="H10 CG (aligned)")
-        axes[0].plot(t_ecg, ibi_cg_ecg, label="ECG CG", alpha=0.8)
-        axes[1].plot(t_h10, ibi_ch_i, label="H10 CH (aligned)")
-        axes[1].plot(t_ecg, ibi_ch_ecg, label="ECG CH", alpha=0.8)
-
-        if overlap_end > overlap_start:
-            axes[0].set_xlim(overlap_start, overlap_end)
-            axes[1].set_xlim(overlap_start, overlap_end)
-            axes[0].autoscale_view(scalex=False, scaley=True)
-            axes[1].autoscale_view(scalex=False, scaley=True)
-
-        axes[0].set_ylabel("IBI [ms]")
-        axes[1].set_ylabel("IBI [ms]")
-        axes[1].set_xlabel("Time [s]")
-        axes[0].set_title(f"CG alignment (lag={lag_cg} samples, {lag_cg_s:+.2f} s)")
-        axes[1].set_title(f"CH alignment (lag={lag_ch} samples, {lag_ch_s:+.2f} s)")
-        axes[0].legend()
-        axes[1].legend()
-
-        if overlap_end > overlap_start:
-            fig.suptitle(
-                f"Alignment check: zoomed to overlap [{overlap_start:.2f}, {overlap_end:.2f}] s",
-                y=1.02,
-            )
-        else:
-            fig.suptitle(
-                "Alignment check: no overlap between displayed H10 and ECG ranges",
-                y=1.02,
-            )
-
-        plt.tight_layout()
-        if save_dir is not None:
-            fig.savefig(os.path.join(save_dir, f"{dyad_id}_alignment_zoomed.png"), bbox_inches="tight", dpi=100)
-        plt.show()
-        #plt.close(fig)
+        plot_h10_ecg_alignment(
+            t_h10=t_h10,
+            ibi_cg_i=ibi_cg_i,
+            ibi_ch_i=ibi_ch_i,
+            ibi_cg_ecg=ibi_cg_ecg,
+            ibi_ch_ecg=ibi_ch_ecg,
+            lag_cg=lag_cg,
+            lag_ch=lag_ch,
+            fs_ibi=fs_ibi,
+            dyad_id=dyad_id,
+            save_dir=save_dir,
+        )
     # Load timing annotations and define event windows based on T1–T4, which mark key moments in the interaction.
     # timings_path = os.path.join(eeg_dir, f"{dyad_id}_1_25fps.txt")
     # with open(timings_path) as f:
@@ -403,47 +259,6 @@ def build_h10_ibi_rmssd_xarray(
     return out
 
 
-def _autodetect_latest_h10_recording(dyad_nr, data_base_path="../data"):
-    """Return (date, time_of_recording, device_ids) for the latest dyad H10 IBI recording pair."""
-    dyad_id = f"W_{str(dyad_nr).zfill(3)}"
-    eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
-    if not os.path.isdir(eeg_dir):
-        raise FileNotFoundError(f"EEG folder not found: {eeg_dir}")
-
-    pattern = re.compile(
-        rf"^{dyad_id}_(\d{{2}}_\d{{2}}_\d{{4}})_(\d{{2}}_\d{{2}})_([A-Za-z0-9]+)_IBI\.csv$"
-    )
-    groups = {}
-
-    for fn in os.listdir(eeg_dir):
-        m = pattern.match(fn)
-        if not m:
-            continue
-        date, rec_time, dev = m.groups()
-        key = (date, rec_time)
-        groups.setdefault(key, set()).add(dev)
-
-    valid_groups = [(k, sorted(v)) for k, v in groups.items() if len(v) >= 2]
-    if not valid_groups:
-        # Fallback: support non-timestamped naming, e.g., W_003_<DEVICE>_IBI.csv
-        simple_pattern = re.compile(rf"^{dyad_id}_([A-Za-z0-9]+)_IBI\.csv$")
-        simple_devices = []
-        for fn in os.listdir(eeg_dir):
-            m = simple_pattern.match(fn)
-            if m:
-                full_path = os.path.join(eeg_dir, fn)
-                if os.path.getsize(full_path) > 0:
-                    simple_devices.append(m.group(1))
-        simple_devices = sorted(set(simple_devices))
-        if len(simple_devices) >= 2:
-            return None, None, simple_devices
-        raise FileNotFoundError(f"No paired H10 IBI files found for {dyad_id} in {eeg_dir}")
-
-    valid_groups.sort(key=lambda kv: datetime.strptime(f"{kv[0][0]}_{kv[0][1]}", "%d_%m_%Y_%H_%M"))
-    (date, rec_time), devices = valid_groups[-1]
-    return date, rec_time, devices
-
-
 def build_h10_ibi_rmssd_xarray_auto(
     dyad_nr,
     video_timings, # dictionary with time to allign with the moments built based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
@@ -465,21 +280,26 @@ def build_h10_ibi_rmssd_xarray_auto(
     Ultra-short wrapper: only dyad_nr is required.
     Auto-detects latest recording date/time and CH/CG device IDs, then builds the xarray.
     """
-    date, rec_time, devices = _autodetect_latest_h10_recording(
+    date, rec_time, devices = autodetect_latest_h10_recording(
         dyad_nr, data_base_path=data_base_path
     )
 
     dev_ch = preferred_dev_ch if preferred_dev_ch in devices else None
     dev_cg = preferred_dev_cg if preferred_dev_cg in devices else None
 
-    # remaining = [d for d in devices if d not in {dev_ch, dev_cg}]
-    # if dev_ch is None:
-    #     dev_ch = remaining.pop(0)
-    # if dev_cg is None:
-    #     if remaining:
-    #         dev_cg = remaining.pop(0)
-    #     else:
-    #         dev_cg = [d for d in devices if d != dev_ch][0]
+    remaining = [d for d in devices if d not in {dev_ch, dev_cg}]
+    if dev_ch is None:
+        if not remaining:
+            raise ValueError(f"No available H10 device for CH in dyad W_{dyad_nr}.")
+        dev_ch = remaining.pop(0)
+    if dev_cg is None:
+        if remaining:
+            dev_cg = remaining.pop(0)
+        else:
+            alternatives = [d for d in devices if d != dev_ch]
+            if not alternatives:
+                raise ValueError(f"No available H10 device for CG in dyad W_{dyad_nr}.")
+            dev_cg = alternatives[0]
 
     print(
         f"Auto-detected latest recording for W_{dyad_nr}: "

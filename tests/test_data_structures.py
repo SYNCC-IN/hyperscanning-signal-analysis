@@ -545,8 +545,24 @@ class TestDataclasses:
         """Filtration dataclass should have correct defaults."""
         f = Filtration()
         assert f.notch == {'Q': None, 'freq': None, 'a': None, 'b': None, 'applied': False}
-        assert f.low_pass == {'type': None, 'a': None, 'b': None, 'applied': False}
-        assert f.high_pass == {'type': None, 'a': None, 'b': None, 'applied': False}
+        assert f.low_pass == {
+            'type': None,
+            'cut_f': None,
+            'order': None,
+            'f_type': None,
+            'a': None,
+            'b': None,
+            'applied': False,
+        }
+        assert f.high_pass == {
+            'type': None,
+            'cut_f': None,
+            'order': None,
+            'f_type': None,
+            'a': None,
+            'b': None,
+            'applied': False,
+        }
 
     def test_paths_defaults(self):
         """Paths dataclass should have correct defaults."""
