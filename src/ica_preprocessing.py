@@ -10,7 +10,6 @@ It supports:
 """
 
 from pathlib import Path
-import re
 from copy import deepcopy
 from typing import Optional, Sequence
 import numpy as np
@@ -28,6 +27,12 @@ from src.export import (
     get_export_metadata,
     plot_loaded_eeg_signals,
     _sanitize_netcdf_attrs_inplace,
+)
+from src.passive_io_helpers import (
+    ROLE_RE,
+    build_role_lookup,
+    discover_role_files,
+    pairs_from_lookup,
 )
 
 
@@ -51,7 +56,7 @@ class ICAPreprocessor:
     where ``ch`` is child and ``cg`` is caregiver.
     """
 
-    FILE_RE = re.compile(r'^(W_\d+)_EEG_(ch|cg)_(.+)$')
+    FILE_RE = ROLE_RE
 
     def __init__(self, export_folder: Path, target_events: list, valid_dyads: Optional[Sequence[str]] = None):
         self.export_folder = export_folder
@@ -81,24 +86,10 @@ class ICAPreprocessor:
             Sorted tuples of ``(dyad_id, event, child_path, caregiver_path)``
             only for dyad-event combinations where both roles exist.
         """
-        files = sorted(p for p in self.export_folder.rglob('*.nc') if '_EEG_' in p.name)
-        pairs = {}
-
-        for p in files:
-            m = self.FILE_RE.match(p.stem)
-            if m is None:
-                continue
-            dyad_id, role, event = m.group(1), m.group(2), m.group(3)
-            if event not in self.target_events:
-                continue
-            key = (dyad_id, event)
-            pairs.setdefault(key, {})[role] = p
-
-        complete = []
-        for (dyad_id, event), roles in sorted(pairs.items()):
-            if 'ch' in roles and 'cg' in roles:
-                complete.append((dyad_id, event, roles['ch'], roles['cg']))
-        return complete
+        role_files = discover_role_files(
+            self.export_folder, self.target_events, self.FILE_RE, "*.nc"
+        )
+        return pairs_from_lookup(build_role_lookup(role_files))
 
 
     @staticmethod

@@ -17,7 +17,7 @@ class TestComputeSignalLag:
         """Identical signals should return lag of 0."""
         rng = np.random.default_rng(0)
         s = rng.standard_normal(200)
-        lag = compute_signal_lag(s, s)
+        lag = compute_signal_lag(s, s, fs=1.0)
         assert lag == 0
 
     def test_known_positive_lag(self):
@@ -27,7 +27,7 @@ class TestComputeSignalLag:
         k = 20
         # np.roll(s, -k) shifts s left by k: s2 leads s1 by k samples
         s_shifted = np.roll(s, -k)
-        lag = compute_signal_lag(s, s_shifted)
+        lag = compute_signal_lag(s, s_shifted, fs=1.0)
         assert lag == k
 
     def test_known_negative_lag(self):
@@ -37,21 +37,21 @@ class TestComputeSignalLag:
         k = 15
         # np.roll(s, k) shifts s right by k: s2 lags s1 by k samples
         s_shifted = np.roll(s, k)
-        lag = compute_signal_lag(s, s_shifted)
+        lag = compute_signal_lag(s, s_shifted, fs=1.0)
         assert lag == -k
 
     def test_returns_int(self):
         """Return value should be a plain Python int (or numpy integer)."""
         rng = np.random.default_rng(3)
         s = rng.standard_normal(100)
-        lag = compute_signal_lag(s, s)
+        lag = compute_signal_lag(s, s, fs=1.0)
         assert isinstance(lag, (int, np.integer))
 
     def test_2d_input_flattened(self):
         """2-D column-vector inputs should be handled via flatten()."""
         rng = np.random.default_rng(4)
         s = rng.standard_normal((100, 1))
-        lag = compute_signal_lag(s, s)
+        lag = compute_signal_lag(s, s, fs=1.0)
         assert lag == 0
 
 

@@ -11,11 +11,11 @@ from .secore_helpers import (
     load_h10_ibi,
     resolve_h10_ibi_pair_paths,
 )
-from .statistics_helpers import (
+from .secore_signal_helpers import (
     compute_signal_lag,
     fix_and_interpolate_ibi,
-    plot_h10_ecg_alignment,
 )
+from .signal_plots import plot_h10_ecg_alignment
 
 __all__ = [
     "load_h10_ibi",
