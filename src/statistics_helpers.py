@@ -59,7 +59,7 @@ def fix_and_interpolate_ibi(
     return t_interp, cs(t_interp), stage_interp, nn_ms, t_nn, rmssd_interp
 
 
-def compute_signal_lag(signal1, signal2, fs=1.0, plot=False, label1="", label2=""):
+def compute_signal_lag(signal1, signal2, fs, plot=False, label1="", label2=""):
     """Return the integer-sample lag that maximizes the cross-correlation."""
     b, a = signal.butter(2, 0.01 / (fs / 2), btype="high")
     s1 = signal.filtfilt(b, a, signal1.flatten())
