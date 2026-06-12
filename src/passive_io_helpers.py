@@ -4,13 +4,11 @@ from pathlib import Path
 import numpy as np
 
 
-# Base pattern for exported role files: ``W_XXX_EEG_(ch|cg)_<event>``.
-ROLE_RE = re.compile(r"^(W_\d+)_EEG_(ch|cg)_(.+)$")
-# Cleaned outputs additionally carry a ``_cleaned`` suffix.
-CLEAN_RE = re.compile(r"^(W_\d+)_EEG_(ch|cg)_(.+)_cleaned$")
-
 # Attribute keys that may carry the sampling frequency, in priority order.
 FS_ATTR_KEYS = ("sampling_freq", "fs", "sfreq", "fs_hz")
+
+
+
 
 
 def infer_fs(time_s, attrs, keys=FS_ATTR_KEYS):
@@ -46,14 +44,32 @@ def get_event_mask(time_s, attrs):
         return time_s >= 0
     return np.ones_like(time_s, dtype=bool)
 
+def _role_file_regex(signal_type, cleaned=False):
+    """Compile the exported role-file stem pattern for a given signal type.
 
-def discover_role_files(folder, target_events, role_re, glob_pattern, valid_dyads=None):
+    Matches ``W_<id>_<SIGNAL>_(ch|cg)_<event>`` (with a trailing ``_cleaned``
+    when ``cleaned`` is True), capturing ``(dyad, role, event)``. ``signal_type``
+    is e.g. ``"EEG"``, ``"IBI"`` or ``"RMSSD"``.
+    """
+    suffix = r"_cleaned" if cleaned else ""
+    return re.compile(rf"^(W_\d+)_{re.escape(str(signal_type))}_(ch|cg)_(.+){suffix}$")
+
+def discover_role_files(
+    folder,
+    target_events,
+    signal_type="EEG",
+    glob_pattern="*.nc",
+    valid_dyads=None,
+    cleaned=False,
+):
     """Walk ``folder`` and return ``(path, dyad_id, role, event)`` role files.
 
-    Files whose stem does not match ``role_re`` (capturing ``dyad``, ``role``,
-    ``event``), whose event is not in ``target_events``, or whose dyad is not in
-    ``valid_dyads`` (when provided) are skipped.
+    The stem pattern is built from ``signal_type`` (e.g. ``"EEG"``, ``"IBI"``,
+    ``"RMSSD"``); pass ``cleaned=True`` to match ``*_cleaned`` outputs. Files
+    whose stem does not match, whose event is not in ``target_events``, or whose
+    dyad is not in ``valid_dyads`` (when provided) are skipped.
     """
+    role_re = _role_file_regex(signal_type, cleaned=cleaned)
     target_set = set(map(str, target_events))
     valid_set = None if valid_dyads is None else set(map(str, valid_dyads))
 
@@ -74,11 +90,16 @@ def discover_role_files(folder, target_events, role_re, glob_pattern, valid_dyad
     return out
 
 
-def discover_cleaned_role_files(cleaned_signals_folder, target_events, valid_dyads=None, clean_re=None):
-    """Discover cleaned ``*_cleaned.nc`` role files (see :func:`discover_role_files`)."""
-    rx = CLEAN_RE if clean_re is None else clean_re
+def discover_cleaned_role_files(cleaned_signals_folder, target_events, signal_type="EEG", valid_dyads=None):
+    """Discover cleaned ``*_cleaned.nc`` role files (see :func:`discover_role_files`).
+    This is for EEG files cleand by ICA"""
     return discover_role_files(
-        cleaned_signals_folder, target_events, rx, "*_cleaned.nc", valid_dyads=valid_dyads
+        cleaned_signals_folder,
+        target_events,
+        signal_type=signal_type,
+        glob_pattern="*_cleaned.nc",
+        valid_dyads=valid_dyads,
+        cleaned=True,
     )
 
 

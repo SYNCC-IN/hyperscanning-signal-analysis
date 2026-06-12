@@ -1,16 +1,15 @@
-import os
-import re
 import numpy as np
 import xarray as xr
 from scipy.signal import welch
 from scipy.interpolate import interp1d
 import warnings
 
+from src.passive_io_helpers import discover_cleaned_role_files
+
 # Suppress potential alignment warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 ROOT = "/Users/admin/Documents/Hoza/PROJEKTY/SYNCC_IN_LOCAL_HOME/DATA_film_cleaned/EEG"
-FILE_REGEX = r"^(W_\d+)_EEG_(ch|cg)_(.+)_cleaned\.nc$"
 ROLE = 'ch'
 TARGET_CH = 'Fz'
 TARGET_EVENTS = ['Peppa', 'Brave', 'Incredibles']
@@ -27,68 +26,62 @@ def get_psd(data, fs):
     return f[mask], p[mask]
 
 psd_list = []
-subjects_scanned = 0
 
-for subj_folder in os.listdir(ROOT):
-    subj_path = os.path.join(ROOT, subj_folder)
-    if not os.path.isdir(subj_path): continue
-    subjects_scanned += 1
-    
-    for filename in os.listdir(subj_path):
-        m = re.match(FILE_REGEX, filename)
-        if m:
-            role_found = m.group(2)
-            event_found = m.group(3)
-            
-            if role_found == ROLE and event_found in TARGET_EVENTS:
-                path = os.path.join(subj_path, filename)
-                try:
-                    # Try default engine first, fallback to netcdf4 if available
-                    ds = xr.open_dataset(path)
-                    
-                    # Based on standard MNE-derived .nc exports
-                    chan_names = []
-                    if 'channel' in ds.coords: chan_names = ds.channel.values
-                    elif 'chan' in ds.coords: chan_names = ds.chan.values
-                    
-                    # Case-insensitive Fz search
-                    fz_idx = -1
-                    for i, c in enumerate(chan_names):
-                        if str(c).upper() == 'FZ':
-                            fz_idx = i
-                            break
-                    
-                    if fz_idx == -1:
-                        ds.close()
-                        continue
-                    
-                    # Extract data - often in a variable named 'data' or the only 2D variable
-                    # If ds has 'data', use it
-                    if 'data' in ds.data_vars:
-                        # Dimensions are likely (channel, time)
-                        trace = ds.data.values[fz_idx, :]
-                    else:
-                        # Just grab the first data variable
-                        var_name = list(ds.data_vars.keys())[0]
-                        trace = ds[var_name].values[fz_idx, :]
-                    
-                    # Sampling frequency
-                    fs = 500.0 # Default fallback
-                    if 'time' in ds.coords:
-                        t = ds.time.values
-                        if len(t) > 1:
-                            dt = t[1] - t[0]
-                            if isinstance(dt, np.timedelta64):
-                                fs = 1e9 / dt.astype('float64')
-                            else:
-                                fs = 1.0 / dt
-                    
-                    f, p = get_psd(trace, fs)
-                    if f is not None:
-                        psd_list.append((f, p))
-                    ds.close()
-                except Exception:
-                    continue
+role_files = discover_cleaned_role_files(ROOT, TARGET_EVENTS, signal_type="EEG")
+subjects_scanned = len({dyad_id for _, dyad_id, _, _ in role_files})
+
+for file_path, dyad_id, role_found, event_found in role_files:
+    if role_found != ROLE:
+        continue
+
+    path = str(file_path)
+    try:
+        # Try default engine first, fallback to netcdf4 if available
+        ds = xr.open_dataset(path)
+
+        # Based on standard MNE-derived .nc exports
+        chan_names = []
+        if 'channel' in ds.coords: chan_names = ds.channel.values
+        elif 'chan' in ds.coords: chan_names = ds.chan.values
+
+        # Case-insensitive Fz search
+        fz_idx = -1
+        for i, c in enumerate(chan_names):
+            if str(c).upper() == 'FZ':
+                fz_idx = i
+                break
+
+        if fz_idx == -1:
+            ds.close()
+            continue
+
+        # Extract data - often in a variable named 'data' or the only 2D variable
+        # If ds has 'data', use it
+        if 'data' in ds.data_vars:
+            # Dimensions are likely (channel, time)
+            trace = ds.data.values[fz_idx, :]
+        else:
+            # Just grab the first data variable
+            var_name = list(ds.data_vars.keys())[0]
+            trace = ds[var_name].values[fz_idx, :]
+
+        # Sampling frequency
+        fs = 500.0 # Default fallback
+        if 'time' in ds.coords:
+            t = ds.time.values
+            if len(t) > 1:
+                dt = t[1] - t[0]
+                if isinstance(dt, np.timedelta64):
+                    fs = 1e9 / dt.astype('float64')
+                else:
+                    fs = 1.0 / dt
+
+        f, p = get_psd(trace, fs)
+        if f is not None:
+            psd_list.append((f, p))
+        ds.close()
+    except Exception:
+        continue
 
 if not psd_list:
     print(f"No Fz traces found. Scanned {subjects_scanned} subjects.")

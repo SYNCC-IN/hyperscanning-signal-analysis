@@ -29,7 +29,6 @@ from src.export import (
     _sanitize_netcdf_attrs_inplace,
 )
 from src.passive_io_helpers import (
-    ROLE_RE,
     build_role_lookup,
     discover_role_files,
     pairs_from_lookup,
@@ -56,7 +55,7 @@ class ICAPreprocessor:
     where ``ch`` is child and ``cg`` is caregiver.
     """
 
-    FILE_RE = ROLE_RE
+    SIGNAL_TYPE = "EEG"
 
     def __init__(self, export_folder: Path, target_events: list, valid_dyads: Optional[Sequence[str]] = None):
         self.export_folder = export_folder
@@ -80,6 +79,9 @@ class ICAPreprocessor:
     def _discover_complete_role_files(self):
         """Return complete child/caregiver dyad-event tuples for target events.
 
+        Honors ``self.valid_dyads`` (when set) via the discovery helper, so only
+        allowlisted dyads are scanned.
+
         Returns
         -------
         list[tuple[str, str, Path, Path]]
@@ -87,7 +89,11 @@ class ICAPreprocessor:
             only for dyad-event combinations where both roles exist.
         """
         role_files = discover_role_files(
-            self.export_folder, self.target_events, self.FILE_RE, "*.nc"
+            self.export_folder,
+            self.target_events,
+            signal_type=self.SIGNAL_TYPE,
+            glob_pattern="*.nc",
+            valid_dyads=self.valid_dyads,
         )
         return pairs_from_lookup(build_role_lookup(role_files))
 
@@ -178,9 +184,13 @@ class ICAPreprocessor:
         self.smoke_test = smoke_test
         self.smoke_dyads_n = smoke_dyads_n
 
+        # Discovery already applies the valid_dyads allowlist (when set).
         pairs_all = self._discover_complete_role_files()
         if not pairs_all:
-            raise FileNotFoundError(f"No EEG NetCDF files found for events {self.target_events} under: {self.export_folder}")
+            allowlist_note = "" if self.valid_dyads is None else " (after valid_dyads allowlist)"
+            raise FileNotFoundError(
+                f"No EEG NetCDF files found for events {self.target_events}{allowlist_note} under: {self.export_folder}"
+            )
 
         events_required = set(self.target_events)
         events_by_dyad = {}
@@ -191,9 +201,6 @@ class ICAPreprocessor:
             dyad_id for dyad_id, evs in events_by_dyad.items()
             if events_required.issubset(evs)
         ])
-
-        if self.valid_dyads is not None:
-            complete_dyads = [d for d in complete_dyads if d in set(self.valid_dyads)]
 
         pairs_selected = [p for p in pairs_all if p[0] in set(complete_dyads)]
         if not pairs_selected:

@@ -8,24 +8,12 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
+from .plotting_utils import get_palette
 from .statistics import _split_channel_pair, prepare_group_comparison_df
 
 
 def _default_posthoc_palette(slide_palette=None):
-    base = {
-        "td": "#2F97A7",
-        "asd": "#A7CF00",
-        "teal_dark": "#1F6A78",
-        "gold": "#E6BC34",
-        "gold_dark": "#9F7D1C",
-        "bg_alt": "#EAF2F4",
-        "grid": "#C7D6DB",
-        "neutral": "#7E8F95",
-        "accent": "#2ca02c",
-    }
-    if slide_palette is not None:
-        base.update(dict(slide_palette))
-    return base
+    return get_palette(slide_palette)
 
 
 def plot_boxplots_for_posthoc(wide, events, title_prefix, slide_palette=None):

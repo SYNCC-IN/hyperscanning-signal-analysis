@@ -35,6 +35,17 @@ def bh_fdr(p_values):
     return q
 
 
+def _q_to_label(q):
+    """Map an FDR q-value to a significance label ('sig'/'trend'/'ns'/'n/a')."""
+    if not np.isfinite(q):
+        return 'n/a'
+    if q < 0.05:
+        return 'sig (q<0.05)'
+    if q < 0.10:
+        return 'trend (q<0.10)'
+    return 'ns'
+
+
 def ols_fit(y, X):
     """Least-squares fit; returns ``(beta, y_hat, resid, rss)``."""
     beta, *_ = np.linalg.lstsq(X, y, rcond=None)

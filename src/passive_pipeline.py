@@ -8,8 +8,8 @@ from .passive_io_helpers import build_role_lookup, discover_role_files, pairs_fr
 
 def build_real_and_surrogate_pairs(
     cleaned_signals_folder,
-    clean_re,
     target_events,
+    signal_type="EEG",
     valid_dyads=None,
     process_only_smoke_dyads=False,
     smoke_max_real_dyads=4,
@@ -19,7 +19,11 @@ def build_real_and_surrogate_pairs(
     surrogate_subset_size=50,
 ):
     role_files = discover_role_files(
-        cleaned_signals_folder, target_events, clean_re, "*_cleaned.nc"
+        cleaned_signals_folder,
+        target_events,
+        signal_type=signal_type,
+        glob_pattern="*_cleaned.nc",
+        cleaned=True,
     )
     pair_lookup = build_role_lookup(role_files)
     real_pairs_all = pairs_from_lookup(pair_lookup)
