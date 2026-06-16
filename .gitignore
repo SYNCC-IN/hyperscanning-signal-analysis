@@ -21,6 +21,7 @@ Thumbs.db
 # Data files (if they are large or sensitive)
 # DATA/
 RESULTS/
+RESULTS_group_analysis
 DATA_film_cleaned/
 DATA_film_raw/
 
