@@ -1,4 +1,5 @@
 import os
+import gc
 from contextlib import redirect_stdout
 import json
 from datetime import datetime
@@ -6,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.signal import butter, sosfiltfilt, hilbert, resample_poly
 from scipy.fft import next_fast_len
@@ -20,16 +23,15 @@ from src.mtmvar import (
 
 class EEG_IBI_FFDTF_Pipeline:
     def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1,
-                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled:float = 8.0,
-                 n_windows:int = 3, window_size:int = None, ar_p:int = 5,
+                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled: float = 8.0, n_windows: int = 3, window_size: int = None, ar_p: int = 5,
                  plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
         """
         Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
 
-        This class implements a full processing workflow for dyadic recordings,
-        including EEG preprocessing, frontal alpha asymmetry (FAA) computation,
-        IBI preprocessing, signal synchronization, resampling, and preparation
-        for multivariate connectivity analysis using ffDTF.
+        This class implements a full processing workflow for dyadic EEG recordings.
+        The pipeline includes preprocessing, frontal alpha asymmetry (FAA) computation, downsampling,
+        cropping, windowing, and z-score normalization. It then computes the ffDTF for multivariate connectivity of FAA and IBI signals,
+        saving the processed data and generated plots to files to facilitate further downstream analysis.
 
         During initialization, the pipeline automatically scans the provided
         directory and loads EEG and IBI .nc files for all valid dyads and target events.
@@ -89,10 +91,9 @@ class EEG_IBI_FFDTF_Pipeline:
         self.right_chan = right_frontal_eeg_channel
         self.fs_ds = float(fs_downsampled)
 
-        self.freq_min = 1.0                                 # Minimum frequency for analysis.
-        self.freq_step = 0.1                                # Frequency resolution.
-        nyquist_limit = self.fs_ds / 2.0
-        self.freq_max = nyquist_limit - self.freq_step      # Dynamic maximum frequency
+        self.freq_min = 0.01                    # Minimum frequency for analysis.
+        self.freq_step = 0.01                   # Frequency resolution.
+        self.freq_max = 2                       # Maximum frequency for analysis.
 
         self.n_windows = n_windows
         self.window_size = window_size
@@ -193,9 +194,10 @@ class EEG_IBI_FFDTF_Pipeline:
 
     def _load_eeg_and_ibi(self, eeg_file, ibi_file, role):
         """
-        Load EEG and IBI data from .nc files.
+        Load EEG and IBI data from .nc files along with their metadata.
 
         Data are loaded and converted to NumPy arrays for processing.
+        Extensive metadata (JSON-parsed) is also extracted for provenance tracking.
 
         Parameters
         ----------
@@ -232,6 +234,22 @@ class EEG_IBI_FFDTF_Pipeline:
 
         event_duration_s : float
             Duration of the recorded event in seconds.
+            
+        notes : str or float
+            Additional notes from the metadata.
+            
+        child_info : dict
+            Dictionary containing data (age, group, sex).
+            
+        processing_history : str
+            String tracking the preprocessing steps applied to the data.
+            
+        event_order : list of str
+            List defining the chronological order of experimental films.
+            
+        eeg_settings : dict
+            Dictionary containing EEG filtration parameters and references 
+            (large filter matrices 'a' and 'b' are stripped for memory efficiency).
         """
         with xr.open_dataarray(eeg_file) as da_eeg:
             eeg_data = da_eeg.values.T.copy()
@@ -240,6 +258,35 @@ class EEG_IBI_FFDTF_Pipeline:
             event_duration_s = float(da_eeg.attrs['event_duration_s'])
             raw_fs_eeg = da_eeg.attrs.get('sampling_freq') or da_eeg.attrs.get('sfreq')
             
+            notes = da_eeg.attrs.get('notes', np.nan)
+            processing_history = da_eeg.attrs.get('processing_history', 'No information about pipeline')
+            
+            child_info = {}
+            event_order = []
+            eeg_settings = {}
+
+            if 'metadata_json' in da_eeg.attrs:
+                meta_raw = da_eeg.attrs['metadata_json']
+                if isinstance(meta_raw, str):
+                    try:
+                        clean_str = meta_raw.replace("'", '"') \
+                                            .replace('nan', 'null') \
+                                            .replace('True', 'true') \
+                                            .replace('False', 'false')
+                        meta_raw = json.loads(clean_str)
+                    except json.JSONDecodeError:
+                        meta_raw = {}
+                        
+                child_info = meta_raw.get('child_info', {})
+                event_order = meta_raw.get('event_order', [])
+                eeg_settings = meta_raw.get('eeg', {})
+                
+                if 'filtration' in eeg_settings:
+                    for filter_name, filter_params in eeg_settings['filtration'].items():
+                        if isinstance(filter_params, dict):
+                            filter_params.pop('a', None)
+                            filter_params.pop('b', None)
+
             if raw_fs_eeg is not None:
                 fs_eeg = float(raw_fs_eeg)
             else:
@@ -257,7 +304,7 @@ class EEG_IBI_FFDTF_Pipeline:
                 fs_ibi = fs_eeg
                 print(f" [INFO] {role}: Missing IBI sampling freq. Copying from EEG ({fs_ibi} Hz)")
         
-        return time_s, eeg_data, fs_eeg, channel_names, ibi_data, fs_ibi, event_duration_s
+        return time_s, eeg_data, fs_eeg, channel_names, ibi_data, fs_ibi, event_duration_s, notes, child_info, processing_history, event_order, eeg_settings
 
 
     def _alpha_bandpass_filter(self, data, fs, lowcut=8, highcut=12, order=4, axis=-1):
@@ -621,7 +668,9 @@ class EEG_IBI_FFDTF_Pipeline:
                 plt.show()
                 
             # close all for preventing memory leakage
+            fig.clf() 
             plt.close('all') 
+            gc.collect()
 
         return ff_dtf, spectra, p_opt
 
@@ -680,8 +729,8 @@ class EEG_IBI_FFDTF_Pipeline:
                 print(f" [OK] Loaded EEG (cg) : {eeg_cg.name}")
                 print(f" [OK] Loaded IBI (cg) : {ibi_cg.name}")
 
-                _ ,eeg_data_ch, fs_eeg, channel_names, ibi_data_ch, fs_ibi, _ = self._load_eeg_and_ibi(eeg_ch, ibi_ch, role = "Child")
-                _ ,eeg_data_cg, fs_eeg, channel_names, ibi_data_cg, fs_ibi, _ = self._load_eeg_and_ibi(eeg_cg, ibi_cg, role = "Care Giver")
+                _ ,eeg_data_ch, fs_eeg, channel_names, ibi_data_ch, fs_ibi, _, notes, child_info, processing_history, event_order, eeg_settings = self._load_eeg_and_ibi(eeg_ch, ibi_ch, role="Child")
+                _ ,eeg_data_cg, fs_eeg, channel_names, ibi_data_cg, fs_ibi, _, _, _, _, _, _ = self._load_eeg_and_ibi(eeg_cg, ibi_cg, role="Care Giver")
 
                 filtered_eeg_ch = self._alpha_bandpass_filter(eeg_data_ch, fs_eeg)
                 filtered_eeg_cg = self._alpha_bandpass_filter(eeg_data_cg, fs_eeg)
@@ -698,21 +747,21 @@ class EEG_IBI_FFDTF_Pipeline:
                 ibi_cg_ds = self._downsample_signal(ibi_cg, fs_ibi, self.fs_ds)
 
 
-                faa_ch_croped = self._crop_signal(faa_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                ibi_ch_croped = self._crop_signal(ibi_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                faa_cg_croped = self._crop_signal(faa_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
-                ibi_cg_croped = self._crop_signal(ibi_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                faa_ch_cropped = self._crop_signal(faa_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_ch_cropped = self._crop_signal(ibi_ch_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                faa_cg_cropped = self._crop_signal(faa_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
+                ibi_cg_cropped = self._crop_signal(ibi_cg_ds, self.fs_ds, drop_front_sec=10, keep_duration_sec=60)
 
-                signals_to_ffDTF = np.vstack([faa_ch_croped, ibi_ch_croped, faa_cg_croped, ibi_cg_croped])
+                signals_to_ffDTF = np.vstack([faa_ch_cropped, ibi_ch_cropped, faa_cg_cropped, ibi_cg_cropped])
 
                 # Standardization of multivariate signals (channel-wise z-score normalization)
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
                 # and preventing scale dominance between EEG-derived FAA and physiological IBI signals
                 signals_to_ffDTF = (signals_to_ffDTF - np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
-
+            
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
-                print(" [OK] Pre-processing complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
+                print(" [OK] Signal conditioning complete (Alpha -> FAA -> Downsample -> Crop -> Z-Score)")
 
                 # Checking relation p_opt to fixed self.ar_p
                 if self.ar_p is not None:
@@ -763,6 +812,8 @@ class EEG_IBI_FFDTF_Pipeline:
                     fig_name=fig_name_global
                 )
 
+                processing_history += f" -> Alpha -> FAA -> Downsample from {fs_eeg} to {self.fs_ds} -> Crop -> Z-Score -> {self.n_windows} windowing -> Computing global and windowed ffDTF"
+
                 # Build result object
                 result = {
                     "mvar": {
@@ -784,6 +835,11 @@ class EEG_IBI_FFDTF_Pipeline:
                             "n_windows": self.n_windows,
                             "window_size": self.window_size,
                         },
+                        "notes": notes,
+                        "child_info": child_info,
+                        "event_order": event_order,
+                        "eeg_settings": eeg_settings,
+                        "processing_history": processing_history,
                         "computed_at": datetime.now().isoformat(),
                     }
                 }
