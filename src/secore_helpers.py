@@ -5,6 +5,20 @@ from datetime import datetime
 import numpy as np
 
 
+def _resolve_eeg_directory(data_base_path, dyad_id):
+    """Resolve dyad EEG directory supporting both EEG and eeg names."""
+    candidates = [
+        os.path.join(data_base_path, dyad_id, "EEG"),
+        os.path.join(data_base_path, dyad_id, "eeg"),
+    ]
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            return candidate
+    raise FileNotFoundError(
+        f"EEG folder not found for {dyad_id}. Checked: {candidates}."
+    )
+
+
 def load_h10_ibi(path: str):
     """Load H10 CSV file and return (stage, computer_timestamps_s, ibi_ms)."""
     data = np.genfromtxt(path, delimiter=",")
@@ -20,7 +34,7 @@ def resolve_h10_ibi_pair_paths(
     dev_cg,
 ):
     """Resolve child/caregiver H10 IBI paths with timestamped and simple fallbacks."""
-    eeg_dir = os.path.join(data_base_path, dyad_id, "EEG")
+    eeg_dir = _resolve_eeg_directory(data_base_path, dyad_id)
     ch_candidates = []
     cg_candidates = []
 
@@ -56,9 +70,7 @@ def resolve_h10_ibi_pair_paths(
 def autodetect_latest_h10_recording(dyad_nr, data_base_path="../data"):
     """Return (date, time_of_recording, device_ids) for latest dyad H10 IBI pair."""
     dyad_id = f"W_{str(dyad_nr).zfill(3)}"
-    eeg_dir = os.path.join(data_base_path, dyad_id, "eeg")
-    if not os.path.isdir(eeg_dir):
-        raise FileNotFoundError(f"EEG folder not found: {eeg_dir}")
+    eeg_dir = _resolve_eeg_directory(data_base_path, dyad_id)
 
     pattern = re.compile(
         rf"^{dyad_id}_(\d{{2}}_\d{{2}}_\d{{4}})_(\d{{2}}_\d{{2}})_([A-Za-z0-9]+)_IBI\.csv$"

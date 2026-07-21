@@ -975,26 +975,6 @@ def _plot_scanned_events(
     plt.show()
 
 
-# ==============================================================================
-# I/O and Data Access Functions
-# ==============================================================================
-# For backwards compatibility, these functions are available:
-#   - save_to_file() and load_output_data() -> now in export module
-#   - get_eeg_data() -> now a static method of MultimodalData class
-#   - export_eeg_to_mne_raw() -> now multimodal_data.to_mne_raw() method
-
-# Backwards compatibility wrappers
-def save_to_file(multimodal_data, output_dir):
-    return export.save_to_file(multimodal_data, output_dir)
-
-def load_output_data(filename):
-    return export.load_output_data(filename)
-
-def get_eeg_data(df, who):
-    return MultimodalData.get_eeg_data(df, who)
-
-def export_eeg_to_mne_raw(multimodal_data, who, times=None, event=None, margin_around_event=0):
-    return multimodal_data.to_mne_raw(who, times, event, margin_around_event)
 # --------------  Load eye-tracking data -----------------
 
 

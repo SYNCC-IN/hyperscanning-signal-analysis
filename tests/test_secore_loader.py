@@ -7,6 +7,7 @@ to verify correct behavior without requiring real data files.
 import numpy as np
 import pytest
 
+from src import secore_loader
 from src.secore_loader import compute_signal_lag, fix_and_interpolate_ibi
 
 
@@ -108,3 +109,5 @@ class TestFixAndInterpolateIbi:
         ibi_cum_s, stage = self._make_synthetic_ibi()
         _, _, stage_interp, *_ = fix_and_interpolate_ibi(ibi_cum_s, stage, fs_out=4, window_size=5)
         assert stage_interp.dtype.kind in ("i", "u"), "stage_interp should have integer dtype"
+
+

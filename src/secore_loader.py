@@ -22,7 +22,6 @@ __all__ = [
     "fix_and_interpolate_ibi",
     "compute_signal_lag",
     "build_h10_ibi_rmssd_xarray",
-    "build_h10_ibi_rmssd_xarray_auto",
 ]
 
 
@@ -258,70 +257,3 @@ def build_h10_ibi_rmssd_xarray(
 
     return out
 
-
-def build_h10_ibi_rmssd_xarray_auto(
-    dyad_nr,
-    video_timings, # dictionary with time to allign with the moments built based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
-    data_base_path="../data",
-    fs_ibi=8,
-    window_size_rmssd_s=30,
-    decimate_factor_loader=8,
-    decimate_factor_align=16,
-    selected_time=(0, 220),
-    lowcut=1.0,
-    highcut=40.0,
-    eeg_filter_type="iir",
-    plot=False,
-    save_dir=None,
-    preferred_dev_ch=None,
-    preferred_dev_cg=None,
-):
-    """
-    Ultra-short wrapper: only dyad_nr is required.
-    Auto-detects latest recording date/time and CH/CG device IDs, then builds the xarray.
-    """
-    date, rec_time, devices = autodetect_latest_h10_recording(
-        dyad_nr, data_base_path=data_base_path
-    )
-
-    dev_ch = preferred_dev_ch if preferred_dev_ch in devices else None
-    dev_cg = preferred_dev_cg if preferred_dev_cg in devices else None
-
-    remaining = [d for d in devices if d not in {dev_ch, dev_cg}]
-    if dev_ch is None:
-        if not remaining:
-            raise ValueError(f"No available H10 device for CH in dyad W_{dyad_nr}.")
-        dev_ch = remaining.pop(0)
-    if dev_cg is None:
-        if remaining:
-            dev_cg = remaining.pop(0)
-        else:
-            alternatives = [d for d in devices if d != dev_ch]
-            if not alternatives:
-                raise ValueError(f"No available H10 device for CG in dyad W_{dyad_nr}.")
-            dev_cg = alternatives[0]
-
-    print(
-        f"Auto-detected latest recording for W_{dyad_nr}: "
-        f"{date} {rec_time}, CH={dev_ch}, CG={dev_cg}"
-    )
-
-    return build_h10_ibi_rmssd_xarray(
-        dyad_nr=dyad_nr,
-        date=date,
-        time_of_recording=rec_time,
-        dev_ch=dev_ch,
-        dev_cg=dev_cg,
-        video_timings=video_timings, # dictionary with time to allign with the moments built based on the timings_secore_hrv.csv in the interaction, in seconds (relative to the start of the recording)
-        data_base_path=data_base_path,
-        fs_ibi=fs_ibi,
-        window_size_rmssd_s=window_size_rmssd_s,
-        decimate_factor_loader=decimate_factor_loader,
-        decimate_factor_align=decimate_factor_align,
-        selected_time=selected_time,
-        lowcut=lowcut,
-        highcut=highcut,
-        eeg_filter_type=eeg_filter_type,
-        plot=plot,
-        save_dir=save_dir,
-    )

@@ -66,7 +66,7 @@ def _robust_ymax_from_notch(psd_by_role, analysis_channels, role_key, fmax):
     return float(ymax)
 
 
-def plot_role_overlay(psd_by_role, analysis_channels, rows, row_channels, max_cols, role_key, role_label, fmax=20.0, alpha=0.4):
+def plot_psd_overlay_grid_by_role(psd_by_role, analysis_channels, rows, row_channels, max_cols, role_key, role_label, fmax=20.0, alpha=0.4):
     spectrum_maxima = []
     for ch_name in analysis_channels:
         for freqs, pxx, event, dyad_id in psd_by_role[role_key].get(ch_name, []):

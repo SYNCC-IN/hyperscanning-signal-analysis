@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from .passive_io_helpers import build_role_lookup, discover_role_files, pairs_from_lookup
+from .passive_io_helpers import build_pairs_from_role_lookup, build_role_lookup, discover_role_files
 
 
 def build_real_and_surrogate_pairs(
@@ -26,7 +26,7 @@ def build_real_and_surrogate_pairs(
         cleaned=True,
     )
     pair_lookup = build_role_lookup(role_files)
-    real_pairs_all = pairs_from_lookup(pair_lookup)
+    real_pairs_all = build_pairs_from_role_lookup(pair_lookup)
 
     if valid_dyads is not None and len(valid_dyads) > 0:
         valid_set = set(valid_dyads)
@@ -74,7 +74,7 @@ def build_real_and_surrogate_pairs(
     return real_pairs_all, surrogate_pairs, selected_surrogate_dyads
 
 
-def run_ffdtf_batch(real_pairs_all, surrogate_pairs, compute_pair_fn):
+def run_ffdtf_batch_analysis(real_pairs_all, surrogate_pairs, compute_pair_fn):
     all_rows = []
     debug_rows = []
     failed = []
@@ -138,7 +138,7 @@ def run_ffdtf_batch(real_pairs_all, surrogate_pairs, compute_pair_fn):
     return ffdtf_env_df, ffdtf_env_debug_df, ffdtf_env_failed_df
 
 
-def extract_group_from_child_da(da_child, get_export_metadata_fn, valid_dyads_df=None):
+def extract_child_group_from_dataarray(da_child, get_export_metadata_fn, valid_dyads_df=None):
     grp = np.nan
 
     child_info_attr = da_child.attrs.get("child_info", np.nan)

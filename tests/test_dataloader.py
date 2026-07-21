@@ -11,6 +11,7 @@ import tempfile
 
 from src.data_structures import MultimodalData
 from src import dataloader
+from src import export
 
 
 class TestLoadEegDataIntegration:
@@ -326,10 +327,10 @@ class TestScanForEvents:
 
 
 class TestSaveAndLoadData:
-    """Test save_to_file and load_output_data functions."""
+    """Test canonical export.save_to_file and export.load_output_data functions."""
 
     def test_save_and_load_roundtrip(self):
-        """Data saved with save_to_file should be loadable with load_output_data."""
+        """Data saved with export.save_to_file should be loadable with export.load_output_data."""
         md = MultimodalData()
         md.id = "test_dyad"
         md.fs = 256
@@ -340,12 +341,12 @@ class TestSaveAndLoadData:
         })
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            dataloader.save_to_file(md, tmpdir)
+            export.save_to_file(md, tmpdir)
             
             filepath = os.path.join(tmpdir, f"{md.id}.joblib")
             assert os.path.exists(filepath)
             
-            loaded = dataloader.load_output_data(filepath)
+            loaded = export.load_output_data(filepath)
             
             assert loaded.id == md.id
             assert loaded.fs == md.fs
@@ -353,8 +354,8 @@ class TestSaveAndLoadData:
             pd.testing.assert_frame_equal(loaded.data, md.data)
 
     def test_load_output_data_nonexistent_file(self):
-        """load_output_data should handle nonexistent files gracefully."""
-        result = dataloader.load_output_data("/nonexistent/path/file.joblib")
+        """export.load_output_data should handle nonexistent files gracefully."""
+        result = export.load_output_data("/nonexistent/path/file.joblib")
         assert result is None
 
 

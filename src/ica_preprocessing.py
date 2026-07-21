@@ -29,9 +29,9 @@ from src.export import (
     _sanitize_netcdf_attrs_inplace,
 )
 from src.passive_io_helpers import (
+    build_pairs_from_role_lookup,
     build_role_lookup,
     discover_role_files,
-    pairs_from_lookup,
 )
 
 
@@ -95,7 +95,7 @@ class ICAPreprocessor:
             glob_pattern="*.nc",
             valid_dyads=self.valid_dyads,
         )
-        return pairs_from_lookup(build_role_lookup(role_files))
+        return build_pairs_from_role_lookup(build_role_lookup(role_files))
 
 
     @staticmethod

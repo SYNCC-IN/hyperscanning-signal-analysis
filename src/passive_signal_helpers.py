@@ -56,7 +56,7 @@ def node_to_roi(node_name, roi_prefix_map=None):
     return roi_prefix_map.get(prefix, "other")
 
 
-def build_row_channels(analysis_channels):
+def build_psd_channel_grid_layout(analysis_channels):
     row_channels = {0: [], 1: [], 2: []}
 
     for ch in analysis_channels:

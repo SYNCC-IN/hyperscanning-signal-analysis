@@ -111,7 +111,7 @@ def build_role_lookup(role_files):
     return lookup
 
 
-def pairs_from_lookup(lookup):
+def build_pairs_from_role_lookup(lookup):
     """Return sorted ``(dyad, event, ch_path, cg_path)`` for keys having both roles."""
     out = []
     for (dyad_id, event), roles in sorted(lookup.items()):

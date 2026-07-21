@@ -204,7 +204,7 @@ def _build_edge_long_complete(edge_df, target_events):
     return pd.DataFrame(rows)
 
 
-def _run_edge_rm_tests(edge_df, target_events, n_perm=5000, rng=None, min_dyads_per_group=5):
+def run_edgewise_repeated_measures_tests(edge_df, target_events, n_perm=5000, rng=None, min_dyads_per_group=5):
     if rng is None:
         rng = np.random.default_rng(0)
 
@@ -310,7 +310,7 @@ def _run_edge_rm_tests(edge_df, target_events, n_perm=5000, rng=None, min_dyads_
     }
 
 
-def _agg_op(series, method="mean"):
+def apply_aggregation_operator(series, method="mean"):
     if method == "sum":
         return float(series.sum())
     return float(series.mean())
@@ -332,7 +332,7 @@ def _parse_channel_pair(cp):
 # Backwards-compatible alias; canonical implementation lives in passive_signal_helpers.
 
 
-def _add_edge_parts(df):
+def add_edge_direction_parts(df):
     tmp = df.copy()
     parsed = tmp["channel_pair"].apply(_parse_channel_pair)
     tmp["src_role"] = parsed.apply(lambda x: np.nan if x is None else x["src_role"])
@@ -343,7 +343,7 @@ def _add_edge_parts(df):
     return tmp
 
 
-def _filter_direction_family(df, family="ch_to_cg"):
+def filter_edges_by_direction_family(df, family="ch_to_cg"):
     if family == "ch_to_cg":
         return df.loc[(df["src_role"] == "ch") & (df["dst_role"] == "cg")].copy()
     if family == "cg_to_ch":
@@ -351,7 +351,7 @@ def _filter_direction_family(df, family="ch_to_cg"):
     raise ValueError(f"Unknown family: {family}")
 
 
-def _run_rm_on_aggregated_keys(
+def run_repeated_measures_on_aggregated_units(
     df,
     key_col,
     n_perm=5000,
@@ -367,7 +367,7 @@ def _run_rm_on_aggregated_keys(
         seed = edge_seed(str(stat_key), seed_base)
         rng = np.random.default_rng(seed)
 
-        test_out = _run_edge_rm_tests(
+        test_out = run_edgewise_repeated_measures_tests(
             edge_df=part[["dyadID", "group_binary", "event", "ff_dtf"]].copy(),
             target_events=target_events,
             n_perm=n_perm,
