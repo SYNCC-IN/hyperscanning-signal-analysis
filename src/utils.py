@@ -12,7 +12,8 @@ import pandas as pd
 
 
 ### PLOTS ####
-def plot_signal_with_events(time, data, channels, marker_channel, event_to_marker, seleted_time):
+
+def plot_signal_with_events(time, data, channels, marker_channel, event_to_marker, selected_time):
     """
     Plot signal data with background colors indicating different events.
     
@@ -35,7 +36,7 @@ def plot_signal_with_events(time, data, channels, marker_channel, event_to_marke
     event_to_marker : dict
         Dictionary mapping event names (str) to marker values (int).
         Example: {'Peppa': 1, 'Incredibles': 2, 'Brave': 3}
-    seleted_time : list of float
+    selected_time : list of float
         [start_time, end_time] in seconds, used for plot title
     
     Returns
@@ -73,7 +74,7 @@ def plot_signal_with_events(time, data, channels, marker_channel, event_to_marke
         if event_name != '':
             event_colors[event_name] = colors[i % len(colors)]
 
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(15, 6), dpi=100)
 
     # Plot background colors for each event
     current_marker = marker_channel[0]
@@ -86,7 +87,7 @@ def plot_signal_with_events(time, data, channels, marker_channel, event_to_marke
                 event_name = marker_to_event[current_marker]
                 if event_name in event_colors:
                     plt.axvspan(segment_start, time[i-1], 
-                            alpha=0.3, color=event_colors[event_name], 
+                            alpha=0.6, color=event_colors[event_name], 
                             label=event_name if segment_start == time[0] or event_name not in plt.gca().get_legend_handles_labels()[1] else '')
             # Start new segment
             current_marker = marker_channel[i]
@@ -97,7 +98,7 @@ def plot_signal_with_events(time, data, channels, marker_channel, event_to_marke
         event_name = marker_to_event[current_marker]
         if event_name in event_colors:
             plt.axvspan(segment_start, time[-1], 
-                    alpha=0.3, color=event_colors[event_name],
+                    alpha=0.6, color=event_colors[event_name],
                     label=event_name if event_name not in plt.gca().get_legend_handles_labels()[1] else '')
 
     # Plot  data
@@ -106,7 +107,7 @@ def plot_signal_with_events(time, data, channels, marker_channel, event_to_marke
 
     plt.xlabel('Time (s)')
     plt.ylabel('Amplitude (µV)')
-    plt.title(f'EEG Signal ({", ".join(channels)}) and Event Markers between {seleted_time[0]}s and {seleted_time[1]}s')
+    plt.title(f'EEG Signal ({", ".join(channels)}) and Event Markers between {selected_time[0]}s and {selected_time[1]}s')
     plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()

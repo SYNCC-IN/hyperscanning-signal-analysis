@@ -101,6 +101,30 @@ def _build_export_metadata(multimodal_data, selected_modality):
         }
     return metadata
 
+
+def _sort_events_by_start(multimodal_data, event_names):
+    return sorted(
+        event_names,
+        key=lambda name: multimodal_data.events[name]["start"],
+    )
+
+
+def _build_events_structure(multimodal_data, ordered_event_names, chunk_start):
+    events_structure = []
+    for event_name in ordered_event_names:
+        event_info = multimodal_data.events[event_name]
+        start = float(event_info["start"])
+        duration = float(event_info["duration"])
+        events_structure.append(
+            {
+                "name": event_name,
+                "start_s": start,
+                "start_rel_s": start - float(chunk_start),
+                "duration_s": duration,
+            }
+        )
+    return events_structure
+
 def export_to_xarray(multimodal_data, selected_event, selected_channels, selected_modality, member, time_margin, verbose=True, logger: Optional[object] = None):
     '''Export selected signals from a MultimodalData instance to an xarray DataArray.
     Args:
@@ -206,6 +230,144 @@ def export_to_xarray(multimodal_data, selected_event, selected_channels, selecte
     return data_xr
 
 
+def export_chunk_to_xarray(
+    multimodal_data,
+    selected_events,
+    selected_channels,
+    selected_modality,
+    member,
+    time_margin,
+    chunk_name,
+    verbose=True,
+    logger: Optional[object] = None,
+):
+    '''Export a chunk spanning multiple events from a MultimodalData instance to xarray.
+
+    The exported time axis is reset to 0 at the start of the first event in ``selected_events``.
+
+    Args:
+        multimodal_data: The MultimodalData instance containing the data.
+        selected_events: Event names included in this chunk.
+        selected_channels: List of channel names to include (or None if modality does not need it).
+        selected_modality: The modality to export (e.g., 'EEG', 'ECG', 'ET', 'IBI', 'RMSSD', or 'diode').
+        member: The member to select ('ch' or 'cg').
+        time_margin: Margin in seconds to include before the first and after the last event.
+        chunk_name: Logical chunk label (e.g., 'passive_movies', 'talk').
+        verbose: If True, emit export progress messages.
+        logger: Optional logger-like object with .info(str). If provided and verbose=True,
+            messages are sent to logger.info instead of print.
+
+    Returns:
+        xarray.DataArray: Exported chunk with dimensions ``time`` and ``channel``.
+        chunks are meant to correspond to tasks in the experiment, 
+        and the time axis is reset to 0 at the start of the first event in ``selected_events``.
+    '''
+    if not selected_events:
+        raise ValueError("selected_events must be a non-empty list of event names.")
+
+    missing = [event_name for event_name in selected_events if event_name not in multimodal_data.events]
+    if missing:
+        raise ValueError(
+            f"Events not found: {missing}. Available events: {list(multimodal_data.events.keys())}"
+        )
+
+    ordered_events = _sort_events_by_start(multimodal_data, selected_events)
+    first_event = multimodal_data.events[ordered_events[0]]
+    last_event = multimodal_data.events[ordered_events[-1]]
+
+    chunk_start = float(first_event["start"])
+    chunk_end = float(last_event["start"] + last_event["duration"])
+
+    recording_start = multimodal_data.data["time"].min()
+    recording_end = multimodal_data.data["time"].max()
+
+    selected_time = [
+        max(recording_start, chunk_start - time_margin),
+        min(recording_end, chunk_end + time_margin),
+    ]
+
+    if verbose:
+        msg_1 = (
+            f"Chunk '{chunk_name}' spans events {ordered_events} from {chunk_start:.2f}s to {chunk_end:.2f}s"
+        )
+        msg_2 = (
+            f"Selected time range with ±{time_margin}s margin: {selected_time[0]:.2f}s to {selected_time[1]:.2f}s"
+        )
+        if logger is not None:
+            logger.info(msg_1)
+            logger.info(msg_2)
+        else:
+            print(msg_1)
+            print(msg_2)
+
+    if selected_modality in ('EEG', 'ET') and not selected_channels:
+        raise ValueError(
+            f"selected_channels must be a non-empty list for modality='{selected_modality}' when exporting chunk '{chunk_name}'."
+        )
+
+    signals = multimodal_data.get_signals(
+        mode=selected_modality,
+        member=member,
+        selected_channels=selected_channels,
+        selected_times=selected_time,
+    )
+    if signals is None:
+        raise ValueError(
+            f"No signals available for modality='{selected_modality}', member='{member}', "
+            f"channels={selected_channels}, chunk='{chunk_name}', events={ordered_events}."
+        )
+    time, channels, data = signals
+
+    # reset time to the beginning of the first event in the chunk
+    time = time - chunk_start
+
+    if selected_modality == 'EEG':
+        channels = [ch.replace(f'EEG_{member}_', '') for ch in channels]
+    elif selected_modality == 'ET':
+        channels = [ch.replace(f'ET_{member}_', '') for ch in channels]
+    elif selected_modality == 'IBI':
+        channels = [ch.replace(f'IBI_{member}', 'IBI') for ch in channels]
+    elif selected_modality == 'RMSSD':
+        channels = [ch.replace(f'RMSSD_{member}', 'RMSSD') for ch in channels]
+    elif selected_modality == 'ECG':
+        channels = [ch.replace(f'ECG_{member}', 'ECG') for ch in channels]
+    elif selected_modality == 'diode':
+        channels = ['diode']
+
+    channels = [str(ch) for ch in channels]
+
+    data_xr = xr.DataArray(
+        data,
+        coords=[time, channels],
+        dims=['time', 'channel'],
+        name='signals',
+    )
+
+    metadata = _build_export_metadata(multimodal_data, selected_modality)
+    events_structure = _build_events_structure(multimodal_data, ordered_events, chunk_start)
+
+    data_xr.attrs.update(
+        {
+            'dyad_id': multimodal_data.id,
+            'who': member,
+            'sampling_freq': float(multimodal_data.fs),
+            'task_name': chunk_name,
+            'task_start': 0.0,
+            'task_duration': float(chunk_end - chunk_start),
+            'time_margin_s': float(time_margin),
+            'channel_names_csv': ','.join(channels),
+            'channel_names_json': json.dumps(channels, ensure_ascii=True),
+            'metadata_json': json.dumps(metadata, ensure_ascii=False, default=str),
+            'task_event_names_csv': ','.join(ordered_events),
+            'task_event_names_json': json.dumps(ordered_events, ensure_ascii=True),
+            'task_events_structure': events_structure,
+        }
+    )
+
+    _sanitize_netcdf_attrs_inplace(data_xr.attrs)
+    return data_xr
+
+
 def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True, load_meta=True, lowcut=1.0, highcut=40.0, eeg_filter_type='fir',decimate_factor=8, plot_flag=False, time_margin=10, input_data_path="../data", export_path="../data/UNIWAW_imported", verbose=False, logger: Optional[object] = None):
     '''Export signals from a specified dyad to xarray DataArrays and save them as NetCDF files in a structured directory format compatible with UNIWAW_imported.
     Args:
@@ -292,6 +454,143 @@ def write_dyad_to_uniwaw_imported(dyad_id_list=None, load_eeg=True, load_et=True
                     _log(f"Saved: {file_path}")
 
         _log(f"Finished export for dyad '{multimodal_data.id}'")
+
+
+def export_passive_and_talk_data(
+    dyad_id_list=None,
+    load_eeg=True,
+    load_et=True,
+    load_meta=True,
+    lowcut=1.0,
+    highcut=40.0,
+    eeg_filter_type='fir',
+    decimate_factor=8,
+    plot_flag=False,
+    time_margin=20,
+    input_data_path="../data",
+    export_path="../data/UNIWAW_imported",
+    verbose=False,
+    logger: Optional[object] = None,
+):
+    '''Export two chunk types per modality/member: passive movies and talk.
+
+    Instead of exporting every event separately, this function exports:
+      1) one continuous chunk covering movie events, i.e., it corresponds to the passive task: Peppa, Incredibles, Brave
+      2) one continuous chunk covering all events whose names include "talk"
+
+    The exported file structure is compatible with UNIWAW_imported.
+    '''
+
+    def _log(message: str) -> None:
+        if not verbose:
+            return
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
+
+    if dyad_id_list is None:
+        raise ValueError("dyad_id_list must be provided")
+    if isinstance(dyad_id_list, str):
+        dyad_id_list = [dyad_id_list]
+    if not isinstance(dyad_id_list, list) or len(dyad_id_list) == 0:
+        raise ValueError("dyad_id_list must be a non-empty list of dyad IDs to export (e.g., ['W_003']).")
+
+    members = {'ch': 'child', 'cg': 'caregiver'}
+    selected_channels = {
+        'EEG': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'M1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'M2', 'T5', 'P3', 'Pz',
+                'P4', 'T6', 'O1', 'O2'],
+        'ET': ['x', 'y', 'pupil', 'blinks'],
+        'ECG': ['ECG'],
+        'IBI': ['IBI'],
+        'RMSSD': ['RMSSD'],
+        'diode': ['diode'],
+    }
+
+    movie_events_target = ["Peppa", "Incredibles", "Brave"]
+
+    for dyad_id in dyad_id_list:
+        _log(f"Loading dyad '{dyad_id}' from '{input_data_path}'")
+        multimodal_data = dataloader.create_multimodal_data(
+            data_base_path=input_data_path,
+            dyad_id=dyad_id,
+            load_eeg=load_eeg,
+            load_et=load_et,
+            load_meta=load_meta,
+            lowcut=lowcut,
+            highcut=highcut,
+            eeg_filter_type=eeg_filter_type,
+            interpolate_et_during_blinks_threshold=0.3,
+            median_filter_size=64,
+            low_pass_et_order=351,
+            et_pos_cutoff=128,
+            et_pupil_cutoff=4,
+            pupil_model_confidence=0.9,
+            decimate_factor=decimate_factor,
+            plot_flag=plot_flag,
+        )
+
+        _log(f"Loaded dyad '{multimodal_data.id}'. Export root: '{export_path}'")
+
+        available_event_names = list(multimodal_data.events.keys())
+        movie_events = [name for name in movie_events_target if name in multimodal_data.events]
+        talk_events = [name for name in available_event_names if "talk" in name.lower()]
+
+        chunks = [
+            ("passive_movies", movie_events),
+            ("talk", talk_events),
+        ]
+
+        _log(f"Available events: {available_event_names}")
+        _log(f"Passive movie events selected: {movie_events}")
+        _log(f"Talk events selected: {talk_events}")
+
+        modalities_to_export = list(multimodal_data.modalities)
+        if 'diode' in multimodal_data.data.columns and 'diode' not in modalities_to_export:
+            modalities_to_export.append('diode')
+            _log("Detected diode signal in multimodal_data; adding 'diode' modality to chunk export.")
+
+        for modality in modalities_to_export:
+            path_modality = os.path.join(export_path, modality, str(multimodal_data.id))
+            if not os.path.exists(path_modality):
+                os.makedirs(path_modality)
+
+            for who, member in members.items():
+                path_member = os.path.join(path_modality, member)
+                if not os.path.exists(path_member):
+                    os.makedirs(path_member)
+
+                for chunk_name, chunk_events in chunks:
+                    if not chunk_events:
+                        _log(
+                            f"Skipping chunk '{chunk_name}' for dyad='{multimodal_data.id}' "
+                            f"because no matching events were found."
+                        )
+                        continue
+
+                    _log(
+                        f"Exporting chunk='{chunk_name}', modality='{modality}', member='{who}', "
+                        f"events={chunk_events}"
+                    )
+                    data_xr = export_chunk_to_xarray(
+                        multimodal_data=multimodal_data,
+                        selected_events=chunk_events,
+                        selected_channels=selected_channels.get(modality),
+                        selected_modality=modality,
+                        member=who,
+                        time_margin=time_margin,
+                        chunk_name=chunk_name,
+                        verbose=False,
+                        logger=logger,
+                    )
+                    file_path = os.path.join(
+                        path_member,
+                        f"{multimodal_data.id}_{modality}_{who}_{chunk_name}.nc",
+                    )
+                    data_xr.to_netcdf(file_path, engine='netcdf4', format='NETCDF4_CLASSIC')
+                    _log(f"Saved: {file_path}")
+
+        _log(f"Finished chunk export for dyad '{multimodal_data.id}'")
 
 
 
