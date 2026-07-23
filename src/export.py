@@ -300,6 +300,11 @@ def export_chunk_to_xarray(
             print(msg_1)
             print(msg_2)
 
+    if selected_modality in ('EEG', 'ET') and not selected_channels:
+        raise ValueError(
+            f"selected_channels must be a non-empty list for modality='{selected_modality}' when exporting chunk '{chunk_name}'."
+        )
+
     signals = multimodal_data.get_signals(
         mode=selected_modality,
         member=member,
