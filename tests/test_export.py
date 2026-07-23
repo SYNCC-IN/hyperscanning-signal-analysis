@@ -65,14 +65,14 @@ def test_export_chunk_to_xarray_resets_time_and_stores_events_structure(multimod
     channel_values = list(da.coords["channel"].values)
     assert channel_values == ["Fp1"]
 
-    assert da.attrs["event_name"] == "passive_movies"
-    assert da.attrs["event_start"] == 0.0
-    assert da.attrs["event_duration"] == 50.0
+    assert da.attrs["task_name"] == "passive_movies"
+    assert da.attrs["task_start"] == 0.0
+    assert da.attrs["task_duration"] == 50.0
 
-    ordered_events = json.loads(da.attrs["chunk_event_names_json"])
+    ordered_events = da.attrs["task_event_names_csv"].split(",")
     assert ordered_events == ["Peppa", "Incredibles", "Brave"]
 
-    events_structure = json.loads(da.attrs["events_structure"])
+    events_structure = json.loads(da.attrs["task_events_structure"])
     assert [ev["name"] for ev in events_structure] == ["Peppa", "Incredibles", "Brave"]
     assert np.isclose(events_structure[0]["start_s"], 10.0)
     assert np.isclose(events_structure[0]["start_rel_s"], 0.0)
