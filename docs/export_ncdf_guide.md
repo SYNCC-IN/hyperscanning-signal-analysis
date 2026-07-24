@@ -20,6 +20,7 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
   - [NetCDF serialization constraints](#netcdf-serialization-constraints)
 - [Export/load data](#exportload-data)
   - [Export a full dyad to NCDF](#export-a-full-dyad-to-ncdf)
+  - [Export data by task/chunk (passive movies and talk)](#export-data-by-taskchunk-passive-movies-and-talk)
   - [Export one selection to xarray](#export-one-selection-to-xarray)
   - [Load one NCDF file back to xarray](#load-one-ncdf-file-back-to-xarray)
   - [Minimal round-trip example](#minimal-round-trip-example)
@@ -39,6 +40,8 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
 The export/import workflow is implemented in [src/export.py](../src/export.py):
 
 - `write_dyad_to_uniwaw_imported(...)` exports a whole dyad into a folder tree with one `.nc` file per modality/member/event.
+- `export_passive_and_talk_data(...)` exports task-level chunks instead of single events: one file for passive movie content and one file for talk content.
+- `export_chunk_to_xarray(...)` exports one selected modality/member/chunk to a single `xarray.DataArray`.
 - `export_to_xarray(...)` exports one selected modality/member/event to a single `xarray.DataArray`.
 - `load_xarray_from_netcdf(...)` loads a saved `.nc` file back into `xarray.DataArray`.
 - `get_export_metadata(...)` reads the structured metadata payload from `metadata_json`.
@@ -49,14 +52,20 @@ A typical export path looks like this:
 
 - `data/UNIWAW_imported/<MODALITY>/<DYAD_ID>/<member_folder>/<file>.nc`
 
-Example:
+Example for the classic event-based export:
 
 - `data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc`
+
+For the task-based export, the same folder layout is used, but the filename reflects the chunk/task label rather than a single event name:
+
+- `data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_passive_movies.nc`
+- `data/UNIWAW_imported/EEG/W_030/caregiver/W_030_EEG_cg_talk.nc`
 
 Where:
 
 - `member_folder` is `child` for `ch` and `caregiver` for `cg`.
-- `<file>` follows `<DYAD_ID>_<MODALITY>_<member_code>_<EVENT>.nc`.
+- In the classic export, `<file>` follows `<DYAD_ID>_<MODALITY>_<member_code>_<EVENT>.nc`.
+- In the task-based export, `<file>` follows `<DYAD_ID>_<MODALITY>_<member_code>_<TASK_CHUNK>.nc`.
 
 ## Naming conventions used in export
 
@@ -90,7 +99,7 @@ This project uses the following conventions in NCDF export paths and filenames.
 
 ### Experimental session names
 
-- Session/event names used in exported filenames:
+- Session/event names used in exported filenames for the classic event-based export:
     - `Secore`
     - `Talk1`
     - `Talk2`
@@ -101,6 +110,22 @@ This project uses the following conventions in NCDF export paths and filenames.
 Example filename built from these conventions:
 
 - `W_030_EEG_ch_Peppa.nc`
+
+### Task/chunk names used in task-based export
+
+When exporting by task/chunk, the last segment of the filename is no longer an individual event name, but a logical chunk label:
+
+- `passive_movies`
+- `talk`
+
+These names are used in the file name pattern:
+
+- `W_030_EEG_ch_passive_movies.nc`
+- `W_030_EEG_cg_talk.nc`
+
+This naming approach makes it explicit that a file contains a continuous segment spanning multiple events (for example, the passive movie block or the talk block), rather than a single experimental event.
+
+Note: in the task-based export, the filename uses the chunk/task label, while the exported DataArray attributes still distinguish between the underlying event list (via `task_event_names_*`) and the chunk label itself (via `task_name`). This is useful when you want to preserve the original event composition while also referring to the aggregated task segment.
 
 ## Structure of xarray data stored in exported NCDF
 
@@ -222,6 +247,68 @@ write_dyad_to_uniwaw_imported(
 
 - Use `verbose=True` to see progress logs.
 - The function exports all events for all available modalities/members in the dyad.
+
+### Export data by task/chunk (passive movies and talk)
+
+A newer workflow exports data by experimental task/chunk instead of by individual event. This is implemented in [src/export.py](../src/export.py) via `export_passive_and_talk_data(...)` and in [scripts/batch_export_dyade_to_ncdf_by_task.py](../scripts/batch_export_dyade_to_ncdf_by_task.py) for batch processing.
+
+The function creates two chunk files per modality/member:
+
+- `passive_movies`: one continuous chunk spanning the movie events `Peppa`, `Incredibles`, and `Brave`
+- `talk`: one continuous chunk covering all events whose names contain `talk`
+
+Files are written to the same UNIWAW-style folder tree, but the filename uses the chunk label instead of an event name:
+
+- `data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_passive_movies.nc`
+- `data/UNIWAW_imported/EEG/W_030/caregiver/W_030_EEG_cg_talk.nc`
+
+The exported DataArray carries additional task-oriented attributes:
+
+- `task_name` (`passive_movies` or `talk`)
+- `task_start` (always `0.0` in the exported chunk coordinate system)
+- `task_duration`
+- `task_event_names_csv` / `task_event_names_json`
+- `task_events_structure` (structural summary of the events included in the chunk)
+
+Example usage:
+
+```python
+from src.export import export_passive_and_talk_data
+
+export_passive_and_talk_data(
+    dyad_id_list=["W_030"],
+    load_eeg=True,
+    load_et=False,
+    load_meta=True,
+    lowcut=1.0,
+    highcut=40.0,
+    eeg_filter_type="fir",
+    decimate_factor=8,
+    plot_flag=False,
+    time_margin=20,
+    input_data_path="data",
+    export_path="data/UNIWAW_imported",
+    verbose=True,
+)
+```
+
+#### Batch export by task using the provided script
+
+The script [scripts/batch_export_dyade_to_ncdf_by_task.py](../scripts/batch_export_dyade_to_ncdf_by_task.py) automates the task-based export for a set of dyads:
+
+1. It reads the metadata file `meta_data.csv` from the raw input folder.
+2. It selects dyads for which `EEG Passive == 1.0`.
+3. It calls `export_passive_and_talk_data(...)` for each selected dyad.
+4. It writes a log report to `export.log` in the export root.
+
+Typical configuration in the script:
+
+```python
+input_folder = "/path/to/UNIWAW_RAW_DATA"
+export_folder = "/path/to/UNIWAW_EEG_exported_BY_TASKS"
+```
+
+This workflow is useful when you want one export file per experimental phase (passive movie viewing vs. talk) rather than one file per individual event.
 
 ### Export one selection to xarray
 
