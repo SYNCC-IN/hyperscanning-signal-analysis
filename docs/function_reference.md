@@ -220,6 +220,7 @@ Instantaneous-amplitude envelope utilities for narrow-band EEG/HRV signals.
 ### `src/mtmvar.py`
 MVAR modeling, DTF-family connectivity, and FAD decomposition. See [docs/fad_specparam_guide.md](fad_specparam_guide.md).
 
+- `count_corr(x, ip, iwhat)` — construct the block autocorrelation matrices used internally by `ar_coeff`; exposed for low-level MVAR implementations.
 - `ar_coeff(data, model_order=5)` — estimate MVAR coefficients for multivariate/multi-trial data.
 - `mvar_criterion(data, max_model_order, crit_type='AIC', plot=False)` — AIC/HQ/SC model-order selection criteria.
 - `mvar_transfer_function(ar_coeffs, freqs, fs)` — transfer function H from MVAR coefficients.
@@ -232,7 +233,9 @@ MVAR modeling, DTF-family connectivity, and FAD decomposition. See [docs/fad_spe
 - `gen_partial_directed_coherence(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC')` — generalized partial directed coherence (GPDC).
 - `partial_coherence(spectra)` — partial coherence from a multivariate spectra array.
 - `mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear', fig_size=(8, 8), band_hz=None, fig=None, max_on_diag=None, max_off_diag=None)` — bar-plot grid of diagonal (auto) + off-diagonal (cross) connectivity terms; `off_diag`'s sign is preserved (not forced non-negative), since a Box-Cox-transformed cube can be negative and its sign is meaningful — fill/shading and axis limits are drawn down to `off_diag`'s own minimum (0 unless it goes negative), not hard-coded to 0.
+- `example_dyads_figure(dyad, r_smooth, r_rough, freqs, fs, p, win_len, step, detrend_type, estimator, channel_labels, channel_colors, output_dir, max_on_diag=None, max_off_diag=None)` — save one synthetic dyad's signals plus MVAR spectra/dDTF figure; returns the diagonal/off-diagonal plot scales used so other figures can share them.
 - `plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs, variable_names, title, coupling_band_hz, scale='linear', ESTIMATOR='dDTF', box_cox_lambda=-1)` — one call combining window/detrend + `dtf_estimator`/`multivariate_spectra` + `mvar_plot`, for a fixed-order/fixed-geometry connectivity grid figure (interbrain ffDTF pipeline, Stage 3 QC grid).
+- `get_linewidths(graph)` *(no docstring)* — scale directed-graph edge widths from their `weight` attributes for `graph_plot`.
 - `graph_plot(connectivity_matrix, ax, freqs, freq_range, chan_names, title)` — plot a connectivity matrix as a directed graph (`networkx`); returns the `DiGraph`.
 - `fad_decomposition(signal, fs, model_order=None, max_model_order=20, crit_type='AIC', plot=False, pair_conjugates=True, imag_tol=1e-08)` — FAD (Frequency-Amplitude-Damping) decomposition of a univariate AR model into damped oscillators.
 - `fad_components_table(fad_params, output='dataframe', decimals=None)` — compact table (one row per FAD component) for export.
@@ -357,7 +360,7 @@ Synthetic ground-truth generators for validating MVAR / ffDTF connectivity (used
 ### `src/reporting.py`
 HTML-fragment renderers for the pipeline's interactive per-stage QC gates (stage02-stage06).
 
-- `render_dyad_panel_envelopes(dyad_id, entries, roles)` — Stage 2 dyad QC panel (continuous figures + per-film sections).
+- `render_dyad_panel_envelopes(dyad_id, entries, names)` — Stage 2 dyad QC panel (continuous figures + per-film sections), with nodes rendered in `names` order.
 - `render_dyad_panel_mvar_order(dyad_id, entries)` — Stage 3 dyad QC panel (one film-block per case).
 - `render_dyad_panel_ffdtf(dyad_id, entries)` — Stage 4 dyad QC panel (one film-block per case).
 - `render_edge_table(rows)` — one film's edge table (real / null / delta / z) as an HTML fragment.
@@ -418,6 +421,16 @@ Older, standalone HRV/EEG/combined-DTF example analysis, operating on the small 
 
 - `main(plot_debug=False, analyze_hrv_dtf=False, analyze_eeg_dtf=False, analyze_eeg_hrv_dtf=False)` — example analysis entry point.
 - `analyze_hrv_dtf_for_event(mmd, selected_event)` / `analyze_eeg_dtf_for_events(mmd, selected_events)` / `analyze_eeg_hrv_dtf_for_events(mmd, selected_events)` — per-modality DTF analysis for one dyad's `MultimodalData`.
+
+### `src/warsaw_pilot_data_backup.py`
+Historical pre-refactor copy, retained for reference only. It is incompatible with the
+current data-loader API and imports removed utility functions; do not use it for new
+analysis work.
+
+- `main(plot_debug=False, analyze_hrv_dtf=False, analyze_eeg_dtf=False, analyze_eeg_hrv_dtf=False)` — legacy example entry point *(no docstring)*.
+- `eeg_hrv_dtf_analyze_event(filtered_data, selected_channels_ch, selected_channels_cg, events, event)` — legacy four-signal EEG/HRV DTF design-matrix builder *(no docstring)*.
+- `debug_plot(filtered_data, events)` — legacy ECG/IBI diagnostic plotting helper *(no docstring)*.
+- `hrv_dtf(mmd, selected_event)` / `eeg_dtf(mmd, selected_events)` / `eeg_hrv_dtf(mmd, selected_events)` — legacy modality-specific DTF analysis routines *(no docstrings)*.
 
 ### `src/eeg_alpha_ibi_ffdtf.py`
 A full pipeline packaged as one class (pre-dates the `src`=library / `scripts`=pipeline split — treat as a pattern to extract functions from, not to extend in place).
