@@ -261,3 +261,27 @@ def detrend_windows(stack, dtype='linear'):
         Detrended windows, same shape as `stack`.
     """
     return _detrend(stack, axis=1, type=dtype)
+
+
+def window_geometry(win_len_s, overlap_frac, target_sfreq):
+    """Derive integer window length/step (samples) from a length/overlap spec.
+
+    Parameters
+    ----------
+    win_len_s : float
+        Window length in seconds.
+    overlap_frac : float
+        Fractional overlap between consecutive windows (0 = none, 0.5 = half).
+    target_sfreq : float
+        Sampling frequency in Hz.
+
+    Returns
+    -------
+    win_len : int
+        Window length in samples.
+    step : int
+        Step between window starts, in samples.
+    """
+    win_len = round(win_len_s * target_sfreq)
+    step = round(win_len * (1 - overlap_frac))
+    return win_len, step

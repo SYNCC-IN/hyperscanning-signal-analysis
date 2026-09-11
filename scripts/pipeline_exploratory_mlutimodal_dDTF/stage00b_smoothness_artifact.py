@@ -62,16 +62,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.connectivity import Granger_estimator
 from src.io_utils import ensure_dir
-from src.surrogate import band_average_cube, delta_and_z, surrogate_pairs
-from src.synthetic_mvar import generate_var_process
-from src.mtmvar import mvar_plot
+from src.surrogate import delta_and_z, real_edge_values, surrogate_null
+from src.synthetic_mvar import simulate_two_channel_dyads
+from src.mtmvar import example_dyads_figure
 
 # ---------------------------------------------------------------------------
 # Configuration (script owns all constants; src stays literal-free)
 # ---------------------------------------------------------------------------
-OUTPUT_DIR = ensure_dir(PROJECT_ROOT / "out")
+OUTPUT_DIR = ensure_dir(PROJECT_ROOT / "Interbrain_ffDTF_analysis"/"00b_smoothness_artifact")
 
 # Estimator settings, locked to the real pipeline (Stage 4/5).
 FS = 2.5
@@ -117,158 +116,6 @@ EDGE_ROUGH_TO_SMOOTH = (1, 0)   # target = smooth, source = rough
 EDGE_SMOOTH_TO_ROUGH = (0, 1)   # target = rough,  source = smooth
 
 
-def self_ar2_coeffs(pole_radius, f0_hz, fs):
-    """AR(2) resonator coefficients (a1, a2) for a pole at radius/frequency.
-
-    A complex-conjugate pole pair at modulus `pole_radius` and frequency
-    `f0_hz` gives a spectral peak whose sharpness grows with `pole_radius`;
-    `pole_radius` is therefore the channel's self-persistence / "self-gain",
-    the smoothness knob swept in this harness.
-
-    Parameters
-    ----------
-    pole_radius : float
-        Pole modulus in (0, 1); closer to 1 = sharper peak = smoother channel.
-    f0_hz : float
-        Resonance centre frequency (Hz).
-    fs : float
-        Sampling frequency (Hz).
-
-    Returns
-    -------
-    a1, a2 : float
-        Self AR coefficients for lags 1 and 2, in the sign convention of
-        `src.synthetic_mvar.generate_var_process`
-        (``x_t = a1 x_{t-1} + a2 x_{t-2} + noise``).
-    """
-    a1 = 2.0 * pole_radius * np.cos(2.0 * np.pi * f0_hz / fs)
-    a2 = -pole_radius * pole_radius
-    return a1, a2
-
-
-def build_coupling(r_rough, r_smooth, injected_gain=0.0):
-    """Two-channel AR(2) coupling tensor: self-resonators + optional real edge.
-
-    Channel 0 (rough) and channel 1 (smooth) each get an AR(2) self-resonator
-    at `F0_HZ`; their off-diagonal is zero unless `injected_gain` is set, which
-    adds a genuine smooth -> rough edge (source = channel 1, target = channel
-    0) at lag 1 -- the same direction as the smoothness artifact, so the
-    "signal present" panel tests whether Delta separates a real edge from the
-    artifact floor. With `injected_gain == 0` the ground-truth directed
-    coupling is exactly zero.
-
-    Parameters
-    ----------
-    r_rough, r_smooth : float
-        Pole radii (self-gain) of channel 0 and channel 1.
-    injected_gain : float, optional
-        Genuine smooth -> rough AR gain at lag 1 (default 0.0 = no coupling).
-
-    Returns
-    -------
-    np.ndarray, shape (2, 2, 2)
-        AR coefficient tensor, `coupling[target, source, lag - 1]`, matching
-        `generate_var_process`'s convention.
-    """
-    coupling = np.zeros((2, 2, 2))
-    for channel, pole_radius in enumerate((r_rough, r_smooth)):
-        a1, a2 = self_ar2_coeffs(pole_radius, F0_HZ, FS)
-        coupling[channel, channel, 0] = a1
-        coupling[channel, channel, 1] = a2
-    if injected_gain != 0.0:
-        coupling[0, 1, 0] += injected_gain  # source = 1 (smooth) -> target = 0 (rough)
-    return coupling
-
-
-def zscore_rows(design):
-    """Per-channel z-score, matching the real pipeline's design-matrix convention."""
-    return (design - design.mean(axis=1, keepdims=True)) / design.std(axis=1, keepdims=True)
-
-
-def simulate_dyads(r_smooth, injected_gain, n_dyads, base_seed):
-    """Simulate `n_dyads` independent 2-channel dyads at one smoothness setting.
-
-    Each dyad is one `generate_var_process` realisation (its own seed), returned
-    z-scored per channel. With `injected_gain == 0` every dyad has zero real
-    coupling; the only structure is each channel's own smoothness.
-
-    Returns
-    -------
-    list of np.ndarray
-        Each entry shape (2, N_SAMPLES): row 0 rough, row 1 smooth.
-    """
-    coupling = build_coupling(R_ROUGH, r_smooth, injected_gain)
-    return [
-        zscore_rows(generate_var_process(coupling, SNR, N_SAMPLES, seed=base_seed + d))
-        for d in range(n_dyads)
-    ]
-
-
-def edge_value(design, edge):
-    """Band-averaged dDTF for one directed edge of a 2-channel design (Stage 4/5 path)."""
-    dDTF, _ = Granger_estimator(design, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA)
-    band_avg = band_average_cube(dDTF, FREQS, COUPLING_BAND_HZ)
-    return float(band_avg[edge[0], edge[1]])
-
-
-def real_edge_values(dyads, edge):
-    """Per-dyad band-averaged dDTF for `edge` (the real, same-dyad estimate)."""
-    return np.array([edge_value(dyad, edge) for dyad in dyads])
-
-
-def surrogate_null(dyads, edge):
-    """Pooled surrogate null for `edge`, exactly the Stage 5 construction.
-
-    `surrogate_pairs` enumerates every ordered foreign pairing; each surrogate
-    takes channel 0 (rough) from one dyad and channel 1 (smooth) from another,
-    so marginal smoothness is preserved but any interaction is destroyed.
-
-    Returns
-    -------
-    np.ndarray
-        One band-averaged dDTF per foreign pairing.
-    """
-    dyad_ids = list(range(len(dyads)))
-    values = []
-    for rough_dyad, smooth_dyad in surrogate_pairs(dyad_ids):
-        design = np.stack([dyads[rough_dyad][0], dyads[smooth_dyad][1]], axis=0)
-        values.append(edge_value(design, edge))
-    return np.array(values)
-
-def example_dyads_figure(dyads, r_smooth, max_on_diag=None, max_off_diag=None):
-    """One example dyad's two channels (left) and its MVAR spectra/dDTF (right) at one r_smooth setting.
-
-    Uses `dyads[0]` as the representative example and runs it through the
-    real Stage 4 estimator path (`Granger_estimator`), so the connectivity
-    panel shown is exactly what the pipeline itself would compute for this
-    dyad -- not a separate illustrative re-implementation.
-    """
-    dyad = dyads[0]
-    dDTF, spectra = Granger_estimator(dyad, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, box_cox_lambda=-1)
-    max_on_diag = max_on_diag if max_on_diag is not None else  np.max(spectra)
-    max_off_diag = max_off_diag if max_off_diag is not None else  np.max(dDTF[~np.eye(dDTF.shape[0], dtype=bool)])
-    print(f"example_dyads_figure: r_smooth={r_smooth:.2f}, max_on_diag={max_on_diag:.5f}, max_off_diag={max_off_diag:.5f}")
-    #max_on_diag = np.abs(max_on_diag)
-    #max_off_diag = np.abs(max_off_diag)
-    fig = plt.figure(figsize=(11.5, 5.0))
-    subfig_signals, subfig_mvar = fig.subfigures(1, 2, width_ratios=[1.0, 1.2])
-
-    ax_top, ax_bot = subfig_signals.subplots(2, 1, sharex=True)
-    ax_top.plot(dyad[0], color=GREY, linewidth=0.8)
-    ax_top.set_ylabel(f"{CHANNEL_LABELS[0]}")
-    ax_bot.plot(dyad[1], color=TEAL, linewidth=0.8)
-    ax_bot.set_ylabel(f"{CHANNEL_LABELS[1]}")
-    ax_bot.set_xlabel("time (samples)")
-    subfig_signals.suptitle(f"Simulated dyad at smoothness contrast={r_smooth - R_ROUGH:+.2f})")
-
-    mvar_plot(spectra, dDTF, FREQS, "from ", "to ", ["ch0", "ch1"],
-              "spectra (diag) / dDTF (off-diag)", fig=subfig_mvar, band_hz=None, max_on_diag=max_on_diag, max_off_diag=max_off_diag)
-
-    fig_path = OUTPUT_DIR / f"example_dyads_r_smooth_{r_smooth:.2f}.png"
-    fig.savefig(fig_path, dpi=150)
-    plt.close(fig)
-    return max_on_diag, max_off_diag
-
 
 # ---------------------------------------------------------------------------
 # Figure 1: the smoothness gradient -- pseudo-flow, its null, and Delta
@@ -277,20 +124,26 @@ print(f"Figure 1: sweeping the smoothness gradient (zero real coupling throughou
       f"{N_BATCHES} batches x {N_DYADS} dyads")
 contrast = R_SMOOTH_GRID - R_ROUGH
 real_median, null_median, delta_median, delta_sd, delta_z_median = [], [], [], [], []
-first_example_dyads = simulate_dyads(R_SMOOTH_GRID[0], 0.0, N_DYADS, BASE_SEED + 0 * 10000)
-last_example_dyads = simulate_dyads(R_SMOOTH_GRID[-1], 0.0, N_DYADS, BASE_SEED + (N_BATCHES - 1) * 10000)
-max_on_diag, max_off_diag = example_dyads_figure(last_example_dyads, R_SMOOTH_GRID[-1], max_on_diag=None, max_off_diag=None) # final example after the loop
+first_example_dyads = simulate_two_channel_dyads(R_ROUGH, R_SMOOTH_GRID[0], F0_HZ, FS, SNR, N_SAMPLES, 0.0, N_DYADS, BASE_SEED + 0 * 10000)
+last_example_dyads = simulate_two_channel_dyads(R_ROUGH, R_SMOOTH_GRID[-1], F0_HZ, FS, SNR, N_SAMPLES, 0.0, N_DYADS, BASE_SEED + (N_BATCHES - 1) * 10000)
+max_on_diag, max_off_diag = example_dyads_figure(
+    last_example_dyads[0], R_SMOOTH_GRID[-1], R_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR,
+    CHANNEL_LABELS, (GREY, TEAL), OUTPUT_DIR, max_on_diag=None, max_off_diag=None,
+) # final example after the loop
 print(f"max_on_diag={max_on_diag:.5f}, max_off_diag={max_off_diag:.5f}")
-_ = example_dyads_figure(first_example_dyads, R_SMOOTH_GRID[0], max_on_diag=max_on_diag, max_off_diag=max_off_diag  ) # final example after the loop
+_ = example_dyads_figure(
+    first_example_dyads[0], R_SMOOTH_GRID[0], R_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR,
+    CHANNEL_LABELS, (GREY, TEAL), OUTPUT_DIR, max_on_diag=max_on_diag, max_off_diag=max_off_diag,
+) # final example after the loop
 
 
 # %%
 for r_smooth in R_SMOOTH_GRID:
     batch_real, batch_null, batch_delta, batch_z = [], [], [], []
     for batch in range(N_BATCHES):
-        dyads = simulate_dyads(r_smooth, 0.0, N_DYADS, BASE_SEED + batch * 10000)
-        reals = real_edge_values(dyads, EDGE_SMOOTH_TO_ROUGH)
-        nulls = surrogate_null(dyads, EDGE_SMOOTH_TO_ROUGH)
+        dyads = simulate_two_channel_dyads(R_ROUGH, r_smooth, F0_HZ, FS, SNR, N_SAMPLES, 0.0, N_DYADS, BASE_SEED + batch * 10000)
+        reals = real_edge_values(dyads, EDGE_SMOOTH_TO_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ)
+        nulls = surrogate_null(dyads, EDGE_SMOOTH_TO_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ)
         per_dyad = [delta_and_z(r, nulls) for r in reals]
         batch_real.append(np.median(reals))
         batch_null.append(np.median(nulls))
@@ -342,9 +195,9 @@ print("\nFigure 2: null-vs-real twin at high contrast "
 
 def panel_data(injected_gain):
     """Real per-dyad values, pooled null, and median Delta/z for one ground truth."""
-    dyads = simulate_dyads(R_SMOOTH_FIG2, injected_gain, N_DYADS_FIG2, BASE_SEED)
-    reals = real_edge_values(dyads, EDGE_SMOOTH_TO_ROUGH)
-    nulls = surrogate_null(dyads, EDGE_SMOOTH_TO_ROUGH)
+    dyads = simulate_two_channel_dyads(R_ROUGH, R_SMOOTH_FIG2, F0_HZ, FS, SNR, N_SAMPLES, injected_gain, N_DYADS_FIG2, BASE_SEED)
+    reals = real_edge_values(dyads, EDGE_SMOOTH_TO_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ)
+    nulls = surrogate_null(dyads, EDGE_SMOOTH_TO_ROUGH, FREQS, FS, P, WIN_LEN, STEP, DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ)
     per_dyad = [delta_and_z(r, nulls) for r in reals]
     return reals, nulls, np.median([d["delta"] for d in per_dyad]), np.median([d["z"] for d in per_dyad])
 

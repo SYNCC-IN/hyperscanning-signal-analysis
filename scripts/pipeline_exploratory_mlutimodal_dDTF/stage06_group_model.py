@@ -70,8 +70,11 @@ Open decisions (D0-D5) -- default implemented, alternative documented:
   this was surfaced to the project owner, who chose **Bambi + ArviZ**. This
   single Python script therefore does both the fit and the gate (keeping one
   toolchain, per the D0 Python-engine branch), reusing `src/group_model.py`
-  for the pieces that don't involve MCMC. The output contract (tidy CSVs +
-  PNGs + gate) is identical to what the brms branch would have produced.
+  for the model-fitting/contrast/diagnostic-plot functions (every MCMC
+  setting is passed in explicitly, bundled into `MCMC_CONFIG` below) and
+  `src/reporting.py` for the HTML-fragment renderers -- this script itself is
+  config + orchestration. The output contract (tidy CSVs + PNGs + gate) is
+  identical to what the brms branch would have produced.
 - D1 (CORRECTNESS FIX): the plan/note formula is `(1|dyad_id) + (1|child_id)
   + (1|caregiver_id)`, but in this design child and caregiver are 1:1 with
   dyad (no member appears in more than one dyad) -- the three grouping
@@ -122,50 +125,60 @@ import numpy as np
 import pandas as pd
 import arviz as az
 import bambi as bmb
-from bambi.terms.group_specific import GroupSpecificTerm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.group_model import asymmetry_dv, bh_fdr, edge_subset, load_delta_table, standardize_within_edge
-from src.io_utils import ensure_dir
+from src.group_model import (
+    asymmetry_dv, bh_fdr, edge_subset, load_delta_table, standardize_within_edge,
+    add_covariates, build_formula, build_priors, fit_model, fit_model_with_priors, common_terms_of,
+    reference_grid, compute_contrasts, back_transform,
+    convergence_row, plot_forest, plot_ppc_figure, plot_pareto_k_figure, plot_edge_funnel,
+    compute_localization_rows,
+)
+from src.io_utils import ensure_dir, safe_label
+from src.pipeline_config import load_stage_config
+from src.reporting import (
+    render_diagnostics_table, render_contrast_table, render_primary_table, render_edge_panel,
+    render_localization_table,
+)
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-INPUT_CSV = ANALYSIS_ROOT / "05_surrogate" / "stage05_delta_table_within_group.csv"  #"stage05_delta_table.csv"
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "06_group")
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage06_group_model")
+
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+INPUT_CSV = ANALYSIS_ROOT / CFG["INPUT_SUBDIR"] / CFG["INPUT_FILENAME"]
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 MODELS_DIR = ensure_dir(OUTPUT_DIR / "models")
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-ENGINE = "bambi"  # D0, ratified by the project owner (brms/cmdstanr not installed; see module docstring)
+ENGINE = CFG["ENGINE"]  # D0, ratified by the project owner (brms/cmdstanr not installed; see module docstring)
 
 EMPHASIS_EDGES = [
-    ("cg:ROI->child:ROI", "H2_primary"),
-    ("child:ROI->cg:ROI", "H2_reverse"),
-    ("cg:HRV->child:HRV", "H4_primary"),
-    ("child:HRV->cg:HRV", "H4_reverse"),
-    ("cg:HRV->child:ROI", "exploratory"),
-    ("child:HRV->cg:ROI", "exploratory"),
+    (f"{edge['source']}->{edge['target']}", edge["class"]) for edge in CFG["edge_topology"]
 ]  # L5
-FIT_OTHER_EDGES = True  # L5: the 6 non-emphasis edges are not modelled by default
-FIT_POOLED_MODEL = True  # D2: shrinkage cross-check over the 6 emphasis edges, companion not replacement
+FIT_OTHER_EDGES = CFG["FIT_OTHER_EDGES"]  # L5: the 6 non-emphasis edges are not modelled by default
+FIT_POOLED_MODEL = CFG["FIT_POOLED_MODEL"]  # D2: shrinkage cross-check over the 6 emphasis edges, companion not replacement
 
-ADD_AGE_COVARIATE = False  # D4
-ADD_IAF_COVARIATE = False  # D4
+ADD_AGE_COVARIATE = CFG["ADD_AGE_COVARIATE"]  # D4
+ADD_IAF_COVARIATE = CFG["ADD_IAF_COVARIATE"]  # D4
 IAF_METRICS_CSV = PROJECT_ROOT / "Exploratory_spectral_analysis" / "04_band_assignment" / "iaf_metrics.csv"
-IAF_DISTANCE_COLUMN = "iaf_distance"  # confirmed against the actual file's header before writing this script
+IAF_DISTANCE_COLUMN = CFG["IAF_DISTANCE_COLUMN"]  # confirmed against the actual file's header before writing this script
 
 # L9 MCMC config
-CHAINS = 4
-DRAWS = 2000
-TUNE = 2000            # L-conv-1: was 1000 -- longer warmup for mass-matrix adaptation at the (1|edge) funnel neck
-TARGET_ACCEPT = 0.99   # L-conv-1: was 0.95 -- smaller step size to clear the funnel at 6 edge-groups
-SEED = 0
-HDI_PROB = 0.95
-CORES = 1  # macOS fix: PyMC's default "fork" worker start crashes (SIGSEGV, child dies pre-exec) once
+CHAINS = CFG["CHAINS"]
+DRAWS = CFG["DRAWS"]
+TUNE = CFG["TUNE"]            # L-conv-1: was 1000 -- longer warmup for mass-matrix adaptation at the (1|edge) funnel neck
+TARGET_ACCEPT = CFG["TARGET_ACCEPT"]   # L-conv-1: was 0.95 -- smaller step size to clear the funnel at 6 edge-groups
+SEED = CFG["SEED"]
+HDI_PROB = CFG["HDI_PROB"]
+CORES = CFG["CORES"]  # macOS fix: PyMC's default "fork" worker start crashes (SIGSEGV, child dies pre-exec) once
            # Accelerate/vecLib BLAS threads are live in the parent. "spawn"/"forkserver" avoid that
            # crash but both re-import this module as __main__ during worker bootstrap, and this
            # top-level pipeline script has no `if __name__ == "__main__":` guard -- that re-import
@@ -177,484 +190,54 @@ CORES = 1  # macOS fix: PyMC's default "fork" worker start crashes (SIGSEGV, chi
 # Convergence-fix toggles (Stage 6 addendum). L-conv-2: SD_PRIOR_EDGE scopes
 # ONLY the (1|edge) intercept SD hyperprior -- 1|dyad_id and every M1/M2
 # varying-slope SD keep their existing HalfStudentT(3,1) untouched.
-SD_PRIOR_EDGE = "halfstudentt"  # D-conv-B: "halfstudentt" (nu=3,sigma=1, current) | "halfnormal" (sigma=1, tighter)
-FIT_EDGE_AS_FIXED = True  # D-conv-A: M3 = film*group*edge fixed (sum contrasts), no (1|edge); side-by-side with M0/M1/M2, cannot funnel by construction
+SD_PRIOR_EDGE = CFG["SD_PRIOR_EDGE"]  # D-conv-B: "halfstudentt" (nu=3,sigma=1, current) | "halfnormal" (sigma=1, tighter)
+FIT_EDGE_AS_FIXED = CFG["FIT_EDGE_AS_FIXED"]  # D-conv-A: M3 = film*group*edge fixed (sum contrasts), no (1|edge); side-by-side with M0/M1/M2, cannot funnel by construction
+
+# Bundled for src.group_model's fit_model/fit_model_with_priors/build_priors,
+# which take every MCMC setting as an explicit argument rather than reading a
+# module-level constant.
+MCMC_CONFIG = {
+    "draws": DRAWS, "tune": TUNE, "chains": CHAINS, "target_accept": TARGET_ACCEPT,
+    "seed": SEED, "cores": CORES, "sd_prior_edge": SD_PRIOR_EDGE,
+}
 
 # L9 pass criteria
-RHAT_MAX = 1.01
-ESS_MIN = 400
-PARETO_K_MAX = 0.7
+RHAT_MAX = CFG["RHAT_MAX"]
+ESS_MIN = CFG["ESS_MIN"]
+PARETO_K_MAX = CFG["PARETO_K_MAX"]
 
 # L7: the one named primary family for BH-FDR (kept deliberately small)
-PRIMARY_FAMILY = [
-    ("cg:ROI->child:ROI", "group_effect", "H2_primary"),
-    ("cg:HRV->child:HRV", "group_effect", "H4_primary"),
-]
+PRIMARY_FAMILY = [tuple(row) for row in CFG["PRIMARY_FAMILY"]]
 
-DV_MAIN = "z_vs_surrogate"  # "delta_dtf"
-FILMS = ["Peppa", "Incredibles", "Brave"]
-GROUPS = ["TD", "ASD"]
+DV_MAIN = CFG["DV_MAIN"]  # "delta_dtf"
+FILMS = CFG["FILMS"]
+GROUPS = CFG["GROUPS"]
 
 # ROI info (display-only, for the gate header) -- must match Stage 2's
 # ROI_LABEL/ROI_CHANNELS (scripts/stage02_envelopes.py), since the
 # `child:ROI`/`cg:ROI` edges in INPUT_CSV are envelopes computed over this
 # electrode set.
-ROI_LABEL = "temporo-parietal"
-ROI_CHANNELS = ["P7"]
+ROI_LABEL = CFG["ROI_LABEL"]
+ROI_CHANNELS = CFG["ROI_CHANNELS"]
 
 # Estimator info (display-only, for the gate header) -- must match Stage 5's
 # ESTIMATOR (scripts/stage05_surrogate.py), since INPUT_CSV's `real_ffdtf`/
 # `delta_dtf`/`z_vs_surrogate` columns are computed from that estimator's
 # cube (Stage 5's CSV carries no ESTIMATOR column of its own; this is a
 # manually-synced label, not read from the data).
-ESTIMATOR = "dDTF"  # or "ffDTF"/"GPDC" -- must match Stage 5's ESTIMATOR
+ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF"/"GPDC" -- must match Stage 5's ESTIMATOR
 
 # Box-Cox info (display-only, for the gate header) -- must match Stage 5's
 # BOX_COX_LAMBDA (scripts/stage05_surrogate.py); same manually-synced,
 # not-read-from-data caveat as ESTIMATOR above.
-BOX_COX_LAMBDA = 0.25  # (x**lambda - 1) / lambda; -1 = no transform -- must match Stage 5's BOX_COX_LAMBDA
+BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda; -1 = no transform -- must match Stage 5's BOX_COX_LAMBDA
 
 
-def add_covariates(df):
-    """Add mean-centred covariate columns to `df` per the D4 toggles.
-
-    A no-op copy when both toggles are off (the default/primary path). When a
-    toggle is on and its source file/column is missing, `pd.read_csv`/column
-    lookup raises naturally -- no silent skip.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Stage 5 delta table (or a subset).
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of `df`, with `age_months_c` and/or `iaf_distance_c` added.
-    """
-    out = df.copy()
-    if ADD_AGE_COVARIATE:
-        out["age_months_c"] = out["age_months"] - out["age_months"].mean()
-    if ADD_IAF_COVARIATE:
-        iaf = pd.read_csv(IAF_METRICS_CSV)
-        dyad_iaf = iaf.drop_duplicates("dyad_id").set_index("dyad_id")[IAF_DISTANCE_COLUMN]
-        out["iaf_distance_c"] = out["dyad_id"].map(dyad_iaf) - dyad_iaf.mean()
-    return out
 
 
 EXTRA_TERMS = (["age_months_c"] if ADD_AGE_COVARIATE else []) + (["iaf_distance_c"] if ADD_IAF_COVARIATE else [])
 
 
-def build_formula(dv_col, extra_grouping=None):
-    """Stage 6 model formula: `film * group` (sum contrasts) + dyad random intercept (D1).
-
-    Parameters
-    ----------
-    dv_col : str
-        Dependent variable column name.
-    extra_grouping : str or None, optional
-        Extra `(1|term)` grouping factor to append (used for the D2 pooled
-        model's `(1|edge)`).
-
-    Returns
-    -------
-    str
-        A formula string bambi understands.
-    """
-    extra = "".join(f" + {t}" for t in EXTRA_TERMS)
-    grouping = " + (1|dyad_id)" + (f" + (1|{extra_grouping})" if extra_grouping else "")
-    return f"{dv_col} ~ C(film, Sum) * C(group, Sum){extra}{grouping}"
-
-
-def build_priors():
-    """D3 weakly-informative priors on the standardized (or ~unit, for `z_vs_surrogate`) scale.
-
-    Unused keys (e.g. `1|edge` when the formula has no such term) are
-    silently ignored by bambi -- not a masked error, just how bambi resolves
-    a prior dict against a formula.
-
-    Returns
-    -------
-    dict
-        Bambi `Prior` objects keyed by term name.
-    """
-    group_sd_prior = bmb.Prior("Normal", mu=0, sigma=bmb.Prior("HalfStudentT", nu=3, sigma=1))
-    return {
-        "Intercept": bmb.Prior("Normal", mu=0, sigma=1),
-        "C(film, Sum)": bmb.Prior("Normal", mu=0, sigma=1),
-        "C(group, Sum)": bmb.Prior("Normal", mu=0, sigma=1),
-        "C(film, Sum):C(group, Sum)": bmb.Prior("Normal", mu=0, sigma=1),
-        "1|dyad_id": group_sd_prior,
-        "1|edge": bmb.Prior("Normal", mu=0, sigma=edge_sd_hyperprior()),
-        "sigma": bmb.Prior("HalfStudentT", nu=3, sigma=1),
-    }
-
-
-def edge_sd_hyperprior():
-    """The (1|edge) SD hyperprior, selected by SD_PRIOR_EDGE (D-conv-B).
-
-    Scopes ONLY the `1|edge` intercept SD (L-conv-2) -- `1|dyad_id` and every
-    M1/M2 varying-slope SD keep their own `HalfStudentT(3,1)` regardless of
-    this toggle. Loud on an unrecognized value rather than a silent default.
-
-    Returns
-    -------
-    bambi.priors.Prior
-    """
-    if SD_PRIOR_EDGE == "halfstudentt":
-        return bmb.Prior("HalfStudentT", nu=3, sigma=1)
-    if SD_PRIOR_EDGE == "halfnormal":
-        return bmb.Prior("HalfNormal", sigma=1)
-    raise ValueError(f"unknown SD_PRIOR_EDGE={SD_PRIOR_EDGE!r} (expected 'halfstudentt' or 'halfnormal')")
-
-
-def fit_model(formula, data, family="t"):
-    """Fit one bambi model at the Stage 6 L9 MCMC configuration.
-
-    Parameters
-    ----------
-    formula : str
-        Model formula (see `build_formula`).
-    data : pd.DataFrame
-        Rows to fit on.
-    family : str, optional
-        Bambi family name (default `"t"`, L1).
-
-    Returns
-    -------
-    bambi.Model, arviz.InferenceData
-        The fitted model and its posterior (with `log_likelihood` for LOO).
-    """
-    model = bmb.Model(formula, data, family=family, priors=build_priors())
-    idata = model.fit(
-        draws=DRAWS, tune=TUNE, chains=CHAINS, target_accept=TARGET_ACCEPT,
-        random_seed=SEED, progressbar=False, idata_kwargs={"log_likelihood": True}, cores=CORES,
-    )
-    return model, idata
-
-
-def reference_grid():
-    """The 6 film x group cells (TD rows 0-2, ASD rows 3-5) used for every contrast.
-
-    Any covariate in `EXTRA_TERMS` is held at its centred reference (0, since
-    covariates are mean-centred) so contrasts read at that reference value.
-
-    Returns
-    -------
-    pd.DataFrame
-        6 rows: `film` (categorical, ordered as `FILMS`), `group`
-        (categorical, ordered as `GROUPS`), plus any covariate columns at 0.
-    """
-    rows = [{"film": f, "group": g} for g in GROUPS for f in FILMS]
-    grid = pd.DataFrame(rows)
-    grid["film"] = pd.Categorical(grid["film"], categories=FILMS)
-    grid["group"] = pd.Categorical(grid["group"], categories=GROUPS)
-    for term in EXTRA_TERMS:
-        grid[term] = 0.0
-    return grid
-
-
-def predict_cell_means(model, idata, grid):
-    """Posterior draws of the population-level mean at each `reference_grid` row.
-
-    Uses `include_group_specific=False` so the six cells are marginal
-    (population-level) means, not tied to any specific dyad -- this is what
-    makes the film/group contrasts below well-defined regardless of the sum
-    contrast coding used to fit the model.
-
-    Parameters
-    ----------
-    model : bambi.Model
-    idata : arviz.InferenceData
-    grid : pd.DataFrame
-        From `reference_grid()`.
-
-    Returns
-    -------
-    xarray.DataArray
-        Dims `(chain, draw, __obs__)`, `__obs__` indexing `grid`'s rows.
-    """
-    preds = model.predict(idata, data=grid, kind="response_params", inplace=False, include_group_specific=False)
-    return preds.posterior["mu"]
-
-
-def cell_indices(grid, film=None, group=None):
-    """Row positions of `grid` matching the given `film`/`group` (either may be None = any).
-
-    Parameters
-    ----------
-    grid : pd.DataFrame
-        From `reference_grid()`.
-    film, group : str or None
-        Value to match, or None to match all.
-
-    Returns
-    -------
-    list of int
-        Positional indices into `grid`.
-    """
-    mask = pd.Series(True, index=grid.index)
-    if film is not None:
-        mask &= grid["film"] == film
-    if group is not None:
-        mask &= grid["group"] == group
-    return list(grid.index[mask])
-
-
-def summarize_draws(draws):
-    """Posterior mean, 95% HDI, and directional probabilities for a draws array (L4).
-
-    Parameters
-    ----------
-    draws : xarray.DataArray or np.ndarray
-        Posterior draws of one scalar contrast.
-
-    Returns
-    -------
-    dict
-        `estimate`, `hdi_low`, `hdi_high`, `p_gt0`, `p_lt0`.
-    """
-    flat = np.asarray(draws).flatten()
-    hdi = az.hdi(flat, hdi_prob=HDI_PROB)
-    return {
-        "estimate": float(flat.mean()),
-        "hdi_low": float(hdi[0]),
-        "hdi_high": float(hdi[1]),
-        "p_gt0": float((flat > 0).mean()),
-        "p_lt0": float((flat < 0).mean()),
-    }
-
-
-def compute_contrasts(model, idata, grid):
-    """The standard L3 contrast set read off one model's posterior (estimated marginal means).
-
-    Parameters
-    ----------
-    model : bambi.Model
-    idata : arviz.InferenceData
-    grid : pd.DataFrame
-        From `reference_grid()`.
-
-    Returns
-    -------
-    dict of dict
-        Keys `group_effect`, `film_contrast_overall`, `film_contrast_TD`,
-        `film_contrast_ASD`, `interaction_film_group`, `grand_mean` -- each a
-        `summarize_draws` dict of signed posterior draws.
-    """
-    mu = predict_cell_means(model, idata, grid)
-
-    def cell(film=None, group=None):
-        return mu.isel(__obs__=cell_indices(grid, film, group)).mean("__obs__")
-
-    def film_contrast(group=None):
-        return cell("Incredibles", group) - (cell("Peppa", group) + cell("Brave", group)) / 2
-
-    group_effect = (cell(group="ASD") - cell(group="TD")).values.flatten()
-    film_overall = film_contrast(group=None).values.flatten()
-    film_td = film_contrast(group="TD").values.flatten()
-    film_asd = film_contrast(group="ASD").values.flatten()
-    interaction = film_asd - film_td
-    grand_mean = mu.isel(__obs__=list(grid.index)).mean("__obs__").values.flatten()
-
-    return {
-        "group_effect": summarize_draws(group_effect),
-        "film_contrast_overall": summarize_draws(film_overall),
-        "film_contrast_TD": summarize_draws(film_td),
-        "film_contrast_ASD": summarize_draws(film_asd),
-        "interaction_film_group": summarize_draws(interaction),
-        "grand_mean": summarize_draws(grand_mean),
-    }
-
-
-def back_transform(summary, sd):
-    """Rescale a standardized contrast summary to raw Delta-units (D3).
-
-    Valid for pure differences (all contrasts in `compute_contrasts` except
-    `grand_mean`, which is an absolute level and needs `+ mean` too --
-    handled by the caller, not here).
-
-    Parameters
-    ----------
-    summary : dict
-        A `summarize_draws` output.
-    sd : float
-        The edge's raw-scale standard deviation used to standardize.
-
-    Returns
-    -------
-    dict
-        Same keys, `estimate`/`hdi_low`/`hdi_high` scaled by `sd`;
-        `p_gt0`/`p_lt0` unchanged (scaling by a positive number preserves sign).
-    """
-    return {
-        "estimate": summary["estimate"] * sd,
-        "hdi_low": summary["hdi_low"] * sd,
-        "hdi_high": summary["hdi_high"] * sd,
-        "p_gt0": summary["p_gt0"],
-        "p_lt0": summary["p_lt0"],
-    }
-
-
-def convergence_row(model_label, idata, n_rows, n_dropped_unstable):
-    """One `stage06_diagnostics.csv` row: Rhat/ESS/divergences/LOO for one fitted model (L9).
-
-    Parameters
-    ----------
-    model_label : str
-    idata : arviz.InferenceData
-    n_rows : int
-        Rows the model was fit on (after the L8 `real_stable` filter).
-    n_dropped_unstable : int
-        Rows dropped by the L8 filter (0 in the current dataset).
-
-    Returns
-    -------
-    dict
-        Row for `stage06_diagnostics.csv`, including a `pass_l9` boolean.
-    """
-    summary = az.summary(idata)
-    n_divergent = int(idata.sample_stats["diverging"].values.sum())
-    loo = az.loo(idata, pointwise=True)
-    max_rhat = float(summary["r_hat"].max())
-    min_bulk_ess = float(summary["ess_bulk"].min())
-    min_tail_ess = float(summary["ess_tail"].min())
-    max_pareto_k = float(np.max(loo.pareto_k.values))
-    pass_l9 = (max_rhat < RHAT_MAX) and (min_bulk_ess > ESS_MIN) and (min_tail_ess > ESS_MIN) \
-        and (n_divergent == 0) and (max_pareto_k < PARETO_K_MAX)
-    return {
-        "model": model_label,
-        "max_rhat": max_rhat,
-        "min_bulk_ess": min_bulk_ess,
-        "min_tail_ess": min_tail_ess,
-        "n_divergent": n_divergent,
-        "loo_elpd": float(loo.elpd_loo),
-        "loo_se": float(loo.se),
-        "max_pareto_k": max_pareto_k,
-        "n_rows": n_rows,
-        "n_dropped_unstable": n_dropped_unstable,
-        "pass_l9": bool(pass_l9),
-    }
-
-
-def safe_label(edge):
-    """Filesystem-safe stem for an `"a->b"` edge string."""
-    return edge.replace(":", "").replace("->", "_to_")
-
-
-def plot_forest(rows, title):
-    """Horizontal forest plot (posterior mean + 95% HDI) for a list of named contrasts.
-
-    Parameters
-    ----------
-    rows : list of dict
-        Each with `label`, `estimate`, `hdi_low`, `hdi_high`.
-    title : str
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    figure, axis = plt.subplots(figsize=(6.5, 0.6 * len(rows) + 1.2))
-    ys = np.arange(len(rows))
-    estimates = [r["estimate"] for r in rows]
-    lo_err = [r["estimate"] - r["hdi_low"] for r in rows]
-    hi_err = [r["hdi_high"] - r["estimate"] for r in rows]
-    axis.errorbar(estimates, ys, xerr=[lo_err, hi_err], fmt="o", color="black", capsize=3)
-    axis.axvline(0, color="red", linestyle="--", linewidth=1)
-    axis.set_yticks(ys)
-    axis.set_yticklabels([r["label"] for r in rows])
-    axis.invert_yaxis()
-    axis.set_xlabel("estimate (95% HDI)")
-    axis.set_title(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_ppc_figure(model, idata, title):
-    """Posterior-predictive density overlay (L9 `pp_check`).
-
-    Parameters
-    ----------
-    model : bambi.Model
-    idata : arviz.InferenceData
-    title : str
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    pps = model.predict(idata, kind="response", inplace=False)
-    az.plot_ppc(pps, num_pp_samples=100)
-    figure = plt.gcf()
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_pareto_k_figure(loo_result, title):
-    """Pareto-k diagnostic scatter with the 0.7 warning line (L9).
-
-    Parameters
-    ----------
-    loo_result : arviz.stats.ELPDData
-        From `az.loo(idata, pointwise=True)`.
-    title : str
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    figure, axis = plt.subplots(figsize=(5, 3.5))
-    pareto_k = loo_result.pareto_k.values
-    axis.scatter(np.arange(len(pareto_k)), pareto_k, s=12)
-    axis.axhline(PARETO_K_MAX, color="red", linestyle="--")
-    axis.set_xlabel("observation index")
-    axis.set_ylabel("pareto k")
-    axis.set_title(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_edge_funnel(idata, tag):
-    """Save a plot_pair of each (edge offset, edge SD) pair with divergences flagged.
-
-    Diagnoses the (1|edge)/(...|edge) funnel: divergences bunched at small SD
-    are the classic neck, confirming the geometry is the cause. Loud if the
-    model carries no edge SD variable (a wiring error by the caller).
-
-    Parameters
-    ----------
-    idata : arviz.InferenceData
-        A fitted D6 model's posterior (must include `sample_stats.diverging`).
-    tag : str
-        Slug for the output filename (e.g. "pooled_D2", "M1").
-
-    Returns
-    -------
-    list of Path
-        Saved figure paths, one per edge `*_sigma` variable found.
-    """
-    sigma_vars = [v for v in idata.posterior.data_vars if v.endswith("_sigma") and "edge" in v]
-    assert sigma_vars, f"[{tag}] no edge '*_sigma' variable in posterior -- model has no (...|edge) term?"
-    saved_paths = []
-    for sigma_var in sigma_vars:
-        offset_var = sigma_var[: -len("_sigma")]
-        if offset_var not in idata.posterior.data_vars:
-            continue  # a sigma with no matching offset vector (rare); skip this one, keep the others
-        ax = az.plot_pair(
-            idata, var_names=[sigma_var, offset_var], divergences=True,
-            marginals=False, kind="scatter", scatter_kwargs={"alpha": 0.15},
-        )
-        fig = ax.ravel()[0].figure if hasattr(ax, "ravel") else ax.figure
-        fig.suptitle(f"{tag}: {sigma_var} funnel (divergences in orange)", fontsize=9)
-        fig.tight_layout()
-        safe = sigma_var.replace("|", "_").replace(":", "-").replace("(", "").replace(")", "").replace(", ", "_").replace(" ", "")
-        out_path = QC_DIR / f"funnel_{tag}_{safe}.png"
-        fig.savefig(out_path, dpi=110)
-        plt.close(fig)
-        saved_paths.append(out_path)
-    return saved_paths
 
 
 # ---------------------------------------------------------------------------
@@ -685,18 +268,18 @@ for edge, edge_class in edges_to_fit:
     n_before = len(subset)
     subset = subset[subset["real_stable"]]
     n_dropped = n_before - len(subset)  # L8, reported even when zero
-    subset = add_covariates(subset)
+    subset = add_covariates(subset, ADD_AGE_COVARIATE, ADD_IAF_COVARIATE, IAF_METRICS_CSV, IAF_DISTANCE_COLUMN)
     subset, edge_stats = standardize_within_edge(subset, DV_MAIN)
     sd = float(edge_stats.loc[edge_stats["edge"] == edge, "sd"].iloc[0])
     edge_sd_lookup[edge] = sd
 
-    formula = build_formula(f"{DV_MAIN}_z")
-    model, idata = fit_model(formula, subset)
+    formula = build_formula(f"{DV_MAIN}_z", EXTRA_TERMS)
+    model, idata = fit_model(formula, subset, MCMC_CONFIG)
     az.to_netcdf(idata, MODELS_DIR / f"{safe_label(edge)}__baseline.nc")
 
-    grid = reference_grid()
-    contrasts = compute_contrasts(model, idata, grid)
-    diagnostics_rows.append(convergence_row(f"{edge} ({edge_class})", idata, len(subset), n_dropped))
+    grid = reference_grid(FILMS, GROUPS, EXTRA_TERMS)
+    contrasts = compute_contrasts(model, idata, grid, HDI_PROB)
+    diagnostics_rows.append(convergence_row(f"{edge} ({edge_class})", idata, len(subset), n_dropped, RHAT_MAX, ESS_MIN, PARETO_K_MAX))
 
     forest_rows = []
     for contrast_name in ("group_effect", "film_contrast_overall", "film_contrast_TD", "film_contrast_ASD", "interaction_film_group"):
@@ -719,7 +302,7 @@ for edge, edge_class in edges_to_fit:
     plt.close(ppc_fig)
 
     loo_result = az.loo(idata, pointwise=True)
-    loo_fig = plot_pareto_k_figure(loo_result, f"{edge} Pareto-k")
+    loo_fig = plot_pareto_k_figure(loo_result, f"{edge} Pareto-k", PARETO_K_MAX)
     loo_fig.savefig(QC_DIR / f"{safe_label(edge)}_loo.png")
     plt.close(loo_fig)
 
@@ -743,7 +326,7 @@ for hypothesis, forward_edge, reverse_edge in ASYMMETRY_SPECS:
         n_before = len(asym)
         asym = asym[asym["real_stable"]]
         n_dropped = n_before - len(asym)
-        asym = add_covariates(asym)
+        asym = add_covariates(asym, ADD_AGE_COVARIATE, ADD_IAF_COVARIATE, IAF_METRICS_CSV, IAF_DISTANCE_COLUMN)
 
         sd = None
         if unit_label == "std":
@@ -754,14 +337,14 @@ for hypothesis, forward_edge, reverse_edge in ASYMMETRY_SPECS:
         else:
             fit_col = "asym"
 
-        formula = build_formula(fit_col)
-        model, idata = fit_model(formula, asym)
+        formula = build_formula(fit_col, EXTRA_TERMS)
+        model, idata = fit_model(formula, asym, MCMC_CONFIG)
         model_label = f"asym_{hypothesis}__{tag}"
         az.to_netcdf(idata, MODELS_DIR / f"{model_label}.nc")
 
-        grid = reference_grid()
-        contrasts = compute_contrasts(model, idata, grid)
-        diagnostics_rows.append(convergence_row(f"{model_label} ({hypothesis} caregiver-leading, {dv_col})", idata, len(asym), n_dropped))
+        grid = reference_grid(FILMS, GROUPS, EXTRA_TERMS)
+        contrasts = compute_contrasts(model, idata, grid, HDI_PROB)
+        diagnostics_rows.append(convergence_row(f"{model_label} ({hypothesis} caregiver-leading, {dv_col})", idata, len(asym), n_dropped, RHAT_MAX, ESS_MIN, PARETO_K_MAX))
 
         forest_rows = []
         for contrast_name, summary_std in list(contrasts.items()):
@@ -796,21 +379,21 @@ if FIT_POOLED_MODEL:
     for edge, edge_class in EMPHASIS_EDGES:
         subset = edge_subset(delta_table, [edge])
         subset = subset[subset["real_stable"]]
-        subset = add_covariates(subset)
+        subset = add_covariates(subset, ADD_AGE_COVARIATE, ADD_IAF_COVARIATE, IAF_METRICS_CSV, IAF_DISTANCE_COLUMN)
         subset, _ = standardize_within_edge(subset, DV_MAIN)
         pooled_frames.append(subset)
     pooled_data = pd.concat(pooled_frames, ignore_index=True)
     pooled_data["edge"] = pd.Categorical(pooled_data["edge"])
 
-    pooled_formula = build_formula(f"{DV_MAIN}_z", extra_grouping="edge")
-    pooled_model, pooled_idata = fit_model(pooled_formula, pooled_data)
+    pooled_formula = build_formula(f"{DV_MAIN}_z", EXTRA_TERMS, extra_grouping="edge")
+    pooled_model, pooled_idata = fit_model(pooled_formula, pooled_data, MCMC_CONFIG)
     az.to_netcdf(pooled_idata, MODELS_DIR / "pooled_emphasis.nc")
 
-    pooled_grid = reference_grid()
-    pooled_contrasts = compute_contrasts(pooled_model, pooled_idata, pooled_grid)
-    pooled_diagnostics = convergence_row("pooled_emphasis (6 edges, (1|edge))", pooled_idata, len(pooled_data), 0)
+    pooled_grid = reference_grid(FILMS, GROUPS, EXTRA_TERMS)
+    pooled_contrasts = compute_contrasts(pooled_model, pooled_idata, pooled_grid, HDI_PROB)
+    pooled_diagnostics = convergence_row("pooled_emphasis (6 edges, (1|edge))", pooled_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX)
     diagnostics_rows.append(pooled_diagnostics)
-    pooled_funnel_paths = plot_edge_funnel(pooled_idata, "pooled_D2")
+    pooled_funnel_paths = plot_edge_funnel(pooled_idata, "pooled_D2", QC_DIR)
 
     pooled_forest_rows = [
         {"label": name, **pooled_contrasts[name]}
@@ -1018,69 +601,7 @@ if (edgeIds.length) showEdge(edgeIds[0]);
 """
 
 
-def render_diagnostics_table(rows):
-    """Render `stage06_diagnostics.csv` rows as an HTML table with L9 pass/fail badges."""
-    html = ['<table class="diag"><tr><th>model</th><th>n</th><th>dropped</th><th>max_rhat</th>'
-            '<th>min_ess_bulk</th><th>min_ess_tail</th><th>n_divergent</th><th>max_pareto_k</th>'
-            '<th>loo_elpd</th><th>status</th></tr>']
-    for row in rows:
-        badge_class = "badge-ok" if row["pass_l9"] else "badge-bad"
-        badge_text = "PASS" if row["pass_l9"] else "FAIL"
-        html.append(
-            f'<tr><td>{row["model"]}</td><td>{row["n_rows"]}</td><td>{row["n_dropped_unstable"]}</td>'
-            f'<td>{row["max_rhat"]:.3f}</td><td>{row["min_bulk_ess"]:.0f}</td><td>{row["min_tail_ess"]:.0f}</td>'
-            f'<td>{row["n_divergent"]}</td><td>{row["max_pareto_k"]:.2f}</td><td>{row["loo_elpd"]:.1f}</td>'
-            f'<td><span class="badge {badge_class}">{badge_text}</span></td></tr>'
-        )
-    html.append("</table>")
-    return "\n".join(html)
-
-
-def render_contrast_table(rows_df):
-    """Render a set of `stage06_contrasts.csv` rows (one edge, raw units) as an HTML table."""
-    html = ['<table class="contrasts"><tr><th>contrast</th><th>estimate</th><th>HDI95 low</th>'
-            '<th>HDI95 high</th><th>P(&gt;0)</th><th>P(&lt;0)</th></tr>']
-    for _, row in rows_df.iterrows():
-        html.append(
-            f'<tr><td>{row["contrast"]}</td><td>{row["estimate"]:+.5f}</td><td>{row["hdi_low"]:+.5f}</td>'
-            f'<td>{row["hdi_high"]:+.5f}</td><td>{row["p_gt0"]:.3f}</td><td>{row["p_lt0"]:.3f}</td></tr>'
-        )
-    html.append("</table>")
-    return "\n".join(html)
-
-
-def render_primary_table(df):
-    """Render `stage06_primary_summary.csv` (both families) as an HTML table, with BH-FDR shown for the primary family."""
-    html = ['<table class="contrasts"><tr><th>label</th><th>dv</th><th>unit</th><th>estimate</th>'
-            '<th>HDI95 low</th><th>HDI95 high</th><th>P(&gt;0)</th><th>P(&lt;0)</th><th>bh_fdr</th></tr>']
-    for _, row in df.iterrows():
-        bh_text = f'{row["bh_fdr"]:.3f}' if pd.notna(row["bh_fdr"]) else "&mdash;"
-        html.append(
-            f'<tr><td>{row["label"]}</td><td>{row["dv"]}</td><td>{row["unit"]}</td>'
-            f'<td>{row["estimate"]:+.5f}</td><td>{row["hdi_low"]:+.5f}</td><td>{row["hdi_high"]:+.5f}</td>'
-            f'<td>{row["p_gt0"]:.3f}</td><td>{row["p_lt0"]:.3f}</td><td>{bh_text}</td></tr>'
-        )
-    html.append("</table>")
-    return "\n".join(html)
-
-
-def render_edge_panel(edge, edge_class):
-    """Render one emphasis edge's QC panel: forest/ppcheck/loo images + its contrast table."""
-    label = safe_label(edge)
-    rows_df = contrasts_df[(contrasts_df["edge"] == edge) & (contrasts_df["unit"] == "raw")]
-    tag = "hypothesis-generating -- no correction" if edge_class in ("exploratory",) else edge_class
-    html = [f'<div class="edge-panel" id="panel-{edge}"><h2>{edge} <small>({tag})</small></h2>']
-    html.append('<div class="row">'
-                f'<img src="qc/{label}_forest.png" alt="{edge} forest">'
-                f'<img src="qc/{label}_ppcheck.png" alt="{edge} pp_check">'
-                f'<img src="qc/{label}_loo.png" alt="{edge} pareto-k">'
-                '</div>')
-    html.append(render_contrast_table(rows_df))
-    html.append("</div>")
-    return "\n".join(html)
-
-
-panels_html = "\n".join(render_edge_panel(edge, edge_class) for edge, edge_class in edges_to_fit)
+panels_html = "\n".join(render_edge_panel(edge, edge_class, contrasts_df, safe_label) for edge, edge_class in edges_to_fit)
 edge_ids = [edge for edge, _ in edges_to_fit]
 
 pooled_section = ""
@@ -1154,108 +675,8 @@ FIT_M2_FULL_VARYING = True  # D6 sensitivity: full film*group | edge (heavy, 6-e
 edge_class_lookup = dict(EMPHASIS_EDGES)
 
 
-def fit_model_with_priors(formula, data, priors, required_group_terms, family="t"):
-    """Fit one bambi model at the Stage 6 L9 MCMC config with an explicit priors dict.
-
-    Mirrors `fit_model`, but takes `priors` directly instead of
-    `build_priors()` -- the D6 varying-slope models below need extra
-    group-specific prior keys `build_priors()` does not define. Deliberate
-    small duplication of `fit_model`'s body (explicit over silently patching
-    a shared function mid-file). Asserts that `required_group_terms` are
-    exactly among the group-specific term names bambi assigned: a mismatch
-    would mean a prior silently fell back to bambi's default, which must be
-    caught loudly rather than fit anyway.
-
-    Parameters
-    ----------
-    formula : str
-    data : pd.DataFrame
-    priors : dict
-        Bambi `Prior` objects keyed by term name.
-    required_group_terms : iterable of str
-        Group-specific term names that must appear in the built model (e.g.
-        `["C(film, Sum):C(group, Sum)|edge"]`).
-    family : str, optional
-        Bambi family name (default `"t"`, L1).
-
-    Returns
-    -------
-    bambi.Model, arviz.InferenceData
-    """
-    model = bmb.Model(formula, data, family=family, priors=priors)
-    term_names = set(model.distributional_components["mu"].terms.keys())
-    missing = set(required_group_terms) - term_names
-    assert not missing, f"prior keys not found among model terms {sorted(term_names)}: {missing}"
-    idata = model.fit(
-        draws=DRAWS, tune=TUNE, chains=CHAINS, target_accept=TARGET_ACCEPT,
-        random_seed=SEED, progressbar=False, idata_kwargs={"log_likelihood": True}, cores=CORES,
-    )
-    return model, idata
 
 
-def per_edge_contrasts(model, idata, edges, grid_categories):
-    """Per-edge film/interaction contrasts from an edge-varying model (standardized units, signed).
-
-    Predicts the 6 film x group cell means for every edge at one shared,
-    in-sample `dyad_id` (so the dyad random intercept is identical within
-    each edge and cancels exactly in every within-edge contrast) with
-    `include_group_specific=True` (so the per-edge group-specific deviations
-    enter), then reads `Incredibles - (Peppa+Brave)/2` within each group and
-    their difference, per edge -- the same linear combinations as
-    `compute_contrasts`, edge-scoped. Model-agnostic: reused unchanged for
-    both M1 and M2.
-
-    Parameters
-    ----------
-    model : bambi.Model
-    idata : arviz.InferenceData
-    edges : list of str
-        Edge strings to score (the 6 emphasis edges).
-    grid_categories : list of str
-        `edge` categories exactly as used at fit time (category order
-        matters for bambi's internal indexing).
-
-    Returns
-    -------
-    dict of dict
-        `edge -> {"interaction_film_group", "film_contrast_TD",
-        "film_contrast_ASD"} -> summarize_draws() dict`.
-    """
-    ref_dyad = pooled_data["dyad_id"].iloc[0]
-    rows = [{"film": f, "group": g, "edge": e, "dyad_id": ref_dyad}
-            for e in edges for g in GROUPS for f in FILMS]
-    grid = pd.DataFrame(rows)
-    grid["film"] = pd.Categorical(grid["film"], categories=FILMS)
-    grid["group"] = pd.Categorical(grid["group"], categories=GROUPS)
-    grid["edge"] = pd.Categorical(grid["edge"], categories=grid_categories)
-    grid["dyad_id"] = grid["dyad_id"].astype(str)
-    for term in EXTRA_TERMS:  # D4 covariates held at centred reference
-        grid[term] = 0.0
-
-    preds = model.predict(idata, data=grid, kind="response_params", inplace=False, include_group_specific=True)
-    mu = preds.posterior["mu"]  # dims (chain, draw, __obs__)
-
-    def cell(edge, film=None, group=None):
-        mask = grid["edge"] == edge
-        if film is not None:
-            mask &= grid["film"] == film
-        if group is not None:
-            mask &= grid["group"] == group
-        return mu.isel(__obs__=list(grid.index[mask])).mean("__obs__")
-
-    def film_contrast(edge, group):
-        return cell(edge, "Incredibles", group) - (cell(edge, "Peppa", group) + cell(edge, "Brave", group)) / 2
-
-    out = {}
-    for e in edges:
-        td = film_contrast(e, "TD").values.flatten()
-        asd = film_contrast(e, "ASD").values.flatten()
-        out[e] = {
-            "film_contrast_TD": summarize_draws(td),
-            "film_contrast_ASD": summarize_draws(asd),
-            "interaction_film_group": summarize_draws(asd - td),  # signed, no abs()
-        }
-    return out
 
 
 edge_categories = list(pooled_data["edge"].cat.categories)
@@ -1263,14 +684,14 @@ localization_diagnostics_rows = []
 group_sd_prior = bmb.Prior("Normal", mu=0, sigma=bmb.Prior("HalfStudentT", nu=3, sigma=1))
 
 # --- M1: interaction varies by edge (primary D6 model) ---------------------
-m1_formula = build_formula(f"{DV_MAIN}_z", extra_grouping="edge") + " + (0 + C(film, Sum):C(group, Sum) | edge)"
-m1_priors = {**build_priors(), "C(film, Sum):C(group, Sum)|edge": group_sd_prior}
+m1_formula = build_formula(f"{DV_MAIN}_z", EXTRA_TERMS, extra_grouping="edge") + " + (0 + C(film, Sum):C(group, Sum) | edge)"
+m1_priors = {**build_priors(SD_PRIOR_EDGE), "C(film, Sum):C(group, Sum)|edge": group_sd_prior}
 m1_model, m1_idata = fit_model_with_priors(
-    m1_formula, pooled_data, m1_priors, required_group_terms=["C(film, Sum):C(group, Sum)|edge"],
+    m1_formula, pooled_data, m1_priors, required_group_terms=["C(film, Sum):C(group, Sum)|edge"], mcmc_config=MCMC_CONFIG,
 )
 az.to_netcdf(m1_idata, MODELS_DIR / "pooled_emphasis_varying_interaction.nc")
-localization_diagnostics_rows.append(convergence_row("pooled_varying_interaction (D6, M1)", m1_idata, len(pooled_data), 0))
-m1_funnel_paths = plot_edge_funnel(m1_idata, "M1")
+localization_diagnostics_rows.append(convergence_row("pooled_varying_interaction (D6, M1)", m1_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX))
+m1_funnel_paths = plot_edge_funnel(m1_idata, "M1", QC_DIR)
 print(f"Fit D6 M1 (interaction varies by edge): max_rhat={localization_diagnostics_rows[-1]['max_rhat']:.3f} "
       f"n_divergent={localization_diagnostics_rows[-1]['n_divergent']} pass_l9={localization_diagnostics_rows[-1]['pass_l9']}")
 
@@ -1278,21 +699,21 @@ print(f"Fit D6 M1 (interaction varies by edge): max_rhat={localization_diagnosti
 m2_model, m2_idata = None, None
 if FIT_M2_FULL_VARYING:
     m2_formula = (
-        build_formula(f"{DV_MAIN}_z", extra_grouping="edge")
+        build_formula(f"{DV_MAIN}_z", EXTRA_TERMS, extra_grouping="edge")
         + " + (0 + C(film, Sum) + C(group, Sum) + C(film, Sum):C(group, Sum) | edge)"
     )
     m2_priors = {
-        **build_priors(),
+        **build_priors(SD_PRIOR_EDGE),
         "C(film, Sum)|edge": group_sd_prior,
         "C(group, Sum)|edge": group_sd_prior,
         "C(film, Sum):C(group, Sum)|edge": group_sd_prior,
     }
     m2_model, m2_idata = fit_model_with_priors(
         m2_formula, pooled_data, m2_priors,
-        required_group_terms=["C(film, Sum)|edge", "C(group, Sum)|edge", "C(film, Sum):C(group, Sum)|edge"],
+        required_group_terms=["C(film, Sum)|edge", "C(group, Sum)|edge", "C(film, Sum):C(group, Sum)|edge"], mcmc_config=MCMC_CONFIG,
     )
     az.to_netcdf(m2_idata, MODELS_DIR / "pooled_emphasis_varying_full.nc")
-    localization_diagnostics_rows.append(convergence_row("pooled_varying_full (D6, M2)", m2_idata, len(pooled_data), 0))
+    localization_diagnostics_rows.append(convergence_row("pooled_varying_full (D6, M2)", m2_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX))
     print(f"Fit D6 M2 (full film*group varies by edge): max_rhat={localization_diagnostics_rows[-1]['max_rhat']:.3f} "
           f"n_divergent={localization_diagnostics_rows[-1]['n_divergent']} pass_l9={localization_diagnostics_rows[-1]['pass_l9']}")
 
@@ -1309,10 +730,7 @@ if FIT_EDGE_AS_FIXED:
     # builds and set each to Normal(0,1); catch any silently-defaulted term
     # loudly rather than fitting with an unreviewed default prior.
     m3_probe = bmb.Model(m3_formula, pooled_data, family="t")
-    common_terms = [
-        name for name, term in m3_probe.distributional_components["mu"].terms.items()
-        if not isinstance(term, GroupSpecificTerm) and name != "Intercept"
-    ]
+    common_terms = common_terms_of(m3_probe)
     m3_priors = {
         "Intercept": bmb.Prior("Normal", mu=0, sigma=1),
         "1|dyad_id": bmb.Prior("Normal", mu=0, sigma=bmb.Prior("HalfStudentT", nu=3, sigma=1)),
@@ -1320,11 +738,11 @@ if FIT_EDGE_AS_FIXED:
         **{name: bmb.Prior("Normal", mu=0, sigma=1) for name in common_terms},
     }
     m3_model, m3_idata = fit_model_with_priors(
-        m3_formula, pooled_data, m3_priors, required_group_terms=[],
+        m3_formula, pooled_data, m3_priors, required_group_terms=[], mcmc_config=MCMC_CONFIG,
     )
     az.to_netcdf(m3_idata, MODELS_DIR / "pooled_emphasis_edge_fixed.nc")
     localization_diagnostics_rows.append(
-        convergence_row("edge_fixed (D6, M3, no pooling)", m3_idata, len(pooled_data), 0))
+        convergence_row("edge_fixed (D6, M3, no pooling)", m3_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX))
     print(f"Fit D6 M3 (edge as fixed factor): max_rhat={localization_diagnostics_rows[-1]['max_rhat']:.3f} "
           f"n_divergent={localization_diagnostics_rows[-1]['n_divergent']} pass_l9={localization_diagnostics_rows[-1]['pass_l9']}")
 
@@ -1373,92 +791,28 @@ if bool(loo_compare["warning"].any()):
 
 print(f"D6 loo_compare verdict: {verdict}")
 
-def population_interaction_marginal_over_edge(model, idata, edges, grid_categories):
-    """Film x group interaction marginalized (equal-weight average) over a FIXED edge factor.
-
-    Needed for M3 only: `edge` there is a common (fixed), Sum-coded term, not
-    a `(...|edge)` group-specific one, so `reference_grid()` (no `edge`
-    column at all) cannot be predicted from M3's formula and
-    `include_group_specific=False` has nothing to switch off. Equal-weight
-    averaging over Sum-coded levels exactly cancels the edge main effect and
-    every edge interaction term (that is what Sum contrasts are for), so this
-    reproduces the same population quantity `compute_contrasts` reads off
-    directly for M1/M2 -- just via explicit marginalization instead of
-    dropping a group-specific term.
-
-    Parameters
-    ----------
-    model : bambi.Model
-    idata : arviz.InferenceData
-    edges : list of str
-        The edge categories to average over (the 6 emphasis edges).
-    grid_categories : list of str
-        `edge` categories exactly as used at fit time.
-
-    Returns
-    -------
-    dict
-        `summarize_draws()` output for the marginal `interaction_film_group`.
-    """
-    ref_dyad = pooled_data["dyad_id"].iloc[0]
-    rows = [{"film": f, "group": g, "edge": e, "dyad_id": ref_dyad}
-            for g in GROUPS for f in FILMS for e in edges]
-    grid = pd.DataFrame(rows)
-    grid["film"] = pd.Categorical(grid["film"], categories=FILMS)
-    grid["group"] = pd.Categorical(grid["group"], categories=GROUPS)
-    grid["edge"] = pd.Categorical(grid["edge"], categories=grid_categories)
-    grid["dyad_id"] = grid["dyad_id"].astype(str)
-    for term in EXTRA_TERMS:
-        grid[term] = 0.0
-
-    preds = model.predict(idata, data=grid, kind="response_params", inplace=False, include_group_specific=True)
-    mu = preds.posterior["mu"]
-
-    def cell(film=None, group=None):
-        mask = pd.Series(True, index=grid.index)
-        if film is not None:
-            mask &= grid["film"] == film
-        if group is not None:
-            mask &= grid["group"] == group
-        return mu.isel(__obs__=list(grid.index[mask])).mean("__obs__")  # equal-weight average, incl. over edges
-
-    def film_contrast(group):
-        return cell(film="Incredibles", group=group) - (cell(film="Peppa", group=group) + cell(film="Brave", group=group)) / 2
-
-    interaction = (film_contrast("ASD") - film_contrast("TD")).values.flatten()
-    return summarize_draws(interaction)
 
 
 # --- per-edge localization table (from one posterior each, M1 and M2) ------
 localization_rows = []
 
 
-def add_localization_rows(model_tag, model, idata):
-    """Append per-edge + population interaction/film rows for one D6 model to `localization_rows`."""
-    per_edge = per_edge_contrasts(model, idata, [e for e, _ in EMPHASIS_EDGES], edge_categories)
-    for edge, contrasts in per_edge.items():
-        for contrast_name, summary in contrasts.items():
-            localization_rows.append({
-                "model": model_tag, "edge": edge, "edge_class": edge_class_lookup[edge],
-                "contrast": contrast_name, "unit": "std", **summary,
-            })
-    edge_is_fixed_term = "C(edge, Sum)" in model.distributional_components["mu"].terms
-    if edge_is_fixed_term:
-        population = population_interaction_marginal_over_edge(
-            model, idata, [e for e, _ in EMPHASIS_EDGES], edge_categories)
-    else:
-        population = compute_contrasts(model, idata, reference_grid())["interaction_film_group"]
-    localization_rows.append({
-        "model": model_tag, "edge": "population", "edge_class": "population",
-        "contrast": "interaction_film_group", "unit": "std", **population,
-    })
 
 
-add_localization_rows("M1_interaction_varying", m1_model, m1_idata)
+localization_rows.extend(compute_localization_rows(
+    "M1_interaction_varying", m1_model, m1_idata, [e for e, _ in EMPHASIS_EDGES], edge_categories,
+    edge_class_lookup, pooled_data, FILMS, GROUPS, EXTRA_TERMS, HDI_PROB,
+))
 if FIT_M2_FULL_VARYING:
-    add_localization_rows("M2_full_varying", m2_model, m2_idata)
+    localization_rows.extend(compute_localization_rows(
+        "M2_full_varying", m2_model, m2_idata, [e for e, _ in EMPHASIS_EDGES], edge_categories,
+        edge_class_lookup, pooled_data, FILMS, GROUPS, EXTRA_TERMS, HDI_PROB,
+    ))
 if FIT_EDGE_AS_FIXED:
-    add_localization_rows("M3_edge_fixed", m3_model, m3_idata)
+    localization_rows.extend(compute_localization_rows(
+        "M3_edge_fixed", m3_model, m3_idata, [e for e, _ in EMPHASIS_EDGES], edge_categories,
+        edge_class_lookup, pooled_data, FILMS, GROUPS, EXTRA_TERMS, HDI_PROB,
+    ))
 
 localization_df = pd.DataFrame(localization_rows)
 localization_df.to_csv(OUTPUT_DIR / "stage06_localization.csv", index=False)
@@ -1581,19 +935,6 @@ print("\n" + "\n".join(localization_summary_lines))
 
 # --- D6 gate section (appended into the already-written gate HTML) ---------
 
-
-def render_localization_table(df):
-    """Render a set of D6 per-edge/population interaction rows (adds edge/edge_class to render_contrast_table's columns)."""
-    rows_html = ['<table class="contrasts"><tr><th>edge</th><th>edge_class</th><th>contrast</th><th>estimate</th>'
-                 '<th>HDI95 low</th><th>HDI95 high</th><th>P(&gt;0)</th><th>P(&lt;0)</th></tr>']
-    for _, row in df.iterrows():
-        rows_html.append(
-            f'<tr><td>{row["edge"]}</td><td>{row["edge_class"]}</td><td>{row["contrast"]}</td>'
-            f'<td>{row["estimate"]:+.5f}</td><td>{row["hdi_low"]:+.5f}</td><td>{row["hdi_high"]:+.5f}</td>'
-            f'<td>{row["p_gt0"]:.3f}</td><td>{row["p_lt0"]:.3f}</td></tr>'
-        )
-    rows_html.append("</table>")
-    return "\n".join(rows_html)
 
 
 m1_rows_gate = localization_df[localization_df["model"] == "M1_interaction_varying"]

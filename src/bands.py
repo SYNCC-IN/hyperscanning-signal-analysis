@@ -3,6 +3,11 @@
 import numpy as np
 import pandas as pd
 
+try:
+    from .assemble import ROLE_CODE_OF
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from src.assemble import ROLE_CODE_OF
+
 PRIMARY_IAF_ROI = 'parietal'
 FALLBACK_IAF_ROI = 'sensorimotor'
 
@@ -311,3 +316,38 @@ def compute_iaf_metrics(band_assignments_df):
     })
 
     return metrics_df.merge(dyad_distances, left_on='dyad_id', right_index=True, how='left')
+
+
+def band_lookup(band_assignments, dyad_id, role, roi_label, band):
+    """Look up one participant's individualized band center/width at one ROI.
+
+    Parameters
+    ----------
+    band_assignments : pd.DataFrame
+        `band_assignments.csv`, loaded (one row per participant x ROI).
+    dyad_id : str
+    role : str
+        ``'child'`` or ``'caregiver'``.
+    roi_label : str
+        Row to read from `band_assignments`'s `roi` column.
+    band : str
+        Band name whose `<band>_cf`/`<band>_bw` columns to read (e.g. `"fast"`).
+
+    Returns
+    -------
+    tuple
+        ``(cf, bw)`` in Hz, or ``(None, None)`` if no row exists for this
+        participant/ROI or the peak is missing (NaN) -- e.g. no rhythm was
+        detected at this ROI for this participant.
+    """
+    participant_id = f"{dyad_id}_{ROLE_CODE_OF[role]}"
+    matches = band_assignments.loc[
+        (band_assignments["participant_id"] == participant_id) & (band_assignments["roi"] == roi_label)
+    ]
+    if matches.empty:
+        return None, None
+    row = matches.iloc[0]
+    cf, bw = row[f"{band}_cf"], row[f"{band}_bw"]
+    if pd.isna(cf) or pd.isna(bw):
+        return None, None
+    return float(cf), float(bw)

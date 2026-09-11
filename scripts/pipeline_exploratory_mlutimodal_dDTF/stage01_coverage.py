@@ -24,38 +24,44 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.assemble import ROLE_CODE_OF, assemble_dyad
 from src.io_utils import ensure_dir, get_participant_files
+from src.pipeline_config import load_stage_config
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-DRIVE_ROOT = Path(
-    "/Users/admin/Library/CloudStorage/GoogleDrive-j.zygierewicz@uw.edu.pl/"
-    "Mój dysk/SYNCC-IN/WP4          - Joint study/UniWAW Data collection"
-)
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage01_coverage")
+
+DRIVE_ROOT = Path(CFG["DRIVE_ROOT"])
 EEG_CLEANED_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "ICA_output" / "EEG_ICA_CLEANED"
 IBI_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "IBI"
 
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "01_coverage")
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 
 # ROI as config -- P7/P8 (TPJ proxy) is the primary track; swap to
 # ROI_LABEL = "frontal_midline", ROI_CHANNELS = ["Fz"] for the comparison track.
-ROI_LABEL = "temporo-parietal"
-ROI_CHANNELS = ["P7", "P8"]
+ROI_LABEL = CFG["ROI_LABEL"]
+ROI_CHANNELS = CFG["ROI_CHANNELS"]
 
-FILMS = ["Peppa", "Incredibles", "Brave"]  # set of labels to match, not a presentation order
-MODALITIES = ["EEG", "IBI"]
-ROLES = ["child", "caregiver"]
+FILMS = CFG["FILMS"]  # set of labels to match, not a presentation order
+MODALITIES = CFG["MODALITIES"]
+ROLES = CFG["ROLES"]
 
-EXPECTED_FILM_LEN_S = (55.0, 65.0)  # QC range around the ~60 s films
+EXPECTED_FILM_LEN_S = tuple(CFG["EXPECTED_FILM_LEN_S"])  # QC range around the ~60 s films
 
-# Dyad-selection criterion feeding Stage 2+ (dyad_selection.json below). A dyad
-# is INCLUDED iff its group is one of INCLUDED_GROUPS, every roi_ok value
+# QC criterion used only to SUGGEST a dyad selection below (section 5): a dyad
+# qualifies iff its group is one of INCLUDED_GROUPS, every roi_ok value
 # recorded for it in coverage_df is True (IBI rows carry roi_ok = None and are
 # ignored), and all films/modalities/roles are present (no gaps like a missing
-# movie). Edit INCLUDED_GROUPS or the checks near the bottom of this script to
-# experiment with different criteria.
-INCLUDED_GROUPS = ["TD", "ASD"]
+# movie). The actual set Stage 2 uses is the hand-curated `included_dyads` in
+# pipeline_config.json's "shared" section, not this computed suggestion --
+# review the QC gate and this script's printed suggestion, then edit that
+# JSON list by hand when it should change.
+INCLUDED_GROUPS = CFG["INCLUDED_GROUPS"]
+INCLUDED_DYADS = CFG["included_dyads"]
 
 # ---------------------------------------------------------------------------
 # 1. Discover participants (EEG-anchored) and assemble each dyad
@@ -310,46 +316,50 @@ html = html.replace("__ROI_LABEL__", ROI_LABEL).replace("__ROI_CHANNELS__", "|".
 print(f"\nWrote interactive gate to {OUTPUT_DIR / 'coverage_gate.html'}")
 
 # ---------------------------------------------------------------------------
-# 5. Dyad selection for downstream stages (INCLUDED_DYADS / EXCLUDED_DYADS)
+# 5. QC-suggested dyad selection (reference only -- see note below)
 # ---------------------------------------------------------------------------
 dyad_group = coverage_df.groupby("dyad_id")["group"].first()
 dyad_roi_all_ok = coverage_df.groupby("dyad_id")["roi_ok"].apply(lambda s: s.dropna().eq(True).all())
 dyad_all_present = coverage_df.groupby("dyad_id")["present"].all()
 
-INCLUDED_DYADS = sorted(
+qc_suggested_dyads = sorted(
     dyad_id for dyad_id in dyad_ids
     if dyad_group[dyad_id] in INCLUDED_GROUPS
     and dyad_roi_all_ok[dyad_id]
     and dyad_all_present[dyad_id]
 )
-EXCLUDED_DYADS = sorted(set(dyad_ids) - set(INCLUDED_DYADS))
+qc_excluded_dyads = sorted(set(dyad_ids) - set(qc_suggested_dyads))
 
-dyad_selection_path = OUTPUT_DIR / "dyad_selection.json"
-dyad_selection_path.write_text(
-    json.dumps({"INCLUDED_DYADS": INCLUDED_DYADS, "EXCLUDED_DYADS": EXCLUDED_DYADS}, indent=2),
-    encoding="utf-8",
-)
-print(f"\nDyad selection (groups={INCLUDED_GROUPS}, roi_ok + full film coverage required): "
-      f"{len(INCLUDED_DYADS)} included, {len(EXCLUDED_DYADS)} excluded")
-print(f"Wrote dyad selection to {dyad_selection_path}")
+print(f"\nQC-suggested dyad selection (groups={INCLUDED_GROUPS}, roi_ok + full film coverage "
+      f"required): {len(qc_suggested_dyads)} pass, {len(qc_excluded_dyads)} fail")
+print("This is a SUGGESTION only: Stage 2 reads the hand-curated `included_dyads` list from "
+      f"pipeline_config.json's \"shared\" section (currently {len(INCLUDED_DYADS)} dyads), not this "
+      "computed suggestion. Review the QC gate above, then edit that JSON list by hand if it should change.")
+print(f"  QC-suggested included_dyads: {qc_suggested_dyads}")
+if set(qc_suggested_dyads) != set(INCLUDED_DYADS):
+    print(f"  NOTE: differs from the currently configured included_dyads -- review before adopting.")
 
 # ---------------------------------------------------------------------------
-# 6. Basic sample statistics for the included subset
+# 6. Basic sample statistics for the currently configured included subset
 # ---------------------------------------------------------------------------
-included_meta = pd.DataFrame([
-    {"dyad_id": dyad_id, "group": dyads[dyad_id]["group"], **dyads[dyad_id]["meta"]}
-    for dyad_id in INCLUDED_DYADS
-])
+if not INCLUDED_DYADS:
+    print("\npipeline_config.json's \"shared\".included_dyads is empty -- no sample statistics to "
+          "show yet. Populate it (see section 5 above) and re-run.")
+else:
+    included_meta = pd.DataFrame([
+        {"dyad_id": dyad_id, "group": dyads[dyad_id]["group"], **dyads[dyad_id]["meta"]}
+        for dyad_id in INCLUDED_DYADS
+    ])
 
-print(f"\n=== Included subset ({len(INCLUDED_DYADS)} dyads) sample statistics, by group ===")
-for group_label, group_meta in included_meta.groupby("group"):
-    age = group_meta["age_months"].dropna()
-    sex_counts = group_meta["sex"].value_counts()
-    n_sexed = sex_counts.sum()
-    sex_str = ", ".join(
-        f"{sex_code}={count} ({100 * count / n_sexed:.1f}%)" for sex_code, count in sex_counts.items()
-    )
-    print(f"\n{group_label} (n={len(group_meta)}):")
-    print(f"  age (months): mean={age.mean():.1f} +/- {age.std():.1f}, "
-          f"range=[{age.min():.0f}, {age.max():.0f}] (n={len(age)})")
-    print(f"  sex: {sex_str}")
+    print(f"\n=== Included subset ({len(INCLUDED_DYADS)} dyads) sample statistics, by group ===")
+    for group_label, group_meta in included_meta.groupby("group"):
+        age = group_meta["age_months"].dropna()
+        sex_counts = group_meta["sex"].value_counts()
+        n_sexed = sex_counts.sum()
+        sex_str = ", ".join(
+            f"{sex_code}={count} ({100 * count / n_sexed:.1f}%)" for sex_code, count in sex_counts.items()
+        )
+        print(f"\n{group_label} (n={len(group_meta)}):")
+        print(f"  age (months): mean={age.mean():.1f} +/- {age.std():.1f}, "
+              f"range=[{age.min():.0f}, {age.max():.0f}] (n={len(age)})")
+        print(f"  sex: {sex_str}")

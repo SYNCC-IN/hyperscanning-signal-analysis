@@ -28,6 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.connectivity import read_edge_value
 from src.envelopes import (
     downsample,
     filter_individual_band,
@@ -36,6 +37,7 @@ from src.envelopes import (
 )
 from src.io_utils import ensure_dir
 from src.mtmvar import direct_dtf, graph_plot, multivariate_spectra, mvar_plot
+from src.stats_utils import mean_and_sem
 from src.synthetic_mvar import (
     edges_to_coupling,
     generate_coupled_oscillators,
@@ -118,47 +120,6 @@ ENVELOPE_PASS_THRESHOLD_FRACTION = 0.5   # must retain >= 50% of the no-CF-gap-c
 PHASE_DEGRADATION_THRESHOLD_FRACTION = 0.5  # must drop by >= 50% from smallest to largest gap
 
 # ---------------------------------------------------------------------------
-# Utility functions
-# ---------------------------------------------------------------------------
-
-def get_edge_strength(d_dtf, source, target):
-    """Read the frequency-averaged dDTF value for one source->target edge.
-
-    Uses the orientation confirmed above: if `orientation_is_target_source`,
-    `d_dtf` is indexed ``[target, source, freq]``; otherwise
-    ``[source, target, freq]``.
-    """
-    if orientation_is_target_source:
-        return d_dtf[target, source, :].mean()
-    return d_dtf[source, target, :].mean()
-
-
-def mean_and_sem(values, axis=0):
-    """Mean and standard error of the mean (SEM) across realizations.
-
-    Uses the standard error of the mean (SEM), 
-    which is adequate for `N_REALIZATIONS` in the tens-to-hundreds range used here.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of realizations to summarize.
-    axis : int, optional
-        Axis indexing independent realizations (default 0).
-
-    Returns
-    -------
-    mean : np.ndarray
-        Mean across `axis`.
-    sem : np.ndarray
-        Standard error of the mean across `axis`; the mean +/- sem gives an approximate 68% CI.
-    """
-    mean = values.mean(axis=axis)
-    sem = values.std(axis=axis, ddof=1) / np.sqrt(values.shape[axis])
-    return mean, sem
-
-
-# ---------------------------------------------------------------------------
 # Sanity checks on the generators: fixed seed -> fixed output, correct shape
 # ---------------------------------------------------------------------------
 _sanity_coupling = edges_to_coupling(PART_A_EDGES, n_nodes=4)
@@ -215,6 +176,7 @@ mean_01 = ddtf_orientation[0, 1, :].mean()  # d_dtf[row=0, col=1]
 mean_10 = ddtf_orientation[1, 0, :].mean()  # d_dtf[row=1, col=0]
 
 orientation_is_target_source = mean_10 > mean_01
+edge_orientation = "target_source" if orientation_is_target_source else "source_target"
 if orientation_is_target_source:
     dominant_value, other_value = mean_10, mean_01
     orientation_label = "direct_dtf output is indexed [target, source, freq] (row = target/driven, column = source/driving)"
@@ -250,14 +212,14 @@ spectra_part_a = multivariate_spectra(
     max_model_order=PART_A_MAX_MODEL_ORDER, crit_type=CRIT_TYPE,
 )
 
-part_a_h2_pass = get_edge_strength(ddtf_part_a, 1, 0) > get_edge_strength(ddtf_part_a, 0, 1)
-part_a_h4_pass = get_edge_strength(ddtf_part_a, 3, 2) > get_edge_strength(ddtf_part_a, 2, 3)
-part_a_novel_pass = get_edge_strength(ddtf_part_a, 3, 0) > get_edge_strength(ddtf_part_a, 0, 3)
+part_a_h2_pass = read_edge_value(ddtf_part_a, 1, 0, orientation=edge_orientation) > read_edge_value(ddtf_part_a, 0, 1, orientation=edge_orientation)
+part_a_h4_pass = read_edge_value(ddtf_part_a, 3, 2, orientation=edge_orientation) > read_edge_value(ddtf_part_a, 2, 3, orientation=edge_orientation)
+part_a_novel_pass = read_edge_value(ddtf_part_a, 3, 0, orientation=edge_orientation) > read_edge_value(ddtf_part_a, 0, 3, orientation=edge_orientation)
 
 print("\n=== Part A: 4-node recovery ===")
-print(f"  cg:ROI -> child:ROI  (1->0, H2)    : {get_edge_strength(ddtf_part_a, 1, 0):.4f}  vs reverse {get_edge_strength(ddtf_part_a, 0, 1):.4f}  [{'PASS' if part_a_h2_pass else 'FAIL'}]")
-print(f"  cg:HRV -> child:HRV  (3->2, H4)    : {get_edge_strength(ddtf_part_a, 3, 2):.4f}  vs reverse {get_edge_strength(ddtf_part_a, 2, 3):.4f}  [{'PASS' if part_a_h4_pass else 'FAIL'}]")
-print(f"  cg:HRV -> child:ROI  (3->0, novel) : {get_edge_strength(ddtf_part_a, 3, 0):.4f}  vs reverse {get_edge_strength(ddtf_part_a, 0, 3):.4f}  [{'PASS' if part_a_novel_pass else 'FAIL'}]")
+print(f"  cg:ROI -> child:ROI  (1->0, H2)    : {read_edge_value(ddtf_part_a, 1, 0, orientation=edge_orientation):.4f}  vs reverse {read_edge_value(ddtf_part_a, 0, 1, orientation=edge_orientation):.4f}  [{'PASS' if part_a_h2_pass else 'FAIL'}]")
+print(f"  cg:HRV -> child:HRV  (3->2, H4)    : {read_edge_value(ddtf_part_a, 3, 2, orientation=edge_orientation):.4f}  vs reverse {read_edge_value(ddtf_part_a, 2, 3, orientation=edge_orientation):.4f}  [{'PASS' if part_a_h4_pass else 'FAIL'}]")
+print(f"  cg:HRV -> child:ROI  (3->0, novel) : {read_edge_value(ddtf_part_a, 3, 0, orientation=edge_orientation):.4f}  vs reverse {read_edge_value(ddtf_part_a, 0, 3, orientation=edge_orientation):.4f}  [{'PASS' if part_a_novel_pass else 'FAIL'}]")
 
 # Gate figure (a): injected directionality matrix vs recovered dDTF matrix
 injected_matrix = summarize_coupling_strength(part_a_coupling)  # (target, source), by construction
@@ -364,8 +326,8 @@ for gap_idx, gap in enumerate(CF_GAPS_HZ):
                 max_model_order=PART_B_MAX_MODEL_ORDER_RAW, crit_type=CRIT_TYPE,
             )
 
-        envelope_strengths[realization, gap_idx] = get_edge_strength(ddtf_env, 1, 0)
-        phase_strengths[realization, gap_idx] = get_edge_strength(ddtf_raw, 1, 0)
+        envelope_strengths[realization, gap_idx] = read_edge_value(ddtf_env, 1, 0, orientation=edge_orientation)
+        phase_strengths[realization, gap_idx] = read_edge_value(ddtf_raw, 1, 0, orientation=edge_orientation)
 
     print(f"  gap={gap:.1f} Hz (cg CF={cg_cf:.1f} Hz) done: "
           f"envelope mean={envelope_strengths[:, gap_idx].mean():.4f}  "

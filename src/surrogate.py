@@ -15,14 +15,17 @@ sign of a surviving effect is scientifically meaningful (e.g. negative
 interpersonal HRV synchrony can be adaptive).
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from scipy.stats import median_abs_deviation
+from scipy.stats import gaussian_kde, median_abs_deviation
 
 try:
+    from .connectivity import Granger_estimator, edge_value, read_edge_value
     from .design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_stack
     from .mvar_diag import ar_root_stability, fit_mvar_avg_acf
 except ImportError:  # pragma: no cover - fallback for direct script execution
+    from src.connectivity import Granger_estimator, edge_value, read_edge_value
     from src.design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_stack
     from src.mvar_diag import ar_root_stability, fit_mvar_avg_acf
 
@@ -205,3 +208,288 @@ def delta_and_z(real_value, null_values):
     delta = float(real_value - null_median)
     z = delta / null_std
     return {"delta": delta, "z": z, "null_median": null_median, "null_std": null_std, "n_null": int(null_values.size)}
+
+
+def real_edge_values(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz):
+    """Per-dyad band-averaged connectivity value for `edge` (the real, same-dyad estimate).
+
+    Parameters
+    ----------
+    dyads : list of np.ndarray, each shape (k, n_samples)
+        One z-scored design matrix per dyad.
+    edge : tuple of int
+        `(target, source)` raw indices, `src.connectivity.edge_value`'s convention.
+    freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz :
+        Passed through to `src.connectivity.edge_value`.
+
+    Returns
+    -------
+    np.ndarray
+        One band-averaged value per dyad.
+    """
+    return np.array([
+        edge_value(dyad, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)
+        for dyad in dyads
+    ])
+
+
+def surrogate_null(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz):
+    """Pooled surrogate null for `edge`, over every foreign (child, caregiver) pairing.
+
+    `surrogate_pairs` enumerates every ordered foreign pairing; each surrogate
+    takes channel 0 from one dyad and channel 1 from another, so each
+    channel's marginal statistics are preserved but any real interaction is
+    destroyed.
+
+    Parameters
+    ----------
+    dyads : list of np.ndarray, each shape (2, n_samples)
+        Two-channel dyads (e.g. rough/smooth or child/caregiver proxies).
+    edge : tuple of int
+        `(target, source)` raw indices, `src.connectivity.edge_value`'s convention.
+    freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz :
+        Passed through to `src.connectivity.edge_value`.
+
+    Returns
+    -------
+    np.ndarray
+        One band-averaged value per foreign pairing.
+    """
+    dyad_ids = list(range(len(dyads)))
+    values = []
+    for id_a, id_b in surrogate_pairs(dyad_ids):
+        design = np.stack([dyads[id_a][0], dyads[id_b][1]], axis=0)
+        values.append(edge_value(design, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz))
+    return np.array(values)
+
+
+def edge_class_for(source_name, target_name, edge_class):
+    """Return this directed edge's H2/H4/exploratory/"other" tag.
+
+    Parameters
+    ----------
+    source_name, target_name : str
+        Design-variable names (e.g. `"cg:ROI"`, `"child:ROI"`).
+    edge_class : dict
+        `{(source_name, target_name): class_label}` for the named edges;
+        any edge not in this dict defaults to `"other"`.
+    """
+    return edge_class.get((source_name, target_name), "other")
+
+
+def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class,
+                              estimator, box_cox_lambda, title, delta_space=False):
+    """Split violin of the surrogate null vs real dyads (TD left / ASD right), per edge.
+
+    Density-normalised (KDE), not a raw-count histogram: the surrogate null pool (hundreds
+    to thousands of draws) vastly outnumbers real dyads (tens), so a count-based plot would
+    make the null dwarf the real distributions regardless of effect size. Each of the three
+    densities (null, TD, ASD) is independently normalised to unit area by `gaussian_kde`
+    (area, not count), then all three share one width-scale constant -- so violin width
+    reflects relative density, not sample size. The null (grey, both halves, should look
+    roughly symmetric about its mean) sits in the background; TD occupies the left half and
+    ASD the right half of the same y-scale, for an at-a-glance group-vs-group and
+    group-vs-null read.
+
+    Parameters
+    ----------
+    edges_to_plot : list of tuple(str, str)
+        `(source_name, target_name)` edges to render, one panel each.
+    null_matrix : np.ndarray, shape (n_pairs_kept, len(all_edges))
+        Pooled surrogate null draws, columns in `all_edges` order.
+    real_by_dyad : dict
+        `{dyad_id: {"band_avg": (4,4) array, "group": str, ...}}` for this film.
+    all_edges : list of tuple(str, str)
+        Column order of `null_matrix`.
+    edge_class : dict
+        Passed to `edge_class_for` for the panel subtitle.
+    estimator : str
+        Estimator name, for the y-axis label.
+    box_cox_lambda : float
+        Box-Cox exponent applied upstream (-1 = none), for the y-axis label.
+    title : str
+        Figure title.
+    delta_space : bool, optional
+        If False (default), plot raw band-averaged estimator values. If True, shift every
+        value in a panel by that panel's own `-null_median` before plotting -- i.e. plot
+        `delta_dtf` (`delta_and_z`'s signed `real - median(null)`) instead of
+        the raw value. The null violin is then centred on zero by construction; each real
+        dyad's offset from zero IS its `delta_dtf`, read directly off the y-axis. Uses the
+        median (matching `delta_and_z`), not the mean, so the delta shown here is exactly
+        the `delta_dtf` value in the tidy table -- not a different, mean-centred quantity.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    group_colors = {"TD": "tab:blue", "ASD": "tab:orange"}
+    group_sides = {"TD": -1, "ASD": 1}
+    n_cols = 3
+    n_rows = int(np.ceil(len(edges_to_plot) / n_cols))
+    half_width = 0.4  # max half-violin width (x-axis units), shared by null/TD/ASD
+    figure, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.5 * n_cols, 4 * n_rows))
+    axes_flat = list(np.atleast_1d(axes).flat)
+
+    for panel_idx, (axis, (source_name, target_name)) in enumerate(zip(axes_flat, edges_to_plot)):
+        edge_idx = all_edges.index((source_name, target_name))
+        null_values = null_matrix[:, edge_idx]
+        offset = np.median(null_values) if delta_space else 0.0
+        null_values = null_values - offset
+        values_by_group = {
+            group_label: np.array([
+                read_edge_value(info["band_avg"], source_name, target_name, names=DESIGN_VARIABLES) - offset
+                for info in real_by_dyad.values() if info["group"] == group_label
+            ])
+            for group_label in group_sides
+        }
+
+        all_values = np.concatenate([null_values] + list(values_by_group.values()))
+        y_grid = np.linspace(all_values.min(), all_values.max(), 200)
+
+        null_density = gaussian_kde(null_values)(y_grid)
+        scale = half_width / null_density.max()
+        axis.fill_betweenx(y_grid, -null_density * scale, null_density * scale,
+                            color="lightgrey", alpha=0.6, zorder=1, label="surrogate null")
+        axis.axhline(np.median(null_values), color="black", linestyle="--", linewidth=1, zorder=2, label="null median")
+
+        for group_label, side in group_sides.items():
+            values = values_by_group[group_label]
+            if values.size < 2:
+                continue
+            density = gaussian_kde(values)(y_grid) * scale
+            color = group_colors[group_label]
+            axis.fill_betweenx(y_grid, 0, side * density, color=color, alpha=0.7, zorder=3, label=group_label)
+            tick_x = sorted([0, side * 0.6 * half_width])
+            axis.hlines(np.median(values), tick_x[0], tick_x[1], color=color, linewidth=2, zorder=4)
+
+        axis.set_title(f"{source_name} -> {target_name} ({edge_class_for(source_name, target_name, edge_class)})", fontsize=9)
+        axis.set_xlim(-half_width * 1.1, half_width * 1.1)
+        axis.set_xticks([-half_width / 2, half_width / 2])
+        axis.set_xticklabels(["TD", "ASD"])
+        if panel_idx == 0:
+            axis.legend(fontsize=6, loc="upper right")
+
+    box_cox_suffix = "" if box_cox_lambda == -1 else f", box_cox_lambda={box_cox_lambda}"
+    y_axis_label = (f"delta_dtf ({estimator}, real - null_median{box_cox_suffix})" if delta_space
+                     else f"band-avg {estimator}{box_cox_suffix}")
+    for axis in axes_flat[: n_rows * n_cols : n_cols]:
+        axis.set_ylabel(y_axis_label)
+    for axis in axes_flat[len(edges_to_plot):]:
+        axis.axis("off")
+    figure.suptitle(title)
+    figure.tight_layout()
+    return figure
+
+
+def plot_delta_summary(delta_table_df, edges_to_plot, title):
+    """Per-group mean +/- SEM of `delta_dtf` for the given edges.
+
+    Parameters
+    ----------
+    delta_table_df : pd.DataFrame
+        The tidy Stage 5 table (or a subset), with `group`, `source`,
+        `target`, `delta_dtf` columns.
+    edges_to_plot : list of tuple(str, str)
+        `(source_name, target_name)` edges, in display order.
+    title : str
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    edge_labels = [f"{s}->{t}" for s, t in edges_to_plot]
+    x = np.arange(len(edge_labels))
+    width = 0.35
+    group_labels = sorted(delta_table_df["group"].unique())
+    figure, axis = plt.subplots(figsize=(7, 4))
+    for i, group_label in enumerate(group_labels):
+        group_df = delta_table_df[delta_table_df["group"] == group_label]
+        means, sems = [], []
+        for source_name, target_name in edges_to_plot:
+            edge_df = group_df[(group_df["source"] == source_name) & (group_df["target"] == target_name)]
+            means.append(edge_df["delta_dtf"].mean())
+            sems.append(edge_df["delta_dtf"].std(ddof=1) / np.sqrt(len(edge_df)))
+        offset = (i - (len(group_labels) - 1) / 2) * width
+        axis.bar(x + offset, means, width=width, yerr=sems, label=group_label, capsize=3)
+    axis.axhline(0, color="black", linewidth=0.8)
+    axis.set_xticks(x)
+    axis.set_xticklabels(edge_labels, rotation=20, fontsize=8)
+    axis.set_ylabel("mean delta_dtf (real - null), +/- SEM")
+    axis.legend(title="group")
+    axis.set_title(title)
+    figure.tight_layout()
+    return figure
+
+
+def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type,
+                  stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges):
+    """Estimate a surrogate null matrix for one set of candidate mismatched pairs.
+
+    Scope-agnostic core shared by a pooled reference null and a within-group
+    sensitivity null: the caller decides which pairs go in (all off-diagonal
+    for the pooled null; same-group off-diagonal for a within-group null).
+    Each pair is stitched (`assemble_surrogate_design`), stability-gated
+    (`windowed_ar_stability`), estimated (`Granger_estimator`) and
+    band-averaged; kept draws are stacked in `all_edges` column order.
+
+    Parameters
+    ----------
+    candidate_pairs : list of tuple(str, str)
+        Ordered `(child_dyad, cg_dyad)` pairs to attempt.
+    envelopes_by_dyad : dict
+        `{dyad_id: (envelopes DataArray, order_record)}` for this film.
+    win_len, step : int
+        Locked window geometry.
+    model_order : int
+        Fixed MVAR model order for every fit (real and surrogate).
+    detrend_type : {'linear', 'constant'}
+        Per-window detrend type.
+    stability_max_root : float
+        A candidate pair is excluded from the null if its max AR companion
+        eigenvalue modulus is >= this.
+    freqs : np.ndarray
+        Frequency axis (Hz).
+    fs : float
+        Sampling frequency (Hz).
+    estimator : str
+        Estimator name passed to `Granger_estimator`.
+    box_cox_lambda : float
+        Box-Cox exponent passed to `Granger_estimator` (-1 = none).
+    band_hz : tuple of float
+        `(low, high)` band edges in Hz, passed to `band_average_cube`.
+    all_edges : list of tuple(str, str)
+        Column order for the returned `null_matrix`.
+
+    Returns
+    -------
+    dict
+        Keys: `null_matrix` (n_kept, len(all_edges)), `kept_child_dyads`,
+        `kept_cg_dyads`, `n_excluded_unstable`, `n_attempted`.
+    """
+    null_rows, kept_child_dyads, kept_cg_dyads = [], [], []
+    n_excluded_unstable = 0
+    for child_dyad, cg_dyad in candidate_pairs:
+        assert child_dyad != cg_dyad
+        child_envelopes, _ = envelopes_by_dyad[child_dyad]
+        cg_envelopes, _ = envelopes_by_dyad[cg_dyad]
+        design = assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True)
+
+        max_abs_root, _ = windowed_ar_stability(design, win_len, step, model_order, detrend_type)
+        if max_abs_root >= stability_max_root:
+            n_excluded_unstable += 1
+            continue
+
+        ffdtf, _ = Granger_estimator(design, freqs, fs, model_order, win_len, step, detrend_type, ESTIMATOR=estimator, box_cox_lambda=box_cox_lambda)
+        band_avg = band_average_cube(ffdtf, freqs, band_hz)
+        null_rows.append([read_edge_value(band_avg, s, t, names=DESIGN_VARIABLES) for s, t in all_edges])
+        kept_child_dyads.append(child_dyad)
+        kept_cg_dyads.append(cg_dyad)
+
+    return {
+        "null_matrix": np.array(null_rows),
+        "kept_child_dyads": kept_child_dyads,
+        "kept_cg_dyads": kept_cg_dyads,
+        "n_excluded_unstable": n_excluded_unstable,
+        "n_attempted": len(candidate_pairs),
+    }

@@ -66,3 +66,75 @@ def Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type="linear"
     granger_estimator = dtf_estimator(stack, freqs, fs, optimal_model_order=p, ESTIMATOR=ESTIMATOR, box_cox_lambda=box_cox_lambda)
     spectra = multivariate_spectra(stack, freqs, fs, optimal_model_order=p)
     return granger_estimator, spectra
+
+
+def read_edge_value(cube, source, target, names=None, orientation="target_source"):
+    """Read one directed edge's value out of a connectivity cube/matrix.
+
+    Handles both raw integer indexing (`names=None`) and named lookup
+    (`names` is the ordered list `source`/`target` are drawn from, e.g.
+    `src.design.DESIGN_VARIABLES`). `orientation` says which axis is target
+    vs source: `"target_source"` (default) matches `Granger_estimator`'s
+    `[target, source, freq]` convention (row = target/driven, column =
+    source/driving); `"source_target"` is the reverse. A 3-D `cube`
+    (frequency-resolved) is read as its mean across the trailing frequency
+    axis; a plain 2-D matrix (already band- or frequency-averaged) is read
+    as-is.
+
+    Parameters
+    ----------
+    cube : np.ndarray, shape (k, k) or (k, k, n_freqs)
+        Connectivity matrix or frequency-resolved cube.
+    source, target : int or str
+        Raw row/column indices (`names=None`) or entries of `names`.
+    names : list of str, optional
+        Ordered channel/variable names `cube`'s rows/columns correspond to.
+        Default None (source/target are already integer indices).
+    orientation : {"target_source", "source_target"}, optional
+        Default "target_source".
+
+    Returns
+    -------
+    float
+        The edge value (frequency-averaged, for a 3-D `cube`).
+    """
+    if names is not None:
+        source, target = names.index(source), names.index(target)
+    row, col = (target, source) if orientation == "target_source" else (source, target)
+    value = cube[row, col]
+    return float(value.mean()) if cube.ndim == 3 else float(value)
+
+
+def edge_value(design, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz):
+    """Band-averaged Granger_estimator value for one directed edge of a 2-channel design.
+
+    Convenience wrapper combining `Granger_estimator` + `band_average_cube` +
+    `read_edge_value` in one call, for callers that only need a single edge's
+    band-averaged value (e.g. a synthetic-validation harness scoring one
+    edge per simulated dyad).
+
+    Parameters
+    ----------
+    design : np.ndarray, shape (k, n_samples)
+        z-scored design matrix.
+    edge : tuple of int
+        `(row, target)` raw indices into the band-averaged matrix
+        (`orientation="target_source"`, i.e. `edge = (target, source)`, to
+        match the historical caller convention).
+    freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda :
+        Passed through to `Granger_estimator`.
+    band_hz : tuple of float
+        `(low, high)` band edges in Hz, passed to `src.surrogate.band_average_cube`.
+
+    Returns
+    -------
+    float
+        Band-averaged edge value.
+    """
+    try:
+        from .surrogate import band_average_cube  # deferred: src.surrogate imports this module
+    except ImportError:  # pragma: no cover - fallback for direct script execution
+        from src.surrogate import band_average_cube
+    granger_estimator, _ = Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda)
+    band_avg = band_average_cube(granger_estimator, freqs, band_hz)
+    return float(band_avg[edge[0], edge[1]])

@@ -56,169 +56,61 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator
-from src.design import DESIGN_VARIABLES, assemble_design_matrix
-from src.io_utils import ensure_dir
+from src.design import DESIGN_VARIABLES, assemble_design_matrix, window_geometry
+from src.io_utils import ensure_dir, parse_case_filename
 from src.mtmvar import mvar_plot
-from src.synthetic_mvar import edges_to_coupling, generate_var_process, summarize_coupling_strength
+from src.mvar_diag import plot_model_order_histogram
+from src.pipeline_config import load_stage_config
+from src.reporting import render_dyad_panel_ffdtf
+from src.surrogate import band_average_cube
+from src.synthetic_mvar import edges_to_coupling, generate_var_process, plot_synthetic_anchor, summarize_coupling_strength
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-ENVELOPES_DIR = ANALYSIS_ROOT / "02_envelopes"
-ORDER_DIR = ANALYSIS_ROOT / "03_mvar"
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "04_ffdtf")
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage04_ffdtf")
+
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+ENVELOPES_DIR = ANALYSIS_ROOT / CFG["ENVELOPES_SUBDIR"]
+ORDER_DIR = ANALYSIS_ROOT / CFG["ORDER_SUBDIR"]
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-FILMS = ["Peppa", "Incredibles", "Brave"]
-TARGET_SFREQ = 2.5  # must match Stage 2/3's realized design-file rate (asserted against each file's attrs below)
-MODEL_ORDER = 4 #"auto"  # or set to a specific integer value if not using automatic selection
+FILMS = CFG["FILMS"]
+TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3's realized design-file rate (asserted against each file's attrs below)
+MODEL_ORDER = CFG["MODEL_ORDER"] #"auto"  # or set to a specific integer value if not using automatic selection
 # OPEN DECISION (confirm before Stage 5): 100 points, 0.02 Hz -> just under
 # Nyquist, matching Stage 3's QC grid so figures line up across stages.
 FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)
 
-COUPLING_BAND_HZ = (0.15, 0.5)
-ESTIMATOR = "dDTF"  # or "ffDTF" for full-frequency DTF
-BOX_COX_LAMBDA = 0.25  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform)
-PRIMARY_EDGES = [("cg:ROI", "child:ROI"), ("child:ROI", "cg:ROI"), ("cg:HRV", "child:HRV"), ("child:HRV", "cg:HRV")]
-GRID_SCALE = "linear"
-FFDTF_ROWSUM_TOL = 1e-6
+COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])
+ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF
+BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform)
+PRIMARY_EDGES = [
+    (edge["source"], edge["target"]) for edge in CFG["edge_topology"] if edge["class"] != "exploratory"
+]
+GRID_SCALE = CFG["GRID_SCALE"]
+FFDTF_ROWSUM_TOL = CFG["FFDTF_ROWSUM_TOL"]
 
 # Synthetic known-truth anchor (Stage 0 style): node 1 -> node 0 at lag 1,
 # plus mild self-persistence on both nodes, run through the real
 # `Granger_estimator` code path to validate it against a known answer.
-ANCHOR_EDGES = [(1, 0, 1, 0.5), (0, 0, 1, 0.2), (1, 1, 1, 0.2)]
-ANCHOR_N_NODES = 2
-ANCHOR_CHAN_NAMES = ["node0", "node1"]
-ANCHOR_SNR = 5.0
-ANCHOR_N_SAMPLES = 3000
-ANCHOR_SEED = 0
+ANCHOR_EDGES = [tuple(edge) for edge in CFG["ANCHOR_EDGES"]]
+ANCHOR_N_NODES = CFG["ANCHOR_N_NODES"]
+ANCHOR_CHAN_NAMES = CFG["ANCHOR_CHAN_NAMES"]
+ANCHOR_SNR = CFG["ANCHOR_SNR"]
+ANCHOR_N_SAMPLES = CFG["ANCHOR_N_SAMPLES"]
+ANCHOR_SEED = CFG["ANCHOR_SEED"]
 ANCHOR_FS = TARGET_SFREQ
-ANCHOR_WIN_LEN_S = 10.0
-ANCHOR_OVERLAP_FRAC = 0.5
-ANCHOR_MODEL_ORDER = 1
-ANCHOR_DETREND_TYPE = "linear"
+ANCHOR_WIN_LEN_S = CFG["ANCHOR_WIN_LEN_S"]
+ANCHOR_OVERLAP_FRAC = CFG["ANCHOR_OVERLAP_FRAC"]
+ANCHOR_MODEL_ORDER = CFG["ANCHOR_MODEL_ORDER"]
+ANCHOR_DETREND_TYPE = CFG["ANCHOR_DETREND_TYPE"]
 
 
-def parse_case_filename(nc_path):
-    """Recover ``(dyad_id, film)`` from a Stage 2 output filename.
-
-    Mirrors `scripts/stage03_mvar_order.py`'s `parse_case_filename` exactly
-    (duplicated rather than imported, since that script has no
-    ``__main__`` guard and importing it would re-run its whole pipeline).
-
-    Parameters
-    ----------
-    nc_path : pathlib.Path
-        A `02_envelopes/<dyad_id>_<film>.nc` file.
-
-    Returns
-    -------
-    tuple of str
-        ``(dyad_id, film)``. Raises `ValueError` if the stem does not end in
-        one of `FILMS` -- an unexpected filename is a real error, not a case
-        to silently skip.
-    """
-    stem = nc_path.stem
-    for film in FILMS:
-        suffix = f"_{film}"
-        if stem.endswith(suffix):
-            return stem[: -len(suffix)], film
-    raise ValueError(f"Cannot parse dyad_id/film from {nc_path.name}")
-
-
-def window_geometry_samples(win_len_s, overlap_frac, fs):
-    """Derive integer window length/step (samples) from a length/overlap spec.
-
-    Only used for the synthetic anchor's window geometry; every real case
-    reads `win_len`/`step` directly (in samples) from Stage 3's `order.json`
-    instead of recomputing them here.
-
-    Parameters
-    ----------
-    win_len_s : float
-        Window length in seconds.
-    overlap_frac : float
-        Fractional overlap between consecutive windows (0 = none, 0.5 = half).
-    fs : float
-        Sampling frequency in Hz.
-
-    Returns
-    -------
-    win_len : int
-        Window length in samples.
-    step : int
-        Step between window starts, in samples.
-    """
-    win_len = round(win_len_s * fs)
-    step = round(win_len * (1 - overlap_frac))
-    return win_len, step
-
-
-def band_average(cube, freqs, band_hz):
-    """Average a (k, k, n_freqs) cube over a frequency band.
-
-    Parameters
-    ----------
-    cube : np.ndarray, shape (k, k, n_freqs)
-        ffDTF (or similar) cube.
-    freqs : np.ndarray
-        Frequency axis (Hz) matching `cube`'s last axis.
-    band_hz : tuple of float
-        ``(low, high)`` band edges in Hz, inclusive.
-
-    Returns
-    -------
-    np.ndarray, shape (k, k)
-        Band-averaged matrix.
-    """
-    band_mask = (freqs >= band_hz[0]) & (freqs <= band_hz[1])
-    return cube[:, :, band_mask].mean(axis=2)
-
-
-def plot_model_order_histogram(manifest_df):
-    """Grouped bar chart of Stage 3 model orders (`p_used`) used in Stage 4, by group.
-
-    Parameters
-    ----------
-    manifest_df : pd.DataFrame
-        Stage 4 manifest, with `p_used` and `group` columns.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The rendered histogram figure.
-    """
-    order_counts = manifest_df.groupby(["p_used", "group"]).size().unstack(fill_value=0)
-    figure, axis = plt.subplots(figsize=(5, 3.5))
-    order_counts.plot(kind="bar", ax=axis)
-    axis.set_xlabel("model order p_used")
-    axis.set_ylabel("n cases")
-    axis.set_title("Model orders used (from Stage 3)")
-    axis.legend(title="group")
-    figure.tight_layout()
-    return figure
-
-
-def plot_synthetic_anchor(known_strength, recovered_strength, chan_names, title):
-    """Side-by-side heatmaps of known vs Granger_estimator-recovered coupling strength."""
-    figure, axes = plt.subplots(ncols=2, figsize=(8, 4))
-    for axis, matrix, panel_title in zip(axes, (known_strength, recovered_strength), ("known coupling (|gain|)", "recovered Granger_estimator (freq-avg)")):
-        image = axis.imshow(matrix, vmin=0, cmap="viridis")
-        axis.set_xticks(range(len(chan_names)))
-        axis.set_xticklabels(chan_names)
-        axis.set_yticks(range(len(chan_names)))
-        axis.set_yticklabels(chan_names)
-        axis.set_xlabel("source")
-        axis.set_ylabel("target")
-        axis.set_title(panel_title, fontsize=9)
-        for row in range(matrix.shape[0]):
-            for col in range(matrix.shape[1]):
-                axis.text(col, row, f"{matrix[row, col]:.2f}", ha="center", va="center", color="white", fontsize=9)
-        figure.colorbar(image, ax=axis, fraction=0.046)
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +123,7 @@ manifest_rows = []
 gate_entries = []
 
 for nc_path in nc_paths:
-    dyad_id, film = parse_case_filename(nc_path)
+    dyad_id, film = parse_case_filename(nc_path, FILMS)
     envelopes = xr.load_dataarray(nc_path)
     fs = envelopes.attrs["fs"]
     design = assemble_design_matrix(envelopes, zscore=True)
@@ -256,7 +148,7 @@ for nc_path in nc_paths:
     row_sums = granger_estimator.sum(axis=(1, 2))
     max_rowsum_dev = float(np.max(np.abs(row_sums - 1.0)))
 
-    band_avg_Granger_estimator = band_average(granger_estimator, FREQS, COUPLING_BAND_HZ)
+    band_avg_Granger_estimator = band_average_cube(granger_estimator, FREQS, COUPLING_BAND_HZ)
     edge_values = {}
     for source_name, target_name in PRIMARY_EDGES:
         source, target = DESIGN_VARIABLES.index(source_name), DESIGN_VARIABLES.index(target_name)
@@ -274,7 +166,7 @@ for nc_path in nc_paths:
 
     case_title = f"{dyad_id} {film}"
     mvar_plot(spectra, granger_estimator, FREQS, x_label="from ", y_label="to ", chan_names=DESIGN_VARIABLES,
-              top_title=f"{case_title}: {ESTIMATOR} (p={p_used}, window={win_len}/{step} samp)", scale=GRID_SCALE,
+              top_title=f"{case_title}: {ESTIMATOR} λ={BOX_COX_LAMBDA}(p={p_used}, window={win_len}/{step} samp)", scale=GRID_SCALE,
               fig_size=(9, 9), band_hz=COUPLING_BAND_HZ)
     grid_path = QC_DIR / f"{dyad_id}_{film}_Granger_estimator_grid.png"
     plt.gcf().savefig(grid_path)
@@ -325,7 +217,7 @@ print(f"\nWrote {len(manifest_df)} Granger_estimator/spectra files + manifest to
 # ---------------------------------------------------------------------------
 anchor_coupling = edges_to_coupling(ANCHOR_EDGES, ANCHOR_N_NODES)
 anchor_design = generate_var_process(anchor_coupling, ANCHOR_SNR, ANCHOR_N_SAMPLES, seed=ANCHOR_SEED)
-anchor_win_len, anchor_step = window_geometry_samples(ANCHOR_WIN_LEN_S, ANCHOR_OVERLAP_FRAC, ANCHOR_FS)
+anchor_win_len, anchor_step = window_geometry(ANCHOR_WIN_LEN_S, ANCHOR_OVERLAP_FRAC, ANCHOR_FS)
 
 anchor_Granger_estimator, anchor_spectra = Granger_estimator(
     anchor_design, FREQS, ANCHOR_FS, ANCHOR_MODEL_ORDER, anchor_win_len, anchor_step, ANCHOR_DETREND_TYPE,
@@ -424,28 +316,7 @@ if (dyadIds.length) showDyad(dyadIds[0]);
 """
 
 
-def render_dyad_panel(dyad_id, entries):
-    """Render one dyad's QC panel (one film-block per case) as an HTML fragment."""
-    html = [f'<div class="dyad-panel" id="panel-{dyad_id}"><h2>{dyad_id}</h2>']
-    for entry in entries:
-        badge_class = "badge-ok" if entry["quality_ok"] else "badge-bad"
-        badge_text = "quality_ok" if entry["quality_ok"] else "quality_fail (Stage 3)"
-        edge_text = "  ".join(f"{edge}={value:.3f}" for edge, value in entry["edge_values"].items())
-        html.append(f'<div class="film-block"><h3>{entry["film"]} (group={entry["group"]})</h3>')
-        html.append(
-            f'<div class="header-line">p_used={entry["p_used"]}  window={entry["win_len"]}/{entry["step"]} samp  '
-            f'Granger_estimator range=[{entry["Granger_estimator_min"]:.3f}, {entry["Granger_estimator_max"]:.3f}]  '
-            f'max_rowsum_dev={entry["max_rowsum_dev"]:.2e}  '
-            f'<span class="badge {badge_class}">{badge_text}</span></div>'
-        )
-        html.append(f'<div class="header-line">{edge_text}</div>')
-        html.append(f'<div class="row"><img src="qc/{entry["grid_image"]}" alt="Granger_estimator grid"></div>')
-        html.append('</div>')
-    html.append('</div>')
-    return "\n".join(html)
-
-
-panels_html = "\n".join(render_dyad_panel(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
+panels_html = "\n".join(render_dyad_panel_ffdtf(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
 
 summary_lines = [f"{len(manifest_df)} cases total"]
 for group_label, group_df in manifest_df.groupby("group"):

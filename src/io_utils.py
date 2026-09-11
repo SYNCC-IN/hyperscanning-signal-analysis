@@ -219,3 +219,54 @@ def trim_to_event_window(data, time, duration, start=0.0):
     """
     mask = (time >= start) & (time <= start + duration)
     return data[:, mask], time[mask]
+
+
+def film_window(coverage_df, dyad_id, film):
+    """Look up a film's QC'd (start_s, end_s) window from a Stage 1 coverage table.
+
+    Parameters
+    ----------
+    coverage_df : pd.DataFrame
+        Stage 1's `coverage.csv`, loaded.
+    dyad_id : str
+    film : str
+
+    Returns
+    -------
+    tuple of float
+        ``(film_start_s, film_end_s)``, identical across role/modality rows
+        for a given (dyad_id, film) since Stage 1 wrote them from one shared
+        `film_windows` dict.
+    """
+    row = coverage_df.loc[(coverage_df["dyad_id"] == dyad_id) & (coverage_df["film"] == film)].iloc[0]
+    return float(row["film_start_s"]), float(row["film_end_s"])
+
+
+def parse_case_filename(nc_path, films):
+    """Recover ``(dyad_id, film)`` from a Stage 2 output filename.
+
+    Parameters
+    ----------
+    nc_path : pathlib.Path
+        A `02_envelopes/<dyad_id>_<film>.nc` file.
+    films : list of str
+        Film names to match against the filename's suffix.
+
+    Returns
+    -------
+    tuple of str
+        ``(dyad_id, film)``. Raises `ValueError` if the stem does not end in
+        one of `films` -- an unexpected filename is a real error, not a case
+        to silently skip.
+    """
+    stem = nc_path.stem
+    for film in films:
+        suffix = f"_{film}"
+        if stem.endswith(suffix):
+            return stem[: -len(suffix)], film
+    raise ValueError(f"Cannot parse dyad_id/film from {nc_path.name}")
+
+
+def safe_label(edge):
+    """Filesystem-safe stem for an `"a->b"` edge string, e.g. for a plot filename."""
+    return edge.replace(":", "").replace("->", "_to_")

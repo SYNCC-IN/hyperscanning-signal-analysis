@@ -107,56 +107,62 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.stats import gaussian_kde
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.connectivity import Granger_estimator
-from src.design import DESIGN_VARIABLES, assemble_design_matrix
-from src.io_utils import ensure_dir
-from src.surrogate import assemble_surrogate_design, band_average_cube, delta_and_z, surrogate_pairs, windowed_ar_stability
+from src.connectivity import Granger_estimator, read_edge_value
+from src.design import DESIGN_VARIABLES, assemble_design_matrix, window_geometry
+from src.io_utils import ensure_dir, parse_case_filename
+from src.pipeline_config import load_stage_config
+from src.reporting import render_dyad_panel_surrogate
+from src.surrogate import (
+    band_average_cube, compute_null, delta_and_z, edge_class_for,
+    plot_delta_summary, plot_null_vs_real_violin, surrogate_pairs, windowed_ar_stability,
+)
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-ENVELOPES_DIR = ANALYSIS_ROOT / "02_envelopes"
-ORDER_DIR = ANALYSIS_ROOT / "03_mvar"
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "05_surrogate")
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage05_surrogate")
+
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+ENVELOPES_DIR = ANALYSIS_ROOT / CFG["ENVELOPES_SUBDIR"]
+ORDER_DIR = ANALYSIS_ROOT / CFG["ORDER_SUBDIR"]
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-FILMS = ["Peppa", "Incredibles", "Brave"]
-TARGET_SFREQ = 2.5  # must match Stage 2/3/4's realized design-file rate (asserted against each file's attrs below)
+FILMS = CFG["FILMS"]
+TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3/4's realized design-file rate (asserted against each file's attrs below)
 
-COMMON_MODEL_ORDER = 4  # L1: fixed order for every fit in this stage, real and surrogate
+COMMON_MODEL_ORDER = CFG["COMMON_MODEL_ORDER"]  # L1: fixed order for every fit in this stage, real and surrogate
 
 # Locked window geometry (L3), identical to Stage 3/4 -- asserted equal to
 # each case's order.json below rather than recomputed independently.
-WIN_LEN_S = 10.0
-OVERLAP_FRAC = 0.5
-DETREND_TYPE = "linear"
+WIN_LEN_S = CFG["WIN_LEN_S"]
+OVERLAP_FRAC = CFG["OVERLAP_FRAC"]
+DETREND_TYPE = CFG["DETREND_TYPE"]
 
 FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)  # L4, identical to Stage 4's grid
-COUPLING_BAND_HZ = (0.2, 1.0)
-ESTIMATOR = "dDTF"  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence -- must match Stage 3/4's ESTIMATOR
-BOX_COX_LAMBDA = 0.25  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform) -- must match Stage 3/4's BOX_COX_LAMBDA
+COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])
+ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence -- must match Stage 3/4's ESTIMATOR
+BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform) -- must match Stage 3/4's BOX_COX_LAMBDA
 
 ALL_EDGES = [(source, target) for source in DESIGN_VARIABLES for target in DESIGN_VARIABLES if source != target]
 EDGE_CLASS = {
-    ("cg:ROI", "child:ROI"): "H2_primary",
-    ("child:ROI", "cg:ROI"): "H2_reverse",
-    ("cg:HRV", "child:HRV"): "H4_primary",
-    ("child:HRV", "cg:HRV"): "H4_reverse",
-    ("cg:HRV", "child:ROI"): "exploratory",
-    ("child:HRV", "cg:ROI"): "exploratory",
+    (edge["source"], edge["target"]): edge["class"] for edge in CFG["edge_topology"]
 }  # remaining 6 directed edges default to "other" via edge_class_for()
 
-FOUR_PRIMARY_EDGES = [("cg:ROI", "child:ROI"), ("child:ROI", "cg:ROI"), ("cg:HRV", "child:HRV"), ("child:HRV", "cg:HRV")]
-SIX_EMPHASIS_EDGES = FOUR_PRIMARY_EDGES + [("cg:HRV", "child:ROI"), ("child:HRV", "cg:ROI")]
+FOUR_PRIMARY_EDGES = [
+    (edge["source"], edge["target"]) for edge in CFG["edge_topology"] if edge["class"] != "exploratory"
+]
+SIX_EMPHASIS_EDGES = [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]]
 
-SURROGATE_STABILITY_MAX_ROOT = 1.0  # L7: exclude surrogate from the null if max_abs_root >= this
+SURROGATE_STABILITY_MAX_ROOT = CFG["SURROGATE_STABILITY_MAX_ROOT"]  # L7: exclude surrogate from the null if max_abs_root >= this
 
 # L5/D3: null pooling scopes to run, in order. "film" is the LOCKED reference
 # (one pooled null per film, shared across both groups, L5) -- it writes the
@@ -170,15 +176,15 @@ SURROGATE_STABILITY_MAX_ROOT = 1.0  # L7: exclude surrogate from the null if max
 # each group's own stimulus/physiology baseline, so a surviving interaction is
 # genuine interpersonal coupling, not shared-film driving. "leave_one_dyad_out"
 # (D2) is still not implemented.
-NULL_POOL_SCOPES = ("film", "within_group")
-REFERENCE_SCOPE = "film"
-SCOPE_SUFFIX = {"film": "", "within_group": "_within_group"}
+NULL_POOL_SCOPES = tuple(CFG["NULL_POOL_SCOPES"])
+REFERENCE_SCOPE = CFG["REFERENCE_SCOPE"]
+SCOPE_SUFFIX = CFG["SCOPE_SUFFIX"]
 
-MAX_SURROGATES_PER_FILM = None  # L6: None = full N*(N-1) set; set an int to cap
-SURROGATE_SUBSAMPLE_SEED = 0    # only used if MAX_SURROGATES_PER_FILM is set
+MAX_SURROGATES_PER_FILM = CFG["MAX_SURROGATES_PER_FILM"]  # L6: None = full N*(N-1) set; set an int to cap
+SURROGATE_SUBSAMPLE_SEED = CFG["SURROGATE_SUBSAMPLE_SEED"]    # only used if MAX_SURROGATES_PER_FILM is set
 
-FFDTF_ROWSUM_TOL = 1e-6
-GRID_SCALE = "linear"
+FFDTF_ROWSUM_TOL = CFG["FFDTF_ROWSUM_TOL"]
+GRID_SCALE = CFG["GRID_SCALE"]
 
 assert REFERENCE_SCOPE == "film" and REFERENCE_SCOPE == NULL_POOL_SCOPES[0], \
     "REFERENCE_SCOPE must be the locked pooled 'film' null and run first (L5)"
@@ -191,257 +197,6 @@ assert not ("within_group" in NULL_POOL_SCOPES and MAX_SURROGATES_PER_FILM is no
     "unset MAX_SURROGATES_PER_FILM to run the within_group sensitivity (subsampling is per film, not per group)"
 
 
-def parse_case_filename(nc_path):
-    """Recover ``(dyad_id, film)`` from a Stage 2 output filename.
-
-    Mirrors `scripts/stage03_mvar_order.py`/`scripts/stage04_ffdtf.py`'s
-    `parse_case_filename` exactly (duplicated rather than imported, since
-    those scripts have no ``__main__`` guard and importing one would re-run
-    its whole pipeline).
-
-    Parameters
-    ----------
-    nc_path : pathlib.Path
-        A `02_envelopes/<dyad_id>_<film>.nc` file.
-
-    Returns
-    -------
-    tuple of str
-        ``(dyad_id, film)``. Raises `ValueError` if the stem does not end in
-        one of `FILMS` -- an unexpected filename is a real error, not a case
-        to silently skip.
-    """
-    stem = nc_path.stem
-    for film in FILMS:
-        suffix = f"_{film}"
-        if stem.endswith(suffix):
-            return stem[: -len(suffix)], film
-    raise ValueError(f"Cannot parse dyad_id/film from {nc_path.name}")
-
-
-def window_geometry(win_len_s, overlap_frac, target_sfreq):
-    """Derive integer window length/step (samples) from a length/overlap spec.
-
-    Identical maths to Stage 3/4's script-local `window_geometry`; used here
-    only to derive the locked config's expected `win_len`/`step` so each
-    case's `order.json` can be asserted against it (L3).
-
-    Parameters
-    ----------
-    win_len_s : float
-        Window length in seconds.
-    overlap_frac : float
-        Fractional overlap between consecutive windows.
-    target_sfreq : float
-        Sampling frequency in Hz.
-
-    Returns
-    -------
-    win_len : int
-    step : int
-    """
-    win_len = round(win_len_s * target_sfreq)
-    step = round(win_len * (1 - overlap_frac))
-    return win_len, step
-
-
-def edge_class_for(source_name, target_name):
-    """Return this directed edge's H2/H4/exploratory/"other" tag (see `EDGE_CLASS`)."""
-    return EDGE_CLASS.get((source_name, target_name), "other")
-
-
-def real_edge_value(band_avg, source_name, target_name):
-    """Read one directed edge's band-averaged ffDTF out of a (4, 4) matrix (row=target, col=source)."""
-    source, target = DESIGN_VARIABLES.index(source_name), DESIGN_VARIABLES.index(target_name)
-    return float(band_avg[target, source])
-
-
-def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, title, delta_space=False):
-    """Split violin of the surrogate null vs real dyads (TD left / ASD right), per edge.
-
-    Density-normalised (KDE), not a raw-count histogram: the surrogate null pool (hundreds
-    to thousands of draws) vastly outnumbers real dyads (tens), so a count-based plot would
-    make the null dwarf the real distributions regardless of effect size. Each of the three
-    densities (null, TD, ASD) is independently normalised to unit area by `gaussian_kde`
-    (area, not count), then all three share one width-scale constant -- so violin width
-    reflects relative density, not sample size. The null (grey, both halves, should look
-    roughly symmetric about its mean) sits in the background; TD occupies the left half and
-    ASD the right half of the same y-scale, for an at-a-glance group-vs-group and
-    group-vs-null read.
-
-    Parameters
-    ----------
-    edges_to_plot : list of tuple(str, str)
-        `(source_name, target_name)` edges to render, one panel each.
-    null_matrix : np.ndarray, shape (n_pairs_kept, len(ALL_EDGES))
-        Pooled surrogate null draws, columns in `ALL_EDGES` order.
-    real_by_dyad : dict
-        `{dyad_id: {"band_avg": (4,4) array, "group": str, ...}}` for this film.
-    title : str
-        Figure title.
-    delta_space : bool, optional
-        If False (default), plot raw band-averaged estimator values. If True, shift every
-        value in a panel by that panel's own `-null_median` before plotting -- i.e. plot
-        `delta_dtf` (`src.surrogate.delta_and_z`'s signed `real - median(null)`) instead of
-        the raw value. The null violin is then centred on zero by construction; each real
-        dyad's offset from zero IS its `delta_dtf`, read directly off the y-axis. Uses the
-        median (matching `delta_and_z`), not the mean, so the delta shown here is exactly
-        the `delta_dtf` value in the tidy table -- not a different, mean-centred quantity.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    group_colors = {"TD": "tab:blue", "ASD": "tab:orange"}
-    group_sides = {"TD": -1, "ASD": 1}
-    n_cols = 3
-    n_rows = int(np.ceil(len(edges_to_plot) / n_cols))
-    half_width = 0.4  # max half-violin width (x-axis units), shared by null/TD/ASD
-    figure, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.5 * n_cols, 4 * n_rows))
-    axes_flat = list(np.atleast_1d(axes).flat)
-
-    for panel_idx, (axis, (source_name, target_name)) in enumerate(zip(axes_flat, edges_to_plot)):
-        edge_idx = ALL_EDGES.index((source_name, target_name))
-        null_values = null_matrix[:, edge_idx]
-        offset = np.median(null_values) if delta_space else 0.0
-        null_values = null_values - offset
-        values_by_group = {
-            group_label: np.array([real_edge_value(info["band_avg"], source_name, target_name) - offset
-                                    for info in real_by_dyad.values() if info["group"] == group_label])
-            for group_label in group_sides
-        }
-
-        all_values = np.concatenate([null_values] + list(values_by_group.values()))
-        y_grid = np.linspace(all_values.min(), all_values.max(), 200)
-
-        null_density = gaussian_kde(null_values)(y_grid)
-        scale = half_width / null_density.max()
-        axis.fill_betweenx(y_grid, -null_density * scale, null_density * scale,
-                            color="lightgrey", alpha=0.6, zorder=1, label="surrogate null")
-        axis.axhline(np.median(null_values), color="black", linestyle="--", linewidth=1, zorder=2, label="null median")
-
-        for group_label, side in group_sides.items():
-            values = values_by_group[group_label]
-            if values.size < 2:
-                continue
-            density = gaussian_kde(values)(y_grid) * scale
-            color = group_colors[group_label]
-            axis.fill_betweenx(y_grid, 0, side * density, color=color, alpha=0.7, zorder=3, label=group_label)
-            tick_x = sorted([0, side * 0.6 * half_width])
-            axis.hlines(np.median(values), tick_x[0], tick_x[1], color=color, linewidth=2, zorder=4)
-
-        axis.set_title(f"{source_name} -> {target_name} ({edge_class_for(source_name, target_name)})", fontsize=9)
-        axis.set_xlim(-half_width * 1.1, half_width * 1.1)
-        axis.set_xticks([-half_width / 2, half_width / 2])
-        axis.set_xticklabels(["TD", "ASD"])
-        if panel_idx == 0:
-            axis.legend(fontsize=6, loc="upper right")
-
-    box_cox_suffix = "" if BOX_COX_LAMBDA == -1 else f", box_cox_lambda={BOX_COX_LAMBDA}"
-    y_axis_label = (f"delta_dtf ({ESTIMATOR}, real - null_median{box_cox_suffix})" if delta_space
-                     else f"band-avg {ESTIMATOR}{box_cox_suffix}")
-    for axis in axes_flat[: n_rows * n_cols : n_cols]:
-        axis.set_ylabel(y_axis_label)
-    for axis in axes_flat[len(edges_to_plot):]:
-        axis.axis("off")
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_delta_summary(delta_table_df, edges_to_plot, title):
-    """Per-group mean +/- SEM of `delta_dtf` for the given edges.
-
-    Parameters
-    ----------
-    delta_table_df : pd.DataFrame
-        The tidy Stage 5 table (or a subset), with `group`, `source`,
-        `target`, `delta_dtf` columns.
-    edges_to_plot : list of tuple(str, str)
-        `(source_name, target_name)` edges, in display order.
-    title : str
-        Figure title.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    edge_labels = [f"{s}->{t}" for s, t in edges_to_plot]
-    x = np.arange(len(edge_labels))
-    width = 0.35
-    group_labels = sorted(delta_table_df["group"].unique())
-    figure, axis = plt.subplots(figsize=(7, 4))
-    for i, group_label in enumerate(group_labels):
-        group_df = delta_table_df[delta_table_df["group"] == group_label]
-        means, sems = [], []
-        for source_name, target_name in edges_to_plot:
-            edge_df = group_df[(group_df["source"] == source_name) & (group_df["target"] == target_name)]
-            means.append(edge_df["delta_dtf"].mean())
-            sems.append(edge_df["delta_dtf"].std(ddof=1) / np.sqrt(len(edge_df)))
-        offset = (i - (len(group_labels) - 1) / 2) * width
-        axis.bar(x + offset, means, width=width, yerr=sems, label=group_label, capsize=3)
-    axis.axhline(0, color="black", linewidth=0.8)
-    axis.set_xticks(x)
-    axis.set_xticklabels(edge_labels, rotation=20, fontsize=8)
-    axis.set_ylabel("mean delta_dtf (real - null), +/- SEM")
-    axis.legend(title="group")
-    axis.set_title(title)
-    figure.tight_layout()
-    return figure
-
-
-def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step):
-    """Estimate a surrogate null matrix for one set of candidate mismatched pairs.
-
-    Scope-agnostic core shared by the pooled reference ("film") and the D3
-    "within_group" sensitivity: the caller decides which pairs go in (all
-    off-diagonal for the pooled null; same-group off-diagonal for a within-group
-    null). Each pair is stitched (`assemble_surrogate_design`), stability-gated
-    at p=4 (`windowed_ar_stability`, L7), estimated (`Granger_estimator`) and
-    band-averaged; kept draws are stacked in `ALL_EDGES` column order.
-
-    Parameters
-    ----------
-    candidate_pairs : list of tuple(str, str)
-        Ordered `(child_dyad, cg_dyad)` pairs to attempt.
-    envelopes_by_dyad : dict
-        `{dyad_id: (envelopes DataArray, order_record)}` for this film.
-    win_len, step : int
-        Locked window geometry (L3).
-
-    Returns
-    -------
-    dict
-        Keys: `null_matrix` (n_kept, len(ALL_EDGES)), `kept_child_dyads`,
-        `kept_cg_dyads`, `n_excluded_unstable`, `n_attempted`.
-    """
-    null_rows, kept_child_dyads, kept_cg_dyads = [], [], []
-    n_excluded_unstable = 0
-    for child_dyad, cg_dyad in candidate_pairs:
-        assert child_dyad != cg_dyad
-        child_envelopes, _ = envelopes_by_dyad[child_dyad]
-        cg_envelopes, _ = envelopes_by_dyad[cg_dyad]
-        design = assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True)
-
-        max_abs_root, _ = windowed_ar_stability(design, win_len, step, COMMON_MODEL_ORDER, DETREND_TYPE)
-        if max_abs_root >= SURROGATE_STABILITY_MAX_ROOT:
-            n_excluded_unstable += 1
-            continue
-
-        ffdtf, _ = Granger_estimator(design, FREQS, TARGET_SFREQ, COMMON_MODEL_ORDER, win_len, step, DETREND_TYPE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA)
-        band_avg = band_average_cube(ffdtf, FREQS, COUPLING_BAND_HZ)
-        null_rows.append([real_edge_value(band_avg, s, t) for s, t in ALL_EDGES])
-        kept_child_dyads.append(child_dyad)
-        kept_cg_dyads.append(cg_dyad)
-
-    return {
-        "null_matrix": np.array(null_rows),
-        "kept_child_dyads": kept_child_dyads,
-        "kept_cg_dyads": kept_cg_dyads,
-        "n_excluded_unstable": n_excluded_unstable,
-        "n_attempted": len(candidate_pairs),
-    }
-
 
 # ---------------------------------------------------------------------------
 # 1. Per-film: real values at p=4, surrogate null(s), delta/z
@@ -452,7 +207,7 @@ print(f"Stage 5: {len(nc_paths)} dyad x film design files found in {ENVELOPES_DI
 
 cases_by_film = {film: [] for film in FILMS}
 for nc_path in nc_paths:
-    dyad_id, film = parse_case_filename(nc_path)
+    dyad_id, film = parse_case_filename(nc_path, FILMS)
     cases_by_film[film].append(dyad_id)
 
 locked_win_len, locked_step = window_geometry(WIN_LEN_S, OVERLAP_FRAC, TARGET_SFREQ)
@@ -530,7 +285,7 @@ for film in FILMS:
                 rng = np.random.default_rng(SURROGATE_SUBSAMPLE_SEED)
                 chosen_idx = sorted(rng.choice(len(candidate_pairs), size=min(MAX_SURROGATES_PER_FILM, len(candidate_pairs)), replace=False))
                 candidate_pairs = [candidate_pairs[i] for i in chosen_idx]
-            null_by_group = {None: compute_null(candidate_pairs, envelopes_by_dyad, locked_win_len, locked_step)}
+            null_by_group = {None: compute_null(candidate_pairs, envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)}
             null_group_keys = [None]
 
             def null_pool_for(group_label, _pools=null_by_group):
@@ -548,7 +303,7 @@ for film in FILMS:
                     f"{film}/{g}: only {group_counts[g]} dyad(s) -- within_group null (D3) needs >=2 per "
                     f"(film x group). This sensitivity cell is infeasible; drop 'within_group' from "
                     f"NULL_POOL_SCOPES or exclude this cell before re-running.")
-                null_by_group[g] = compute_null(pairs_by_group[g], envelopes_by_dyad, locked_win_len, locked_step)
+                null_by_group[g] = compute_null(pairs_by_group[g], envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)
             null_group_keys = sorted(group_counts)
 
             def null_pool_for(group_label, _pools=null_by_group):
@@ -574,13 +329,13 @@ for film in FILMS:
                               else {d: info for d, info in real_by_dyad.items() if info["group"] == gkey})
             hist_title = (f"{film}{'' if gkey is None else ' ' + gkey}: surrogate null vs real "
                           f"({scope}, p={COMMON_MODEL_ORDER})")
-            fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, hist_title)
+            fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, hist_title)
             fig.savefig(QC_DIR / f"{film}{gtag}_null_hist{suffix}.png")
             plt.close(fig)
 
             delta_title = (f"{film}{'' if gkey is None else ' ' + gkey}: delta_dtf, surrogate null vs real "
                            f"({scope}, p={COMMON_MODEL_ORDER})")
-            delta_fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, delta_title, delta_space=True)
+            delta_fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, delta_title, delta_space=True)
             delta_fig.savefig(QC_DIR / f"{film}{gtag}_delta_violin{suffix}.png")
             plt.close(delta_fig)
 
@@ -591,13 +346,13 @@ for film in FILMS:
             deltas, zs, null_medians, null_stds, n_nulls, reals = [], [], [], [], [], []
             film_gate_rows = []
             for edge_idx, (source_name, target_name) in enumerate(ALL_EDGES):
-                real_value = real_edge_value(info["band_avg"], source_name, target_name)
+                real_value = read_edge_value(info["band_avg"], source_name, target_name, names=DESIGN_VARIABLES)
                 result = delta_and_z(real_value, null_matrix[:, edge_idx])
                 deltas.append(result["delta"]); zs.append(result["z"])
                 null_medians.append(result["null_median"]); null_stds.append(result["null_std"]); n_nulls.append(result["n_null"])
                 reals.append(real_value)
 
-                edge_class = edge_class_for(source_name, target_name)
+                edge_class = edge_class_for(source_name, target_name, EDGE_CLASS)
                 delta_table_rows_by_scope[scope].append({
                     "dyad_id": dyad_id, "film": film, "source": source_name, "target": target_name,
                     "edge": f"{source_name}->{target_name}", "edge_class": edge_class,
@@ -617,7 +372,7 @@ for film in FILMS:
                 delta=np.array(deltas), z=np.array(zs), real=np.array(reals),
                 null_median=np.array(null_medians), null_std=np.array(null_stds), n_null=np.array(n_nulls),
                 edge_labels=np.array([f"{s}->{t}" for s, t in ALL_EDGES]),
-                edge_class=np.array([edge_class_for(s, t) for s, t in ALL_EDGES]),
+                edge_class=np.array([edge_class_for(s, t, EDGE_CLASS) for s, t in ALL_EDGES]),
                 group=info["group"], age_months=info["age_months"], real_stable=info["real_stable"],
                 null_scope=scope, p=COMMON_MODEL_ORDER, coupling_band=np.array(COUPLING_BAND_HZ),
             )
@@ -834,39 +589,7 @@ if (dyadIds.length) showDyad(dyadIds[0]);
 """
 
 
-def render_edge_table(rows):
-    """Render one film's 12-edge table (real / null / delta / z) as an HTML fragment."""
-    html = ['<table class="edges"><tr><th>edge</th><th>class</th><th>real</th><th>null_median</th>'
-            '<th>null_std</th><th>delta_dtf</th><th>z_vs_surrogate</th></tr>']
-    for row in rows:
-        row_class = "other" if row["edge_class"] == "other" else "emphasis" if row["edge_class"] in ("H2_primary", "H2_reverse", "H4_primary", "H4_reverse") else ""
-        html.append(
-            f'<tr class="{row_class}"><td>{row["edge"]}</td><td>{row["edge_class"]}</td>'
-            f'<td>{row["real"]:.4f}</td><td>{row["null_median"]:.4f}</td><td>{row["null_std"]:.4f}</td>'
-            f'<td>{row["delta"]:+.4f}</td><td>{row["z"]:+.2f}</td></tr>'
-        )
-    html.append("</table>")
-    return "\n".join(html)
-
-
-def render_dyad_panel(dyad_id, entries):
-    """Render one dyad's QC panel (one film-block per case) as an HTML fragment."""
-    html = [f'<div class="dyad-panel" id="panel-{dyad_id}"><h2>{dyad_id}</h2>']
-    for entry in entries:
-        badge_class = "badge-ok" if entry["real_stable"] else "badge-bad"
-        badge_text = "real_stable" if entry["real_stable"] else "real_UNSTABLE (p=4)"
-        html.append(f'<div class="film-block"><h3>{entry["film"]} (group={entry["group"]})</h3>')
-        html.append(
-            f'<div class="header-line">max_abs_root={entry["max_abs_root"]:.3f}  '
-            f'<span class="badge {badge_class}">{badge_text}</span></div>'
-        )
-        html.append(render_edge_table(entry["rows"]))
-        html.append('</div>')
-    html.append('</div>')
-    return "\n".join(html)
-
-
-panels_html = "\n".join(render_dyad_panel(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
+panels_html = "\n".join(render_dyad_panel_surrogate(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
 
 pairing_lines = []
 for film_summary in film_summaries:

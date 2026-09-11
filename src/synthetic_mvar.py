@@ -9,6 +9,7 @@ top of these functions.
 
 from math import gcd
 
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import resample_poly
 
@@ -222,3 +223,131 @@ def generate_coupled_oscillators(
         signals[node] += rng.normal(0.0, obs_noise_std, size=n_samples)
 
     return signals
+
+
+def self_ar2_coeffs(pole_radius, f0_hz, fs):
+    """AR(2) resonator coefficients (a1, a2) for a pole at radius/frequency.
+
+    A complex-conjugate pole pair at modulus `pole_radius` and frequency
+    `f0_hz` gives a spectral peak whose sharpness grows with `pole_radius`;
+    `pole_radius` is therefore the channel's self-persistence / "self-gain".
+
+    Parameters
+    ----------
+    pole_radius : float
+        Pole modulus in (0, 1); closer to 1 = sharper peak = smoother channel.
+    f0_hz : float
+        Resonance centre frequency (Hz).
+    fs : float
+        Sampling frequency (Hz).
+
+    Returns
+    -------
+    a1, a2 : float
+        Self AR coefficients for lags 1 and 2, in the sign convention of
+        `generate_var_process` (``x_t = a1 x_{t-1} + a2 x_{t-2} + noise``).
+    """
+    a1 = 2.0 * pole_radius * np.cos(2.0 * np.pi * f0_hz / fs)
+    a2 = -pole_radius * pole_radius
+    return a1, a2
+
+
+def two_channel_ar2_coupling(r_rough, r_smooth, f0_hz, fs, injected_gain=0.0):
+    """Two-channel AR(2) coupling tensor: self-resonators + optional real edge.
+
+    Channel 0 (rough) and channel 1 (smooth) each get an AR(2) self-resonator
+    at `f0_hz`; their off-diagonal is zero unless `injected_gain` is set,
+    which adds a genuine smooth -> rough edge (source = channel 1, target =
+    channel 0) at lag 1. With `injected_gain == 0` the ground-truth directed
+    coupling is exactly zero.
+
+    Parameters
+    ----------
+    r_rough, r_smooth : float
+        Pole radii (self-gain) of channel 0 and channel 1.
+    f0_hz : float
+        Shared resonance centre frequency (Hz) for both channels.
+    fs : float
+        Sampling frequency (Hz).
+    injected_gain : float, optional
+        Genuine smooth -> rough AR gain at lag 1 (default 0.0 = no coupling).
+
+    Returns
+    -------
+    np.ndarray, shape (2, 2, 2)
+        AR coefficient tensor, `coupling[target, source, lag - 1]`, matching
+        `generate_var_process`'s convention.
+    """
+    coupling = np.zeros((2, 2, 2))
+    for channel, pole_radius in enumerate((r_rough, r_smooth)):
+        a1, a2 = self_ar2_coeffs(pole_radius, f0_hz, fs)
+        coupling[channel, channel, 0] = a1
+        coupling[channel, channel, 1] = a2
+    if injected_gain != 0.0:
+        coupling[0, 1, 0] += injected_gain  # source = 1 (smooth) -> target = 0 (rough)
+    return coupling
+
+
+def zscore_rows(design):
+    """Per-channel z-score, matching the real pipeline's design-matrix convention."""
+    return (design - design.mean(axis=1, keepdims=True)) / design.std(axis=1, keepdims=True)
+
+
+def simulate_two_channel_dyads(r_rough, r_smooth, f0_hz, fs, snr, n_samples, injected_gain, n_dyads, base_seed):
+    """Simulate `n_dyads` independent 2-channel dyads at one smoothness setting.
+
+    Each dyad is one `generate_var_process` realisation (its own seed), built
+    from `two_channel_ar2_coupling` and returned z-scored per channel. With
+    `injected_gain == 0` every dyad has zero real coupling; the only
+    structure is each channel's own smoothness.
+
+    Parameters
+    ----------
+    r_rough, r_smooth : float
+        Pole radii (self-gain) of channel 0 (rough) and channel 1 (smooth).
+    f0_hz : float
+        Shared resonance centre frequency (Hz).
+    fs : float
+        Sampling frequency (Hz).
+    snr : float
+        Passed to `generate_var_process`.
+    n_samples : int
+        Samples per dyad.
+    injected_gain : float
+        Genuine smooth -> rough AR gain at lag 1 (0.0 = no coupling).
+    n_dyads : int
+        Number of independent dyads to simulate.
+    base_seed : int
+        Seed for dyad 0; dyad `d` uses `base_seed + d`.
+
+    Returns
+    -------
+    list of np.ndarray
+        Each entry shape (2, n_samples): row 0 rough, row 1 smooth.
+    """
+    coupling = two_channel_ar2_coupling(r_rough, r_smooth, f0_hz, fs, injected_gain)
+    return [
+        zscore_rows(generate_var_process(coupling, snr, n_samples, seed=base_seed + d))
+        for d in range(n_dyads)
+    ]
+
+
+def plot_synthetic_anchor(known_strength, recovered_strength, chan_names, title):
+    """Side-by-side heatmaps of known vs Granger_estimator-recovered coupling strength."""
+    figure, axes = plt.subplots(ncols=2, figsize=(8, 4))
+    for axis, matrix, panel_title in zip(axes, (known_strength, recovered_strength), ("known coupling (|gain|)", "recovered Granger_estimator (freq-avg)")):
+        image = axis.imshow(matrix, vmin=0, cmap="viridis")
+        axis.set_xticks(range(len(chan_names)))
+        axis.set_xticklabels(chan_names)
+        axis.set_yticks(range(len(chan_names)))
+        axis.set_yticklabels(chan_names)
+        axis.set_xlabel("source")
+        axis.set_ylabel("target")
+        axis.set_title(panel_title, fontsize=9)
+        for row in range(matrix.shape[0]):
+            for col in range(matrix.shape[1]):
+                axis.text(col, row, f"{matrix[row, col]:.2f}", ha="center", va="center", color="white", fontsize=9)
+        figure.colorbar(image, ax=axis, fraction=0.046)
+    figure.suptitle(title)
+    figure.tight_layout()
+    return figure

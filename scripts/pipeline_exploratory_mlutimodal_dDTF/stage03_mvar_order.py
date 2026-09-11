@@ -57,262 +57,73 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_stack
-from src.io_utils import ensure_dir
-from src.mtmvar import ar_coeff, full_freq_dtf, multivariate_spectra, mvar_plot, direct_dtf, dtf_estimator
-from src.mvar_diag import ar_root_stability, fit_mvar_avg_acf, residual_whiteness, select_order
+from src.design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_geometry, window_stack
+from src.io_utils import ensure_dir, parse_case_filename
+from src.mtmvar import ar_coeff, dtf_estimator, plot_mvar_grid
+from src.mvar_diag import (
+    ar_root_stability, fit_mvar_avg_acf, residual_whiteness, select_p_used,
+    plot_order_curves, plot_roots_comparison, plot_acf_comparison, plot_detrend_example,
+)
+from src.pipeline_config import load_stage_config
+from src.reporting import render_dyad_panel_mvar_order
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-ENVELOPES_DIR = ANALYSIS_ROOT / "02_envelopes"
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "03_mvar")
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage03_mvar_order")
+
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+ENVELOPES_DIR = ANALYSIS_ROOT / CFG["ENVELOPES_SUBDIR"]
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-FILMS = ["Peppa", "Incredibles", "Brave"]
-TARGET_SFREQ = 2.5  # must match Stage 2's realized design-file rate
+FILMS = CFG["FILMS"]
+TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2's realized design-file rate
 
 # Order selection: global 2-D signal only (mvar_criterion caveat, see module docstring).
-CRIT_TYPES = ["AIC", "HQ", "SC"]
-PRIMARY_CRIT = "SC"       # parsimonious default for n ~ 150 (see Stage 3 §5 in the plan)
-MAX_MODEL_ORDER = 15      # short-segment guard, not a scientific claim
-EEG_ROWS = [0, 1]         # child:ROI, cg:ROI -- diagnostic-only sub-block order
-HRV_ROWS = [2, 3]         # child:HRV, cg:HRV -- diagnostic-only sub-block order
+CRIT_TYPES = CFG["CRIT_TYPES"]
+PRIMARY_CRIT = CFG["PRIMARY_CRIT"]       # parsimonious default for n ~ 150 (see Stage 3 §5 in the plan)
+MAX_MODEL_ORDER = CFG["MAX_MODEL_ORDER"]      # short-segment guard, not a scientific claim
+EEG_ROWS = CFG["EEG_ROWS"]         # child:ROI, cg:ROI -- diagnostic-only sub-block order
+HRV_ROWS = CFG["HRV_ROWS"]         # child:HRV, cg:HRV -- diagnostic-only sub-block order
 
 # Locked window geometry (pipeline_plan.md Stage 3): 1/WIN_LEN_S = 0.1 Hz stays
 # below the ~0.2-1 Hz coupling band, each window comfortably exceeds a small
 # expected p, and 50% overlap lifts a 60 s film from 6 to ~11 windows.
-WIN_LEN_S = 10.0
-OVERLAP_FRAC = 0.5
-DETREND_TYPE = "linear"
+WIN_LEN_S = CFG["WIN_LEN_S"]
+OVERLAP_FRAC = CFG["OVERLAP_FRAC"]
+DETREND_TYPE = CFG["DETREND_TYPE"]
 
-RESIDUAL_ACF_MAX_LAG = 8   # must stay well below win_len - p_used
-MIN_WHITE_FRACTION = 0.8   # quality flag: per-variable fraction of lags within the Bartlett band
+RESIDUAL_ACF_MAX_LAG = CFG["RESIDUAL_ACF_MAX_LAG"]   # must stay well below win_len - p_used
+MIN_WHITE_FRACTION = CFG["MIN_WHITE_FRACTION"]   # quality flag: per-variable fraction of lags within the Bartlett band
 
 # Per-case Granger_estimator/spectra grid figure (src.mtmvar.mvar_plot): fixed model order and
 # window geometry, independent of the p_used/window selected above, for a
 # comparable view across all cases.
-ESTIMATOR = "dDTF"  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence
-BOX_COX_LAMBDA = 0.25  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform)
-GRID_MODEL_ORDER = 4
-GRID_WIN_LEN_S = 15.0
-GRID_OVERLAP_FRAC = 0.5
+ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence
+BOX_COX_LAMBDA = -1 # for mvar plot we override the config value as we want to see the actual data without any transformation
+# BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform)
+GRID_MODEL_ORDER = CFG["GRID_MODEL_ORDER"]
+GRID_WIN_LEN_S = CFG["GRID_WIN_LEN_S"]
+GRID_OVERLAP_FRAC = CFG["GRID_OVERLAP_FRAC"]
 GRID_FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)
-GRID_SCALE = "linear"
+GRID_SCALE = CFG["GRID_SCALE"]
 
 # Window-choice sensitivity check (gate-only): validates the locked default
 # (10 s/50%) against two alternatives, holding p_used fixed (it is selected on
 # the window-independent global 2-D signal).
-SENSITIVITY_DYADS = [("W_030", "Peppa"), ("W_000", "Peppa")]
-SENSITIVITY_WINDOW_CONFIGS = [(10.0, 0.5), (15.0, 0.5), (10.0, 0.0)]
+SENSITIVITY_DYADS = [tuple(pair) for pair in CFG["SENSITIVITY_DYADS"]]
+SENSITIVITY_WINDOW_CONFIGS = [tuple(cfg) for cfg in CFG["SENSITIVITY_WINDOW_CONFIGS"]]
 SENSITIVITY_FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)
-COUPLING_BAND_HZ = (0.15, 0.5)  # band-averaged Granger_estimator for the DV substrate
-PRIMARY_EDGES = [("cg:ROI", "child:ROI"), ("child:ROI", "cg:ROI"), ("cg:HRV", "child:HRV"), ("child:HRV", "cg:HRV")]
+COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])  # band-averaged Granger_estimator for the DV substrate
+PRIMARY_EDGES = [
+    (edge["source"], edge["target"]) for edge in CFG["edge_topology"] if edge["class"] != "exploratory"
+]
 
 
-def parse_case_filename(nc_path):
-    """Recover ``(dyad_id, film)`` from a Stage 2 output filename.
-
-    Parameters
-    ----------
-    nc_path : pathlib.Path
-        A `02_envelopes/<dyad_id>_<film>.nc` file.
-
-    Returns
-    -------
-    tuple of str
-        ``(dyad_id, film)``. Raises `ValueError` if the stem does not end in
-        one of `FILMS` -- an unexpected filename is a real error, not a case
-        to silently skip.
-    """
-    stem = nc_path.stem
-    for film in FILMS:
-        suffix = f"_{film}"
-        if stem.endswith(suffix):
-            return stem[: -len(suffix)], film
-    raise ValueError(f"Cannot parse dyad_id/film from {nc_path.name}")
-
-
-def window_geometry(win_len_s, overlap_frac, target_sfreq):
-    """Derive integer window length/step (samples) from a length/overlap spec.
-
-    Parameters
-    ----------
-    win_len_s : float
-        Window length in seconds.
-    overlap_frac : float
-        Fractional overlap between consecutive windows (0 = none, 0.5 = half).
-    target_sfreq : float
-        Sampling frequency in Hz.
-
-    Returns
-    -------
-    win_len : int
-        Window length in samples.
-    step : int
-        Step between window starts, in samples.
-    """
-    win_len = round(win_len_s * target_sfreq)
-    step = round(win_len * (1 - overlap_frac))
-    return win_len, step
-
-
-def select_p_used(design, max_model_order, crit_types, primary_crit, eeg_rows, hrv_rows):
-    """Select the shared model order for the joint system, plus diagnostic sub-block orders.
-
-    `p_used` is fit on the joint 4-variable system (required for the
-    exploratory cross brain-heart edges, which only exist in the joint model);
-    `p_eeg`/`p_hrv` are reported only to expose an EEG/HRV order mismatch, not
-    to justify splitting the fit.
-
-    Parameters
-    ----------
-    design : np.ndarray, shape (k, n_samples)
-        Global (non-windowed) z-scored design matrix.
-    max_model_order, crit_types, primary_crit : see `src.mvar_diag.select_order`.
-    eeg_rows, hrv_rows : list of int
-        Row indices for the EEG-only and HRV-only sub-blocks.
-
-    Returns
-    -------
-    dict
-        ``{p_used, p_eeg, p_hrv, orders_full, orders_eeg, orders_hrv,
-        curves_full, curves_eeg, curves_hrv, order_range, order_at_cap}``.
-    """
-    orders_full, curves_full, order_range = select_order(design, max_model_order, crit_types)
-    orders_eeg, curves_eeg, _ = select_order(design[eeg_rows], max_model_order, crit_types)
-    orders_hrv, curves_hrv, _ = select_order(design[hrv_rows], max_model_order, crit_types)
-    return {
-        "p_used": orders_full[primary_crit], "p_eeg": orders_eeg[primary_crit], "p_hrv": orders_hrv[primary_crit],
-        "orders_full": orders_full, "orders_eeg": orders_eeg, "orders_hrv": orders_hrv,
-        "curves_full": curves_full, "curves_eeg": curves_eeg, "curves_hrv": curves_hrv,
-        "order_range": order_range, "order_at_cap": any(o == max_model_order for o in orders_full.values()),
-    }
-
-
-def plot_order_curves(order_range, curves_by_block, orders_by_block, max_model_order, title):
-    """Plot AIC/HQ/SC criterion curves for the full system and each sub-block."""
-    figure, axes = plt.subplots(ncols=len(curves_by_block), figsize=(4 * len(curves_by_block), 4))
-    for axis, block_label in zip(axes, curves_by_block):
-        for crit_type, curve in curves_by_block[block_label].items():
-            line, = axis.plot(order_range, curve, label=crit_type)
-            axis.axvline(orders_by_block[block_label][crit_type], color=line.get_color(), linestyle=":", alpha=0.6)
-        axis.axvline(max_model_order, color="black", linestyle="--", label="cap")
-        axis.set_title(block_label)
-        axis.set_xlabel("model order p")
-        axis.legend(fontsize=7)
-    axes[0].set_ylabel("criterion value")
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_roots_comparison(roots_global, roots_windowed, max_abs_root_global, max_abs_root_windowed, title):
-    """Plot AR companion eigenvalues for the global vs windowed fit on one unit circle."""
-    figure, axis = plt.subplots(figsize=(4.5, 4.5))
-    theta = np.linspace(0, 2 * np.pi, 200)
-    axis.plot(np.cos(theta), np.sin(theta), color="black", linewidth=1)
-    axis.scatter(roots_global.real, roots_global.imag, color="steelblue",
-                 label=f"global (max={max_abs_root_global:.3f})", zorder=3)
-    axis.scatter(roots_windowed.real, roots_windowed.imag, color="crimson", marker="x",
-                 label=f"windowed (max={max_abs_root_windowed:.3f})", zorder=4)
-    axis.set_xlabel("Re")
-    axis.set_ylabel("Im")
-    axis.set_aspect("equal")
-    axis.legend(fontsize=8)
-    axis.set_title(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_acf_comparison(acf_global, acf_windowed, band_global, band_windowed, variable_names, title):
-    """Plot pooled residual ACF, global vs windowed fit, one panel per variable."""
-    figure, axes = plt.subplots(ncols=len(variable_names), figsize=(3.2 * len(variable_names), 3), sharey=True)
-    lags = np.arange(acf_global.shape[1])
-    for channel, (axis, name) in enumerate(zip(axes, variable_names)):
-        width = 0.35
-        axis.bar(lags[1:] - width / 2, acf_global[channel, 1:], width=width, color="steelblue", label="global")
-        axis.bar(lags[1:] + width / 2, acf_windowed[channel, 1:], width=width, color="crimson", label="windowed")
-        axis.axhline(band_global, color="steelblue", linestyle="--", linewidth=0.8)
-        axis.axhline(-band_global, color="steelblue", linestyle="--", linewidth=0.8)
-        axis.axhline(band_windowed, color="crimson", linestyle="--", linewidth=0.8)
-        axis.axhline(-band_windowed, color="crimson", linestyle="--", linewidth=0.8)
-        axis.set_title(name, fontsize=9)
-        axis.set_xlabel("lag")
-    axes[0].set_ylabel("residual ACF")
-    axes[0].legend(fontsize=7)
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_detrend_example(stack, stack_detrended, variable_names, win_len_s, coupling_band_hz, title, n_examples=3):
-    """Plot a few example windows, pre- vs post-detrend, one row per variable."""
-    figure, axes = plt.subplots(nrows=len(variable_names), figsize=(8, 2.2 * len(variable_names)), sharex=True)
-    for channel, (axis, name) in enumerate(zip(axes, variable_names)):
-        for window in range(min(n_examples, stack.shape[2])):
-            offset = window * stack.shape[1]
-            time = offset + np.arange(stack.shape[1])
-            axis.plot(time, stack[channel, :, window], color="steelblue", alpha=0.6,
-                      label="raw" if window == 0 else None)
-            axis.plot(time, stack_detrended[channel, :, window], color="crimson", alpha=0.8,
-                      label="detrended" if window == 0 else None)
-        axis.set_ylabel(name, fontsize=9)
-    axes[0].legend(fontsize=7)
-    axes[-1].set_xlabel("sample (example windows concatenated for display)")
-    figure.suptitle(
-        f"{title}\nlinear detrend attenuates below ~1/win_len = {1 / win_len_s:.2f} Hz "
-        f"(coupling band {coupling_band_hz[0]}-{coupling_band_hz[1]} Hz)"
-    )
-    figure.tight_layout()
-    return figure
-
-
-def plot_mvar_grid(design, model_order, win_len_s, overlap_frac, freqs, variable_names, title, scale="linear", ESTIMATOR="dDTF", box_cox_lambda=-1):
-    """Grid of pairwise Granger_estimator (off-diagonal) and auto power spectra (diagonal).
-
-    Windows and detrends `design` at a fixed geometry and fits one
-    windowed-ACF-averaged MVAR at a fixed model order -- independent of the
-    `p_used`/window geometry selected elsewhere in this script, so every
-    case's grid figure is directly comparable. Delegates the actual figure to
-    `src.mtmvar.mvar_plot`, which creates its own figure rather than
-    returning one -- `plt.gcf()` recovers it for saving.
-
-    Parameters
-    ----------
-    design : np.ndarray, shape (k, n_samples)
-        Global (non-windowed) z-scored design matrix for one dyad x film.
-    model_order : int
-        Fixed MVAR model order.
-    win_len_s, overlap_frac : float
-        Fixed window geometry (seconds, fractional overlap).
-    freqs : np.ndarray
-        Frequency axis (Hz) for the granger_estimator/spectra grid.
-    variable_names : list of str
-        Channel labels, in `design`'s row order (`src.design.DESIGN_VARIABLES`).
-    title : str
-        Figure title.
-    scale : {'linear', 'sqrt', 'log'}, optional
-        Amplitude scale passed to `mvar_plot`.
-    ESTIMATOR : {'dDTF', 'ffDTF', 'GPDC'}, optional
-        Estimator type for the directed transfer function calculation.
-    box_cox_lambda : float, optional
-        Box-Cox exponent applied to the granger_estimator cube (see
-        `src.mtmvar.box_cox_transform`). Default -1 = no transform.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    win_len, step = window_geometry(win_len_s, overlap_frac, TARGET_SFREQ)
-    assert win_len > model_order, f"win_len={win_len} must exceed model_order={model_order}"
-    stack = detrend_windows(window_stack(design, win_len, step), dtype=DETREND_TYPE)
-    spectra = multivariate_spectra(stack, freqs, TARGET_SFREQ, optimal_model_order=model_order)
-    granger_estimator = dtf_estimator(stack, freqs, TARGET_SFREQ, optimal_model_order=model_order, ESTIMATOR=ESTIMATOR, box_cox_lambda=box_cox_lambda)
-    mvar_plot(spectra, granger_estimator, freqs, x_label="from ", y_label="to ", chan_names=variable_names,
-              top_title=title, scale=scale, fig_size=(9, 9), band_hz=COUPLING_BAND_HZ)
-    return plt.gcf()
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +136,7 @@ manifest_rows = []
 gate_entries = []
 
 for nc_path in nc_paths:
-    dyad_id, film = parse_case_filename(nc_path)
+    dyad_id, film = parse_case_filename(nc_path, FILMS)
     envelopes = xr.load_dataarray(nc_path)
     design = assemble_design_matrix(envelopes, zscore=True)
     k, n_samples = design.shape
@@ -421,9 +232,9 @@ for nc_path in nc_paths:
     plt.close(fig)
 
     fig = plot_mvar_grid(
-        design, GRID_MODEL_ORDER, GRID_WIN_LEN_S, GRID_OVERLAP_FRAC, GRID_FREQS, DESIGN_VARIABLES,
+        design, GRID_MODEL_ORDER, GRID_WIN_LEN_S, GRID_OVERLAP_FRAC, TARGET_SFREQ, DETREND_TYPE, GRID_FREQS, DESIGN_VARIABLES,
         f"{case_title}: {ESTIMATOR} grid (p={GRID_MODEL_ORDER}, window={GRID_WIN_LEN_S:g}s/{int(GRID_OVERLAP_FRAC * 100)}%)",
-        scale=GRID_SCALE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA
+        COUPLING_BAND_HZ, scale=GRID_SCALE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA
     )
     mvar_grid_path = QC_DIR / f"{dyad_id}_{film}_mvar_grid.png"
     fig.savefig(mvar_grid_path)
@@ -585,31 +396,7 @@ if (dyadIds.length) showDyad(dyadIds[0]);
 """
 
 
-def render_dyad_panel(dyad_id, entries):
-    """Render one dyad's QC panel (one film-block per case) as an HTML fragment."""
-    html = [f'<div class="dyad-panel" id="panel-{dyad_id}"><h2>{dyad_id}</h2>']
-    for entry in entries:
-        badge_class = "badge-ok" if entry["quality_ok"] else "badge-bad"
-        badge_text = "quality_ok" if entry["quality_ok"] else "quality_fail"
-        html.append(f'<div class="film-block"><h3>{entry["film"]} (group={entry["group"]})</h3>')
-        html.append(
-            f'<div class="header-line">n_windows={entry["n_windows"]}  p_used={entry["p_used"]}  '
-            f'max_abs_root={entry["max_abs_root"]:.3f}  stable={entry["stable"]}  '
-            f'min_white_fraction={entry["min_white_fraction"]:.2f}  '
-            f'<span class="badge {badge_class}">{badge_text}</span></div>'
-        )
-        html.append('<div class="row">')
-        html.append(f'<img src="qc/{entry["order_curves"]}" alt="order curves">')
-        html.append(f'<img src="qc/{entry["roots"]}" alt="AR roots global vs windowed">')
-        html.append(f'<img src="qc/{entry["acf"]}" alt="residual ACF global vs windowed">')
-        html.append(f'<img src="qc/{entry["detrend"]}" alt="pre vs post detrend">')
-        html.append(f'<img src="qc/{entry["mvar_grid"]}" alt="ffDTF grid" class="mvar-grid">')
-        html.append('</div></div>')
-    html.append('</div>')
-    return "\n".join(html)
-
-
-panels_html = "\n".join(render_dyad_panel(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
+panels_html = "\n".join(render_dyad_panel_mvar_order(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
 
 summary_lines = [f"{len(manifest_df)} cases total"]
 for group_label, group_df in manifest_df.groupby("group"):

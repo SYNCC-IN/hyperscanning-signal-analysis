@@ -1,9 +1,10 @@
 """Stage 2 - individual-band envelopes for the interbrain ffDTF + HRV pipeline.
 
-Reads Stage 1's outputs (`Interbrain_ffDTF_analysis/01_coverage/`:
-`dyad_selection.json`, `coverage.csv`) and, for every included dyad x film,
-builds the four MVAR design variables -- `child:ROI`, `cg:ROI`, `child:HRV`,
-`cg:HRV`:
+Reads Stage 1's `Interbrain_ffDTF_analysis/01_coverage/coverage.csv` plus the
+hand-curated `included_dyads` list from `pipeline_config.json`'s "shared"
+section (see that file and Stage 1's module docstring), and for every
+included dyad x film, builds the four MVAR design variables -- `child:ROI`,
+`cg:ROI`, `child:HRV`, `cg:HRV`:
 
 - EEG variable (`*:ROI`): ROI-reduced fast-band amplitude envelope, using each
   participant's individual band from `band_assignments.csv`.
@@ -60,7 +61,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.assemble import ROLE_CODE_OF, assemble_dyad
+from src.assemble import assemble_dyad
+from src.bands import band_lookup
 from src.design import roi_band_envelope, segment_signal, stack_design_variables
 from src.envelopes import (
     average_channels,
@@ -71,260 +73,102 @@ from src.envelopes import (
     plot_eeg_hrv_envelopes,
     plot_signal_filtered_envelope,
 )
-from src.io_utils import ensure_dir, get_participant_files
-from src.psd import compute_psd_multitaper
+from src.io_utils import ensure_dir, film_window, get_participant_files
+from src.pipeline_config import load_stage_config
+from src.psd import plot_continuous_overlay, plot_continuous_psd_band, plot_design_variable_psd
+from src.reporting import render_dyad_panel_envelopes
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration -- settings live in pipeline_config.json (shared + this
+# stage's own section); only paths/values computed from PROJECT_ROOT or
+# other config values stay here. See src.pipeline_config.load_stage_config.
 # ---------------------------------------------------------------------------
-DRIVE_ROOT = Path(
-    "/Users/admin/Library/CloudStorage/GoogleDrive-j.zygierewicz@uw.edu.pl/"
-    "Mój dysk/SYNCC-IN/WP4          - Joint study/UniWAW Data collection"
-)
+CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
+CFG = load_stage_config(CONFIG_PATH, "stage02_envelopes")
+
+DRIVE_ROOT = Path(CFG["DRIVE_ROOT"])
 EEG_CLEANED_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "ICA_output" / "EEG_ICA_CLEANED"
 IBI_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "IBI"
 
-ANALYSIS_ROOT = PROJECT_ROOT / "Interbrain_ffDTF_analysis"
-COVERAGE_CSV = ANALYSIS_ROOT / "01_coverage" / "coverage.csv"
-DYAD_SELECTION_JSON = ANALYSIS_ROOT / "01_coverage" / "dyad_selection.json"
+ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+COVERAGE_CSV = ANALYSIS_ROOT / CFG["COVERAGE_SUBDIR"] / "coverage.csv"
+# Path to the band assignments CSV file, used to determine frequency bands for the ROI.
+# You should first run the exploratory spectral analysis to generate this file.
 BAND_ASSIGNMENTS_PATH = PROJECT_ROOT / "Exploratory_spectral_analysis" / "04_band_assignment" / "band_assignments.csv"
 
-OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / "02_envelopes")
+OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-# ROI as config -- must match Stage 1's ROI_LABEL/ROI_CHANNELS, since
-# dyad_selection.json's roi_ok gate was computed for this ROI.
-ROI_LABEL = "temporo-parietal"
-ROI_CHANNELS = [ "P7"] # select the right temporo-parietal channel as a proxy to right TPJ ("P7"- removed form ROI_CHANNELS list)
+# ROI as config -- must match Stage 1's ROI_LABEL/ROI_CHANNELS, since the
+# coverage table's roi_ok gate was computed for this ROI.
+ROI_LABEL = CFG["ROI_LABEL"]
+ROI_CHANNELS = CFG["ROI_CHANNELS"]  # select the right temporo-parietal channel as a proxy to right TPJ ("P7"- removed form ROI_CHANNELS list)
 BAND_ROI_LABEL = ROI_LABEL  # row to read from band_assignments.csv
 
-FILMS = ["Peppa", "Incredibles", "Brave"]
-ROLES = ["child", "caregiver"]
+FILMS = CFG["FILMS"]
+ROLES = CFG["ROLES"]
 
-BAND = "fast"
-EEG_FILTER_ORDER = 4
+BAND = CFG["BAND"]
+EEG_FILTER_ORDER = CFG["EEG_FILTER_ORDER"]
 
 # Set by the raw IBI (HRV_SIGNAL below), not by the EEG envelopes: the raw IBI
 # carries RSA up to the top of the child HF-reference band (~1.04 Hz), so
 # Nyquist must clear that -- 2.5 Hz gives Nyquist 1.25 Hz. resample_poly
 # anti-aliases both signal types onto this shared rate.
-TARGET_SFREQ = 2.5
+TARGET_SFREQ = CFG["TARGET_SFREQ"]
 
 # Shared post-downsample band-pass, applied identically to both the ROI envelope
 # and the raw IBI on the continuous signal (before per-film segmentation), so
-# both variables get exactly the same filter (and thus the same group delay, if
-# any -- filtfilt is zero-phase, but the point is using one shared filter shape
-# rather than two different ones). Confirmed on inspection of the real PSDs: no
+# both variables get exactly the same filter (and thus the same time smearing),
+# Confirmed on inspection of the real PSDs: no
 # interesting HRV activity above ~0.8 Hz, plus visible VLF drift below ~0.05 Hz.
-DESIGN_HIGHPASS_HZ = 0.05
-DESIGN_LOWPASS_HZ = 1.0
-DESIGN_FILTER_ORDER = 2
+DESIGN_HIGHPASS_HZ = CFG["DESIGN_HIGHPASS_HZ"]
+DESIGN_LOWPASS_HZ = CFG["DESIGN_LOWPASS_HZ"]
+DESIGN_FILTER_ORDER = CFG["DESIGN_FILTER_ORDER"]
 
 # Multitaper smoothing bandwidth (Hz) for the QC PSD comparison plot -- a plain
 # periodogram on a ~60 s / ~150-sample segment is too noisy to read.
-DESIGN_PSD_BANDWIDTH_HZ = 0.2
+DESIGN_PSD_BANDWIDTH_HZ = CFG["DESIGN_PSD_BANDWIDTH_HZ"]
 
 # specparam's reported bandwidth is 2-sided (2*std); band_assignments.csv's
 # *_bw is stored as a half-width already inflated to match that 2-sided
 # value (see src/bands.py _cluster_stats). filter_individual_band's
 # `bandwidth` argument is itself a half-width (cf +/- bandwidth), so passing
 # fast_bw/2 makes the filter passband equal specparam's 2-sided bandwidth.
-BW_CONVENTION = "specparam_2sided__bandwidth=fast_bw/2"
+BW_CONVENTION = CFG["BW_CONVENTION"]
 
 # HRV variable = the raw (interpolated) IBI, downsampled only -- no band-pass,
 # no Hilbert (reverses the project note's HF-envelope choice, see module
-# docstring). HRV_HF_REFERENCE_* is recorded as metadata only, describing the
-# age-adjusted HF band the raw IBI's RSA content is expected to occupy -- it
-# is never used to filter anything.
-HRV_SIGNAL = "raw_ibi"
-HRV_HF_REFERENCE = {"child": (0.24, 1.04), "caregiver": (0.15, 0.40)}
+# docstring). 
+HRV_SIGNAL = CFG["HRV_SIGNAL"]
+
 
 # "average_envelopes": filter+Hilbert each ROI channel, then average envelopes (plan default).
 # "average_raw": average raw ROI channels first, then filter+Hilbert once (what demo_envelopes.py does).
-ROI_REDUCTION = "average_envelopes"
+ROI_REDUCTION = CFG["ROI_REDUCTION"]
 
 # QC plots/PSDs z-score every variable first (plotting only, never persisted to
 # the .nc) so the EEG envelope (uV-scale) and raw IBI (hundreds of ms) are
 # visually comparable on one axis -- see module docstring.
-PLOT_ZSCORE = True
+PLOT_ZSCORE = CFG["PLOT_ZSCORE"]
 
 # ---------------------------------------------------------------------------
 # 1. Load Stage 1 outputs
 # ---------------------------------------------------------------------------
-dyad_selection = json.loads(DYAD_SELECTION_JSON.read_text(encoding="utf-8"))
-INCLUDED_DYADS = dyad_selection["INCLUDED_DYADS"]
+INCLUDED_DYADS = CFG["included_dyads"]
+assert INCLUDED_DYADS, (
+    "pipeline_config.json's \"shared\".included_dyads is empty -- run Stage 1, review its QC "
+    "gate/suggestion, and populate that list by hand before running Stage 2."
+)
 coverage_df = pd.read_csv(COVERAGE_CSV)
-band_assignments = pd.read_csv(BAND_ASSIGNMENTS_PATH)
+try:
+    band_assignments = pd.read_csv(BAND_ASSIGNMENTS_PATH)
+except FileNotFoundError:
+    raise FileNotFoundError(f"Band assignments file not found at {BAND_ASSIGNMENTS_PATH}. Please run the exploratory spectral analysis first.")
 
 participant_files = get_participant_files(EEG_CLEANED_ROOT)
-print(f"Stage 2: {len(INCLUDED_DYADS)} included dyads from {DYAD_SELECTION_JSON}")
+print(f"Stage 2: {len(INCLUDED_DYADS)} included dyads from {CONFIG_PATH.name}'s \"shared\".included_dyads")
 
-
-def film_window(dyad_id, film):
-    """Look up a film's QC'd (start_s, end_s) window from Stage 1's coverage table.
-
-    Parameters
-    ----------
-    dyad_id : str
-    film : str
-
-    Returns
-    -------
-    tuple of float
-        ``(film_start_s, film_end_s)``, identical across role/modality rows
-        for a given (dyad_id, film) since Stage 1 wrote them from one shared
-        `film_windows` dict.
-    """
-    row = coverage_df.loc[(coverage_df["dyad_id"] == dyad_id) & (coverage_df["film"] == film)].iloc[0]
-    return float(row["film_start_s"]), float(row["film_end_s"])
-
-
-def band_lookup(dyad_id, role):
-    """Look up one participant's individualized fast-band center/width at the ROI.
-
-    Parameters
-    ----------
-    dyad_id : str
-    role : str
-        ``'child'`` or ``'caregiver'``.
-
-    Returns
-    -------
-    tuple
-        ``(fast_cf, fast_bw)`` in Hz, or ``(None, None)`` if no row exists
-        for this participant/ROI or the fast peak is missing (NaN) -- e.g. no
-        fast rhythm was detected at this ROI for this participant.
-    """
-    participant_id = f"{dyad_id}_{ROLE_CODE_OF[role]}"
-    matches = band_assignments.loc[
-        (band_assignments["participant_id"] == participant_id) & (band_assignments["roi"] == BAND_ROI_LABEL)
-    ]
-    if matches.empty:
-        return None, None
-    row = matches.iloc[0]
-    fast_cf, fast_bw = row[f"{BAND}_cf"], row[f"{BAND}_bw"]
-    if pd.isna(fast_cf) or pd.isna(fast_bw):
-        return None, None
-    return float(fast_cf), float(fast_bw)
-
-
-def plot_continuous_psd_band(raw_avg, sfreq, fast_cf, fast_bw, title):
-    """Plot a continuous ROI signal's PSD with the individualized band shaded.
-
-    Parameters
-    ----------
-    raw_avg : np.ndarray, shape (n_times,)
-        ROI-averaged raw signal, whole continuous chunk.
-    sfreq : float
-        Sampling frequency in Hz.
-    fast_cf : float
-        Individualized fast-rhythm center frequency in Hz.
-    fast_bw : float
-        Half-width of the individualized passband in Hz (``fast_bw / 2``
-        already applied by the caller, matching the filter's own convention).
-    title : str
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    freqs, psd = compute_psd_multitaper(raw_avg[np.newaxis, :], sfreq, fmin=1.0, fmax=20.0, bandwidth=1.0)
-    figure, axis = plt.subplots(figsize=(3, 3), dpi=100)
-    axis.plot(freqs, psd[0])
-    axis.axvspan(fast_cf - fast_bw, fast_cf + fast_bw, color="orange", alpha=0.3, label="individual fast band")
-    axis.set_xlabel("Frequency (Hz)")
-    axis.set_ylabel("PSD")
-    axis.set_title(title)
-    #axis.legend()
-    figure.tight_layout()
-    return figure
-
-
-def plot_continuous_overlay(role_continuous, films_windows, title):
-    """Plot the continuous downsampled ROI envelope and raw IBI with film windows shaded.
-
-    One row per design variable (`child:ROI`, `cg:ROI`, `child:HRV`, `cg:HRV`),
-    so filter/anti-alias edge effects can be checked for all four signals that
-    feed the design matrix, not just the EEG envelopes.
-
-    Parameters
-    ----------
-    role_continuous : dict
-        ``{'child': {...}, 'caregiver': {...}}`` entries from the main loop,
-        each with ``roi_env``/``roi_env_sfreq``/``roi_t0`` and
-        ``hrv_signal``/``hrv_signal_sfreq``/``hrv_t0``.
-    films_windows : list of tuple
-        ``(film_name, start_s, end_s)`` for every film, to shade as the
-        retained (post-segmentation) regions.
-    title : str
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    rows = [
-        ("child", "roi_env", "roi_env_sfreq", "roi_t0", "child:ROI"),
-        ("caregiver", "roi_env", "roi_env_sfreq", "roi_t0", "cg:ROI"),
-        ("child", "hrv_signal", "hrv_signal_sfreq", "hrv_t0", "child:HRV"),
-        ("caregiver", "hrv_signal", "hrv_signal_sfreq", "hrv_t0", "cg:HRV"),
-    ]
-    figure, axes = plt.subplots(nrows=len(rows), sharex=True, figsize=(10, 9), dpi=100)
-    for axis, (role, signal_key, sfreq_key, t0_key, label) in zip(axes, rows):
-        rc = role_continuous[role]
-        time = rc[t0_key] + np.arange(rc[signal_key].size) / rc[sfreq_key]
-        axis.plot(time, rc[signal_key])
-        for film_name, start_s, end_s in films_windows:
-            axis.axvspan(start_s, end_s, color="green", alpha=0.2)
-            axis.text(start_s, axis.get_ylim()[1], film_name, fontsize=8, va="top")
-        axis.set_ylabel(label)
-    axes[-1].set_xlabel("Time (s)")
-    figure.suptitle(title)
-    figure.tight_layout()
-    return figure
-
-
-def plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth):
-    """Plot the multitaper PSD of each downsampled design variable, to check for aliasing.
-
-    Each variable is z-scored first (plotting only) so the EEG envelope and
-    raw IBI -- which differ by orders of magnitude in physical units -- can be
-    compared on one axis; this is what makes it possible to confirm they
-    occupy a comparable frequency band (see module docstring). Multitaper
-    (`compute_psd_multitaper`) is used instead of a plain periodogram, which is
-    too noisy on a ~60 s segment to read.
-
-    Parameters
-    ----------
-    segments : dict
-        ``{'child': {'roi': array, 'hrv': array}, 'caregiver': {...}}``,
-        already segmented to one film window.
-    fs : float
-        Sampling frequency in Hz (Nyquist is ``fs / 2``).
-    title : str
-    plot_zscore : bool
-        Whether to z-score each variable before computing its PSD.
-    psd_bandwidth : float
-        Multitaper frequency smoothing bandwidth in Hz.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    figure, axis = plt.subplots()
-    for role in ["child", "caregiver"]:
-        for variable in ["roi", "hrv"]:
-            signal = segments[role][variable]
-            if plot_zscore:
-                signal = zscore(signal)
-            freqs, psd = compute_psd_multitaper(signal[np.newaxis, :], fs, fmin=0.0, fmax=fs / 2, bandwidth=psd_bandwidth)
-            axis.plot(freqs, psd[0], label=f"{role}:{variable}")
-    axis.axvline(fs / 2, color="black", linestyle="--", label="Nyquist")
-    axis.set_xlabel("Frequency (Hz)")
-    axis.set_ylabel("PSD (z-scored input)" if plot_zscore else "PSD")
-    axis.set_title(title)
-    axis.legend(fontsize=7)
-    figure.tight_layout()
-    return figure
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +184,7 @@ for dyad_id in INCLUDED_DYADS:
     print(f"Stage 2: {dyad_id} {dyad['group']} {dyad['meta']['age_months']} months" )
     role_continuous = {}
     for role in ROLES:
-        fast_cf, fast_bw = band_lookup(dyad_id, role)
+        fast_cf, fast_bw = band_lookup(band_assignments, dyad_id, role, BAND_ROI_LABEL, BAND)
         if fast_cf is None:
             role_continuous[role] = {"skip_reason": f"no fast band at {BAND_ROI_LABEL} for {dyad_id} {role}"}
             continue
@@ -351,7 +195,6 @@ for dyad_id in INCLUDED_DYADS:
         roi_env, roi_env_sfreq = roi_band_envelope(
             eeg_entry["data"], eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER, TARGET_SFREQ, ROI_REDUCTION,
         )
-        hf_low, hf_high = HRV_HF_REFERENCE[role]
         # HRV variable is the raw IBI, downsampled only -- no band-pass, no Hilbert (see module docstring).
         hrv_signal, hrv_signal_sfreq = downsample(ibi_entry["data"], ibi_entry["sfreq"], TARGET_SFREQ)
 
@@ -375,8 +218,6 @@ for dyad_id in INCLUDED_DYADS:
             "skip_reason": None,
             "fast_cf": fast_cf,
             "fast_bw": fast_bw,
-            "hf_low": hf_low,
-            "hf_high": hf_high,
             "roi_env": roi_env,
             "roi_env_sfreq": roi_env_sfreq,
             "roi_t0": float(eeg_entry["time"][0]),
@@ -397,7 +238,7 @@ for dyad_id in INCLUDED_DYADS:
     dyad_qc = {}
     if dyad_skip_reason is None:
         included_dyad_meta.append({"dyad_id": dyad_id, "group": dyad["group"], **dyad["meta"]})
-        films_windows = [(film, *film_window(dyad_id, film)) for film in FILMS]
+        films_windows = [(film, *film_window(coverage_df, dyad_id, film)) for film in FILMS]
 
         dyad_qc["psd_band"] = {}
         for role in ROLES:
@@ -424,7 +265,7 @@ for dyad_id in INCLUDED_DYADS:
             })
             continue
 
-        film_start_s, film_end_s = film_window(dyad_id, film)
+        film_start_s, film_end_s = film_window(coverage_df, dyad_id, film)
 
         segments = {}
         for role in ROLES:
@@ -449,10 +290,6 @@ for dyad_id in INCLUDED_DYADS:
             "cg_roi_bw_half": role_continuous["caregiver"]["fast_bw"] / 2,
             "eeg_filter_order": EEG_FILTER_ORDER,
             "hrv_signal": HRV_SIGNAL,
-            "child_hf_reference_low": role_continuous["child"]["hf_low"],
-            "child_hf_reference_high": role_continuous["child"]["hf_high"],
-            "cg_hf_reference_low": role_continuous["caregiver"]["hf_low"],
-            "cg_hf_reference_high": role_continuous["caregiver"]["hf_high"],
             "film": film,
             "dyad_id": dyad_id,
             "group": dyad["group"] or "",
@@ -594,49 +431,7 @@ if (dyadIds.length) showDyad(dyadIds[0]);
 """
 
 
-def render_dyad_panel(dyad_id, entries):
-    """Render one dyad's QC panel (continuous figures + per-film sections) as an HTML fragment.
-
-    Parameters
-    ----------
-    dyad_id : str
-    entries : list of dict
-        This dyad's `gate_entries` rows, one per film.
-
-    Returns
-    -------
-    str
-        HTML fragment for the dyad's panel div.
-    """
-    html = [f'<div class="dyad-panel" id="panel-{dyad_id}"><h2>{dyad_id}</h2>']
-    written = [e for e in entries if e["status"] == "written"]
-    if written:
-        qc = written[0]["qc"]
-        html.append('<div class="row">')
-        for role in ROLES:
-            html.append(f'<img src="qc/{qc["psd_band"][role]}" alt="{role} continuous PSD">')
-        html.append(f'<img src="qc/{qc["overlay"]}" alt="continuous overlay">')
-        html.append('</div>')
-
-    for entry in entries:
-        html.append(f'<div class="film-block"><h3>{entry["film"]}</h3>')
-        if entry["status"] == "skipped":
-            html.append(f'<p class="skipped">Skipped: {entry["reason"]}</p>')
-        else:
-            qc = entry["qc"]
-            html.append('<div class="row">')
-            for role in ROLES:
-                html.append(f'<img src="qc/{qc["filter_envelope"][role]}" alt="{role} filter/envelope">')
-            for role in ROLES:
-                html.append(f'<img src="qc/{qc["eeg_hrv"][role]}" alt="{role} EEG/HRV envelopes">')
-            html.append(f'<img src="qc/{qc["design_psd"]}" alt="design variable PSD aliasing check">')
-            html.append('</div>')
-        html.append('</div>')
-    html.append('</div>')
-    return "\n".join(html)
-
-
-panels_html = "\n".join(render_dyad_panel(dyad_id, gate_by_dyad[dyad_id]) for dyad_id in gate_dyad_ids)
+panels_html = "\n".join(render_dyad_panel_envelopes(dyad_id, gate_by_dyad[dyad_id], ROLES) for dyad_id in gate_dyad_ids)
 
 html = HTML_TEMPLATE.replace("__PANELS__", panels_html)
 html = html.replace("__DYAD_IDS_JSON__", json.dumps(gate_dyad_ids))
