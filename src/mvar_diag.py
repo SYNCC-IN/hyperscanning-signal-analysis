@@ -17,8 +17,8 @@ and a global single-window comparison fit, which is what the Stage 3 gate
 uses to show the windowed method's improvement.
 
 All functions preserve whatever channel order the caller passes in -- see
-`scripts/stage03_mvar_order.py` for how the fixed `src.design.DESIGN_VARIABLES`
-order is threaded through.
+`scripts/stage03_mvar_order.py` for how the config-driven node order
+(`src.design.node_names(nodes)`) is threaded through.
 """
 
 import matplotlib.pyplot as plt

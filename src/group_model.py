@@ -131,6 +131,45 @@ def asymmetry_dv(df, forward_edge, reverse_edge, value_col):
     return merged.reset_index()[["dyad_id", "film", "group", "age_months", "asym", "real_stable"]]
 
 
+def asymmetry_specs_from_topology(edge_topology):
+    """Derive (stem, primary_edge, reverse_edge) triples from `edge_topology` classes.
+
+    Pairs every `<stem>_primary` class with its `<stem>_reverse` counterpart
+    (e.g. `H2_primary`/`H2_reverse`, `H4_primary`/`H4_reverse`), so Stage 6's
+    asymmetry track (`asym = value(primary) - value(reverse)`, see
+    `asymmetry_dv`) is driven by `pipeline_config.json`'s `edge_topology`
+    instead of a hard-coded edge-name list.
+
+    Parameters
+    ----------
+    edge_topology : list of dict
+        `pipeline_config.json`'s `"shared".edge_topology`, each entry
+        `{"source": str, "target": str, "class": str}`.
+
+    Returns
+    -------
+    list of tuple(str, str, str)
+        `(stem, primary_edge_name, reverse_edge_name)`, one triple per class
+        stem with both a `_primary` and `_reverse` entry, sorted by stem.
+        Edge names are formatted `f"{source}->{target}"`.
+
+    Raises
+    ------
+    ValueError
+        If a `<stem>_primary` class has no matching `<stem>_reverse` class.
+    """
+    edge_name_by_class = {edge["class"]: f"{edge['source']}->{edge['target']}" for edge in edge_topology}
+    stems = sorted(cls[: -len("_primary")] for cls in edge_name_by_class if cls.endswith("_primary"))
+
+    specs = []
+    for stem in stems:
+        primary_class, reverse_class = f"{stem}_primary", f"{stem}_reverse"
+        if reverse_class not in edge_name_by_class:
+            raise ValueError(f"edge_topology has class {primary_class!r} but no matching {reverse_class!r}")
+        specs.append((stem, edge_name_by_class[primary_class], edge_name_by_class[reverse_class]))
+    return specs
+
+
 def bh_fdr(pvalue_like):
     """Benjamini-Hochberg adjusted values for a small named family.
 

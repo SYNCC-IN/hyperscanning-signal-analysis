@@ -35,8 +35,9 @@ def Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type="linear"
     Parameters
     ----------
     design : np.ndarray, shape (k, n_samples)
-        z-scored design matrix in `src.design.DESIGN_VARIABLES` order
-        (from `src.design.assemble_design_matrix`).
+        z-scored design matrix in config-driven node order
+        (from `src.design.assemble_design_matrix`, node names via
+        `src.design.node_names(nodes)`).
     freqs : np.ndarray
         Frequency axis (Hz) for the Granger_estimator/spectra cubes.
     fs : float
@@ -73,7 +74,7 @@ def read_edge_value(cube, source, target, names=None, orientation="target_source
 
     Handles both raw integer indexing (`names=None`) and named lookup
     (`names` is the ordered list `source`/`target` are drawn from, e.g.
-    `src.design.DESIGN_VARIABLES`). `orientation` says which axis is target
+    `src.design.node_names(nodes)`). `orientation` says which axis is target
     vs source: `"target_source"` (default) matches `Granger_estimator`'s
     `[target, source, freq]` convention (row = target/driven, column =
     source/driving); `"source_target"` is the reverse. A 3-D `cube`

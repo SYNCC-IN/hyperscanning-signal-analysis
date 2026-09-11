@@ -43,7 +43,7 @@ do not silently resolve differently):
   (`windowed_ar_stability`); unstable surrogates are excluded from the null
   and the excluded count is reported per film. Real dyads are never dropped;
   their p=4 stability is recorded as `real_stable` and surfaced.
-- L8: fixed variable order `DESIGN_VARIABLES` and
+- L8: fixed variable order `NODE_NAMES` and
   `ffdtf[target, source, f]` (flow source->target) throughout, matching
   Stages 3/4. All 12 directed edges are computed; the scientifically named
   subset is tagged via `EDGE_CLASS` (H2/H4 primary+reverse, exploratory
@@ -113,7 +113,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator, read_edge_value
-from src.design import DESIGN_VARIABLES, assemble_design_matrix, window_geometry
+from src.design import assemble_design_matrix, node_names, window_geometry
 from src.io_utils import ensure_dir, parse_case_filename
 from src.pipeline_config import load_stage_config
 from src.reporting import render_dyad_panel_surrogate
@@ -139,6 +139,11 @@ QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 FILMS = CFG["FILMS"]
 TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3/4's realized design-file rate (asserted against each file's attrs below)
 
+# Node topology (single source of truth for MVAR row order -- see
+# `src.design.node_names`).
+NODES = CFG["nodes"]
+NODE_NAMES = node_names(NODES)
+
 COMMON_MODEL_ORDER = CFG["COMMON_MODEL_ORDER"]  # L1: fixed order for every fit in this stage, real and surrogate
 
 # Locked window geometry (L3), identical to Stage 3/4 -- asserted equal to
@@ -152,15 +157,15 @@ COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])
 ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence -- must match Stage 3/4's ESTIMATOR
 BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform) -- must match Stage 3/4's BOX_COX_LAMBDA
 
-ALL_EDGES = [(source, target) for source in DESIGN_VARIABLES for target in DESIGN_VARIABLES if source != target]
+ALL_EDGES = [(source, target) for source in NODE_NAMES for target in NODE_NAMES if source != target]
 EDGE_CLASS = {
     (edge["source"], edge["target"]): edge["class"] for edge in CFG["edge_topology"]
 }  # remaining 6 directed edges default to "other" via edge_class_for()
 
-FOUR_PRIMARY_EDGES = [
+CONFIRMATORY_EDGES = [
     (edge["source"], edge["target"]) for edge in CFG["edge_topology"] if edge["class"] != "exploratory"
 ]
-SIX_EMPHASIS_EDGES = [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]]
+TOPOLOGY_EDGES = [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]]
 
 SURROGATE_STABILITY_MAX_ROOT = CFG["SURROGATE_STABILITY_MAX_ROOT"]  # L7: exclude surrogate from the null if max_abs_root >= this
 
@@ -239,7 +244,7 @@ for film in FILMS:
     for dyad_id in dyad_ids:
         envelopes, order_record = envelopes_by_dyad[dyad_id]
         fs = envelopes.attrs["fs"]
-        design = assemble_design_matrix(envelopes, zscore=True)
+        design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
 
         ffdtf, _ = Granger_estimator(design, FREQS, fs, COMMON_MODEL_ORDER, locked_win_len, locked_step, DETREND_TYPE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA)
         # [0,1] boundedness and ffDTF's row(target)-sum-to-1 are properties of the RAW
@@ -287,9 +292,6 @@ for film in FILMS:
                 candidate_pairs = [candidate_pairs[i] for i in chosen_idx]
             null_by_group = {None: compute_null(candidate_pairs, envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)}
             null_group_keys = [None]
-
-            def null_pool_for(group_label, _pools=null_by_group):
-                return _pools[None]
         else:  # within_group (D3 sensitivity)
             wg_pairs = surrogate_pairs(dyad_ids, group_of=group_of)  # same-group ordered off-diagonal only
             expected_wg = sum(c * (c - 1) for c in group_counts.values())
@@ -306,9 +308,6 @@ for film in FILMS:
                 null_by_group[g] = compute_null(pairs_by_group[g], envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)
             null_group_keys = sorted(group_counts)
 
-            def null_pool_for(group_label, _pools=null_by_group):
-                return _pools[group_label]
-
         # --- Persist null pool(s) + QC histogram(s) for this scope ---
         for gkey in null_group_keys:
             pool = null_by_group[gkey]
@@ -322,31 +321,32 @@ for film in FILMS:
                 n_pairs_attempted=pool["n_attempted"], n_dyads=n_dyads,
                 null_scope=scope, null_group=("pooled" if gkey is None else gkey),
                 p=COMMON_MODEL_ORDER, win_len=locked_win_len, step=locked_step, detrend_type=DETREND_TYPE,
-                coupling_band=np.array(COUPLING_BAND_HZ), freqs=FREQS, variable_order=np.array(DESIGN_VARIABLES),
+                coupling_band=np.array(COUPLING_BAND_HZ), freqs=FREQS, variable_order=np.array(NODE_NAMES),
             )
 
             reals_for_hist = (real_by_dyad if gkey is None
                               else {d: info for d, info in real_by_dyad.items() if info["group"] == gkey})
             hist_title = (f"{film}{'' if gkey is None else ' ' + gkey}: surrogate null vs real "
                           f"({scope}, p={COMMON_MODEL_ORDER})")
-            fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, hist_title)
+            fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, hist_title)
             fig.savefig(QC_DIR / f"{film}{gtag}_null_hist{suffix}.png")
             plt.close(fig)
 
             delta_title = (f"{film}{'' if gkey is None else ' ' + gkey}: delta_dtf, surrogate null vs real "
                            f"({scope}, p={COMMON_MODEL_ORDER})")
-            delta_fig = plot_null_vs_real_violin(SIX_EMPHASIS_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, delta_title, delta_space=True)
+            delta_fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, delta_title, delta_space=True)
             delta_fig.savefig(QC_DIR / f"{film}{gtag}_delta_violin{suffix}.png")
             plt.close(delta_fig)
 
         # --- Delta / z per real dyad x edge, against this scope's null ---
         for dyad_id in dyad_ids:
             info = real_by_dyad[dyad_id]
-            null_matrix = null_pool_for(info["group"])["null_matrix"]
+            null_group_key = None if scope == "film" else info["group"]  # "film" pools under None (L5); "within_group" keys by group (D3)
+            null_matrix = null_by_group[null_group_key]["null_matrix"]
             deltas, zs, null_medians, null_stds, n_nulls, reals = [], [], [], [], [], []
             film_gate_rows = []
             for edge_idx, (source_name, target_name) in enumerate(ALL_EDGES):
-                real_value = read_edge_value(info["band_avg"], source_name, target_name, names=DESIGN_VARIABLES)
+                real_value = read_edge_value(info["band_avg"], source_name, target_name, names=NODE_NAMES)
                 result = delta_and_z(real_value, null_matrix[:, edge_idx])
                 deltas.append(result["delta"]); zs.append(result["z"])
                 null_medians.append(result["null_median"]); null_stds.append(result["null_std"]); n_nulls.append(result["n_null"])
@@ -437,7 +437,7 @@ for film_summary in film_summaries:
     print(line)
     summary_lines.append(line)
     film_df = delta_table_df[delta_table_df["film"] == film]
-    for source_name, target_name in SIX_EMPHASIS_EDGES:
+    for source_name, target_name in TOPOLOGY_EDGES:
         edge_df = film_df[(film_df["source"] == source_name) & (film_df["target"] == target_name)]
         edge_line = (f"    {source_name}->{target_name} ({edge_df['edge_class'].iloc[0]}): "
                      f"null={edge_df['null_median'].iloc[0]:.4f}+/-{edge_df['null_std'].iloc[0]:.4f}  "
@@ -452,7 +452,7 @@ print(f"\nWrote {len(delta_table_df)}-row tidy table + per-film nulls + per-dyad
 # ---------------------------------------------------------------------------
 # 3. Delta/z group summary figure (four H2/H4 edges, pooled across films)
 # ---------------------------------------------------------------------------
-delta_summary_fig = plot_delta_summary(delta_table_df, FOUR_PRIMARY_EDGES, "delta_dtf by group, H2/H4 edges (pooled across films)")
+delta_summary_fig = plot_delta_summary(delta_table_df, CONFIRMATORY_EDGES, "delta_dtf by group, H2/H4 edges (pooled across films)")
 delta_summary_path = QC_DIR / "delta_summary.png"
 delta_summary_fig.savefig(delta_summary_path)
 plt.close(delta_summary_fig)
@@ -470,7 +470,7 @@ if "within_group" in NULL_POOL_SCOPES:
     wg_df = pd.DataFrame(delta_table_rows_by_scope["within_group"])
 
     wg_delta_fig = plot_delta_summary(
-        wg_df, FOUR_PRIMARY_EDGES,
+        wg_df, CONFIRMATORY_EDGES,
         "delta_dtf by group, H2/H4 edges (within-group null, pooled across films)")
     within_group_delta_image = f"delta_summary{wg_suffix}.png"
     wg_delta_fig.savefig(QC_DIR / within_group_delta_image)
@@ -487,7 +487,7 @@ if "within_group" in NULL_POOL_SCOPES:
         print(head)
         within_group_summary_lines.append(head)
         film_df = wg_df[wg_df["film"] == film]
-        for source_name, target_name in SIX_EMPHASIS_EDGES:
+        for source_name, target_name in TOPOLOGY_EDGES:
             edge_df = film_df[(film_df["source"] == source_name) & (film_df["target"] == target_name)]
             edge_line = (f"    {source_name}->{target_name} ({edge_df['edge_class'].iloc[0]}): "
                          "real/delta/z by group: " +

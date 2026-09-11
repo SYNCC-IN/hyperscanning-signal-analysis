@@ -57,7 +57,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_geometry, window_stack
+from src.design import assemble_design_matrix, detrend_windows, node_names, rows_for_signal, window_geometry, window_stack
 from src.io_utils import ensure_dir, parse_case_filename
 from src.mtmvar import ar_coeff, dtf_estimator, plot_mvar_grid
 from src.mvar_diag import (
@@ -83,12 +83,17 @@ QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 FILMS = CFG["FILMS"]
 TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2's realized design-file rate
 
+# Node topology (single source of truth for MVAR row order -- see
+# `src.design.node_names`/`rows_for_signal`).
+NODES = CFG["nodes"]
+NODE_NAMES = node_names(NODES)
+
 # Order selection: global 2-D signal only (mvar_criterion caveat, see module docstring).
 CRIT_TYPES = CFG["CRIT_TYPES"]
 PRIMARY_CRIT = CFG["PRIMARY_CRIT"]       # parsimonious default for n ~ 150 (see Stage 3 §5 in the plan)
 MAX_MODEL_ORDER = CFG["MAX_MODEL_ORDER"]      # short-segment guard, not a scientific claim
-EEG_ROWS = CFG["EEG_ROWS"]         # child:ROI, cg:ROI -- diagnostic-only sub-block order
-HRV_ROWS = CFG["HRV_ROWS"]         # child:HRV, cg:HRV -- diagnostic-only sub-block order
+EEG_ROWS = rows_for_signal(NODES, "roi_envelope")  # diagnostic-only sub-block order
+HRV_ROWS = rows_for_signal(NODES, "raw_ibi")       # diagnostic-only sub-block order
 
 # Locked window geometry (pipeline_plan.md Stage 3): 1/WIN_LEN_S = 0.1 Hz stays
 # below the ~0.2-1 Hz coupling band, each window comfortably exceeds a small
@@ -104,8 +109,12 @@ MIN_WHITE_FRACTION = CFG["MIN_WHITE_FRACTION"]   # quality flag: per-variable fr
 # window geometry, independent of the p_used/window selected above, for a
 # comparable view across all cases.
 ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence
-BOX_COX_LAMBDA = -1 # for mvar plot we override the config value as we want to see the actual data without any transformation
-# BOX_COX_LAMBDA = CFG["BOX_COX_LAMBDA"]  # (x**lambda - 1) / lambda applied to the Granger_estimator cube; -1 = no transform (src.mtmvar.box_cox_transform)
+# The grid/sensitivity plots below intentionally override "shared".BOX_COX_LAMBDA
+# with this stage's own GRID_BOX_COX_LAMBDA (default -1 = no transform), since we
+# want to see the actual data without any transformation there; this stage never
+# estimates the real Granger_estimator/spectra cube (that's Stage 4), so there is
+# no other "real estimator path" in this script to keep BOX_COX_LAMBDA for.
+BOX_COX_LAMBDA = CFG["GRID_BOX_COX_LAMBDA"]
 GRID_MODEL_ORDER = CFG["GRID_MODEL_ORDER"]
 GRID_WIN_LEN_S = CFG["GRID_WIN_LEN_S"]
 GRID_OVERLAP_FRAC = CFG["GRID_OVERLAP_FRAC"]
@@ -138,7 +147,7 @@ gate_entries = []
 for nc_path in nc_paths:
     dyad_id, film = parse_case_filename(nc_path, FILMS)
     envelopes = xr.load_dataarray(nc_path)
-    design = assemble_design_matrix(envelopes, zscore=True)
+    design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
     k, n_samples = design.shape
 
     order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, EEG_ROWS, HRV_ROWS)
@@ -184,9 +193,9 @@ for nc_path in nc_paths:
         "win_len": win_len, "step": step, "step_s": step / TARGET_SFREQ, "n_windows": n_windows,
         "detrend_type": DETREND_TYPE,
         "max_abs_root": max_abs_root, "stable": stable,
-        "whiteness_summary": {DESIGN_VARIABLES[c]: v for c, v in whiteness_summary.items()},
+        "whiteness_summary": {NODE_NAMES[c]: v for c, v in whiteness_summary.items()},
         "max_abs_root_global": max_abs_root_global, "stable_global": stable_global,
-        "whiteness_summary_global": {DESIGN_VARIABLES[c]: v for c, v in whiteness_summary_global.items()},
+        "whiteness_summary_global": {NODE_NAMES[c]: v for c, v in whiteness_summary_global.items()},
         "quality_ok": quality_ok, "quality_reasons": quality_reasons,
     }
     (OUTPUT_DIR / f"{dyad_id}_{film}_order.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
@@ -219,20 +228,20 @@ for nc_path in nc_paths:
     fig.savefig(roots_path)
     plt.close(fig)
 
-    fig = plot_acf_comparison(residual_acf_global, residual_acf, band_global, band_windowed, DESIGN_VARIABLES,
+    fig = plot_acf_comparison(residual_acf_global, residual_acf, band_global, band_windowed, NODE_NAMES,
                                f"{case_title}: residual ACF, global vs windowed (p={p_used})")
     acf_path = QC_DIR / f"{dyad_id}_{film}_acf_comparison.png"
     fig.savefig(acf_path)
     plt.close(fig)
 
-    fig = plot_detrend_example(stack, stack_detrended, DESIGN_VARIABLES, WIN_LEN_S, COUPLING_BAND_HZ,
+    fig = plot_detrend_example(stack, stack_detrended, NODE_NAMES, WIN_LEN_S, COUPLING_BAND_HZ,
                                 f"{case_title}: example windows, pre- vs post-detrend")
     detrend_path = QC_DIR / f"{dyad_id}_{film}_detrend_example.png"
     fig.savefig(detrend_path)
     plt.close(fig)
 
     fig = plot_mvar_grid(
-        design, GRID_MODEL_ORDER, GRID_WIN_LEN_S, GRID_OVERLAP_FRAC, TARGET_SFREQ, DETREND_TYPE, GRID_FREQS, DESIGN_VARIABLES,
+        design, GRID_MODEL_ORDER, GRID_WIN_LEN_S, GRID_OVERLAP_FRAC, TARGET_SFREQ, DETREND_TYPE, GRID_FREQS, NODE_NAMES,
         f"{case_title}: {ESTIMATOR} grid (p={GRID_MODEL_ORDER}, window={GRID_WIN_LEN_S:g}s/{int(GRID_OVERLAP_FRAC * 100)}%)",
         COUPLING_BAND_HZ, scale=GRID_SCALE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA
     )
@@ -281,7 +290,7 @@ sensitivity_results = []
 for dyad_id, film in SENSITIVITY_DYADS:
     nc_path = ENVELOPES_DIR / f"{dyad_id}_{film}.nc"
     envelopes = xr.load_dataarray(nc_path)
-    design = assemble_design_matrix(envelopes, zscore=True)
+    design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
 
     order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, EEG_ROWS, HRV_ROWS)
     p_used = order["p_used"]  # held fixed across configs: selected on the window-independent global signal
@@ -299,7 +308,7 @@ for dyad_id, film in SENSITIVITY_DYADS:
     figure, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7), sharex=True)
     band_table_rows = []
     for edge_idx, (source_name, target_name) in enumerate(PRIMARY_EDGES):
-        source, target = DESIGN_VARIABLES.index(source_name), DESIGN_VARIABLES.index(target_name)
+        source, target = NODE_NAMES.index(source_name), NODE_NAMES.index(target_name)
         axis = axes.flat[edge_idx]
         for config, granger_estimator in spectra_by_config.items():
             label = f"{config[0]:g}s/{int(config[1] * 100)}%"

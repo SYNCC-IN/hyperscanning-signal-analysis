@@ -56,7 +56,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator
-from src.design import DESIGN_VARIABLES, assemble_design_matrix, window_geometry
+from src.design import assemble_design_matrix, node_names, window_geometry
 from src.io_utils import ensure_dir, parse_case_filename
 from src.mtmvar import mvar_plot
 from src.mvar_diag import plot_model_order_histogram
@@ -81,6 +81,12 @@ QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
 FILMS = CFG["FILMS"]
 TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3's realized design-file rate (asserted against each file's attrs below)
+
+# Node topology (single source of truth for MVAR row order -- see
+# `src.design.node_names`).
+NODES = CFG["nodes"]
+NODE_NAMES = node_names(NODES)
+
 MODEL_ORDER = CFG["MODEL_ORDER"] #"auto"  # or set to a specific integer value if not using automatic selection
 # OPEN DECISION (confirm before Stage 5): 100 points, 0.02 Hz -> just under
 # Nyquist, matching Stage 3's QC grid so figures line up across stages.
@@ -126,7 +132,7 @@ for nc_path in nc_paths:
     dyad_id, film = parse_case_filename(nc_path, FILMS)
     envelopes = xr.load_dataarray(nc_path)
     fs = envelopes.attrs["fs"]
-    design = assemble_design_matrix(envelopes, zscore=True)
+    design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
 
     order_record = json.loads((ORDER_DIR / f"{dyad_id}_{film}_order.json").read_text(encoding="utf-8"))
     if MODEL_ORDER == "auto":
@@ -151,21 +157,21 @@ for nc_path in nc_paths:
     band_avg_Granger_estimator = band_average_cube(granger_estimator, FREQS, COUPLING_BAND_HZ)
     edge_values = {}
     for source_name, target_name in PRIMARY_EDGES:
-        source, target = DESIGN_VARIABLES.index(source_name), DESIGN_VARIABLES.index(target_name)
+        source, target = NODE_NAMES.index(source_name), NODE_NAMES.index(target_name)
         edge_values[f"{source_name}->{target_name}"] = float(band_avg_Granger_estimator[target, source])
 
     np.savez(
         OUTPUT_DIR / f"{dyad_id}_{film}.npz",
         granger_estimator=granger_estimator, spectra=spectra, freqs=FREQS,
         var_order=p_used, win_len=win_len, step=step, detrend_type=detrend_type, fs=fs,
-        variable_order=np.array(DESIGN_VARIABLES), coupling_band=np.array(COUPLING_BAND_HZ),
+        variable_order=np.array(NODE_NAMES), coupling_band=np.array(COUPLING_BAND_HZ),
         band_avg_Granger_estimator=band_avg_Granger_estimator,
         dyad_id=dyad_id, film=film, group=group, age_months=age_months,
         quality_ok=quality_ok, quality_reasons=np.array(quality_reasons),
     )
 
     case_title = f"{dyad_id} {film}"
-    mvar_plot(spectra, granger_estimator, FREQS, x_label="from ", y_label="to ", chan_names=DESIGN_VARIABLES,
+    mvar_plot(spectra, granger_estimator, FREQS, x_label="from ", y_label="to ", chan_names=NODE_NAMES,
               top_title=f"{case_title}: {ESTIMATOR} λ={BOX_COX_LAMBDA}(p={p_used}, window={win_len}/{step} samp)", scale=GRID_SCALE,
               fig_size=(9, 9), band_hz=COUPLING_BAND_HZ)
     grid_path = QC_DIR / f"{dyad_id}_{film}_Granger_estimator_grid.png"

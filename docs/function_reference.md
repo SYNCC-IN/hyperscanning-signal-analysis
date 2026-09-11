@@ -119,10 +119,16 @@ Per-modality NetCDF readers (thin wrappers over `src/netcdf_io.py`'s core), file
 - `load_eeg_nc(filepath)` — load one cleaned EEG `.nc` file into a dict: `data` (chan x time, µV), `channel_names`, `sfreq`, `time`, `dyad_id`, `role_code`, `role`, `movies` (per-movie boundaries, chunk-relative), `age_months`, `group`, `sex`.
 - `load_ibi_nc(filepath)` — load one per-task IBI `.nc` file (already on the EEG time grid) into a dict: `data` (1-D), `sfreq`, `time`, `dyad_id`, `role_code`, `role`. Used by `src/assemble.py`'s `assemble_dyad`.
 - `trim_to_event_window(data, time, duration, start=0.0)` — slice `(data, time)` to `[start, start+duration]`, e.g. one movie within the full recording.
+- `film_window(coverage_df, dyad_id, film)` — look up a film's QC'd `(start_s, end_s)` window from a Stage 1 coverage table (interbrain ffDTF pipeline).
+- `parse_case_filename(nc_path, films)` — recover `(dyad_id, film)` from a Stage 2 output filename (interbrain ffDTF pipeline; merged from stage03/04/05's identical local copies).
+- `safe_label(edge)` — filesystem-safe stem for an `"a->b"` edge string, e.g. for a plot filename (interbrain ffDTF pipeline, Stage 6).
 
 ### `src/psd.py`
 - `compute_psd_multitaper(data, sfreq, fmin, fmax, bandwidth)` — multitaper PSD for multichannel EEG (`mne.time_frequency.psd_array_multitaper`).
 - `average_psd_across_conditions(psd_dict)` — average PSD arrays across conditions (e.g. movies) for one participant.
+- `plot_continuous_psd_band(raw_avg, sfreq, fast_cf, fast_bw, title)` — plot a continuous ROI signal's PSD with the individualized band shaded (interbrain ffDTF pipeline, Stage 2 QC).
+- `plot_continuous_overlay(role_continuous, films_windows, title)` — plot the continuous downsampled ROI envelope and raw IBI with film windows shaded (interbrain ffDTF pipeline, Stage 2 QC; fixed 4-node/2-role/2-signal shape, see module note in `scripts/stage02_envelopes.py`).
+- `plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth)` — plot the multitaper PSD of each downsampled design variable, to check for aliasing (interbrain ffDTF pipeline, Stage 2 QC; same fixed-shape caveat).
 
 ### `src/specparam_utils.py`
 specparam (FOOOF) fitting, extraction, and quality checks.
@@ -151,6 +157,7 @@ Slow/fast rhythm band assignment and IAF metrics.
 - `assign_two_bands_kmeans(roi_peaks_df, slow_cf_range=(3.0, 7.5), fast_cf_range=(7.5, 13.0), min_gap=1.5, max_iter=50)` — assign slow/fast bands via seeded, power-weighted k-means over specparam peaks for one participant x ROI.
 - `assign_bands_all_rois(participant_peaks_df, participant_id, role, roi_channels, min_gap=1.5, slow_cf_range=(3.0, 7.5), fast_cf_range=(7.5, 13.0), max_iter=50)` — run `assign_two_bands_kmeans` for every ROI, one participant.
 - `compute_iaf_metrics(band_assignments_df)` — individual alpha frequency metrics + dyadic (child-caregiver) distances.
+- `band_lookup(band_assignments, dyad_id, role, roi_label, band)` — look up one participant's individualized band center/width at one ROI (interbrain ffDTF pipeline, Stage 2 -- reads `band_assignments.csv` from this exploratory spectral pipeline).
 
 ### `src/roi.py`
 ROI definitions, validation, and averaging.
@@ -217,15 +224,153 @@ MVAR modeling, DTF-family connectivity, and FAD decomposition. See [docs/fad_spe
 - `mvar_transfer_function(ar_coeffs, freqs, fs)` — transfer function H from MVAR coefficients.
 - `multivariate_spectra(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC')` — multivariate power spectra for all channels.
 - `full_freq_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC')` — full-frequency DTF (ffDTF).
+- `box_cox_transform(x, box_cox_lambda)` — elementwise Box-Cox power transform, `(x**box_cox_lambda - 1) / box_cox_lambda` (`box_cox_lambda=-1` = no transform).
+- `dtf_estimator(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC', ESTIMATOR='dDTF', box_cox_lambda=-1)` — select and compute DTF/ffDTF/GPDC/dDTF (by `ESTIMATOR`), optionally Box-Cox-transformed; the estimator dispatcher used by `src.connectivity.Granger_estimator`.
 - `dtf_multivariate(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC', comment=None)` — (plain, non-full-frequency) multivariate DTF.
 - `direct_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC')` — direct DTF (dDTF).
 - `gen_partial_directed_coherence(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC')` — generalized partial directed coherence (GPDC).
 - `partial_coherence(spectra)` — partial coherence from a multivariate spectra array.
-- `mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear')` — bar-plot grid of diagonal (auto) + off-diagonal (cross) connectivity terms.
+- `mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear', fig_size=(8, 8), band_hz=None, fig=None, max_on_diag=None, max_off_diag=None)` — bar-plot grid of diagonal (auto) + off-diagonal (cross) connectivity terms; `off_diag`'s sign is preserved (not forced non-negative), since a Box-Cox-transformed cube can be negative and its sign is meaningful — fill/shading and axis limits are drawn down to `off_diag`'s own minimum (0 unless it goes negative), not hard-coded to 0.
+- `plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs, variable_names, title, coupling_band_hz, scale='linear', ESTIMATOR='dDTF', box_cox_lambda=-1)` — one call combining window/detrend + `dtf_estimator`/`multivariate_spectra` + `mvar_plot`, for a fixed-order/fixed-geometry connectivity grid figure (interbrain ffDTF pipeline, Stage 3 QC grid).
 - `graph_plot(connectivity_matrix, ax, freqs, freq_range, chan_names, title)` — plot a connectivity matrix as a directed graph (`networkx`); returns the `DiGraph`.
 - `fad_decomposition(signal, fs, model_order=None, max_model_order=20, crit_type='AIC', plot=False, pair_conjugates=True, imag_tol=1e-08)` — FAD (Frequency-Amplitude-Damping) decomposition of a univariate AR model into damped oscillators.
 - `fad_components_table(fad_params, output='dataframe', decimals=None)` — compact table (one row per FAD component) for export.
 - `compute_and_plot_mvar(ncdf_path, channel_subset=None, max_model_order=20, optimal_model_order=None, crit_type='AIC', freq_min=1.0, freq_max=40.0, freq_step=0.5, low_cutoff_hz=None, high_cutoff_hz=None, plot=True, plot_loaded_signal=False, loaded_signal_max_channels=19, loaded_signal_spacing=8.0, loaded_signal_figsize=(16.0, 9.0))` — high-level pipeline chaining `load_eeg_signals` → `mvar_criterion` → `full_freq_dtf` → `multivariate_spectra` → `mvar_plot`. **Currently broken** (bad internal import — see [docs/export_ncdf_guide.md](export_ncdf_guide.md#mvar--dtf-analysis-helpers)); call the lower-level functions above directly instead.
+
+---
+
+## Interbrain ffDTF + HRV pipeline (`scripts/pipeline_exploratory_mlutimodal_dDTF/`)
+
+Library modules specific to the 8-stage (stage00-stage06) interbrain dDTF/ffDTF +
+HRV connectivity pipeline. Stage scripts own configuration/orchestration (settings
+live in that folder's `pipeline_config.json`, loaded via `src/pipeline_config.py`);
+these modules own the reusable logic. `src/mtmvar.py` above (shared with the older
+`src/warsaw_pilot_data.py`/`src/eeg_alpha_ibi_ffdtf.py` examples) is this pipeline's
+low-level MVAR/DTF core.
+
+### `src/pipeline_config.py`
+- `load_stage_config(config_path, stage_key)` — load one stage's settings: the JSON's `"shared"` section merged with its `stage_key` section (stage-specific keys win on collision).
+
+### `src/assemble.py`
+Per-dyad data assembly (Stage 1/2): wires `src/io_utils.py`'s NetCDF readers into one continuous per-dyad structure.
+
+- `ibi_path_for(ibi_root, dyad_id, role_code)` — build the expected per-task IBI NetCDF path for one dyad/role.
+- `select_roi_channels(data, channel_names, roi_channels)` — select a channel subset from a `(channel, time)` array, in `roi_channels` order.
+- `parse_interpolated_channels(interpolation_note)` — parse the export pipeline's free-text interpolated-channel note.
+- `assemble_dyad(dyad_id, eeg_files, ibi_root, roi_channels)` — assemble one dyad's continuous EEG/IBI signals, film windows, and metadata.
+
+### `src/design.py`
+MVAR design-matrix construction (Stage 2/3): individualized-band ROI envelopes + raw IBI, segmented per film and stacked into the node-ordered design matrix.
+
+- `node_names(nodes)` — node names, in MVAR row order, from a config `nodes` list (`pipeline_config.json`'s `"shared".nodes`).
+- `rows_for_signal(nodes, signal)` — row indices of the nodes whose `signal` field matches `signal` (e.g. `"roi_envelope"`/`"raw_ibi"`), for sub-block model-order diagnostics.
+- `roi_band_envelope(roi_signals, sfreq, center_freq, bandwidth, order, target_sfreq, reduction)` — continuous downsampled amplitude envelope of an individualized ROI band.
+- `segment_signal(signal, fs, t0, film_start_s, film_end_s)` — slice a continuous downsampled signal to one film window.
+- `stack_design(node_signals, names, fs, attrs)` — stack the per-node MVAR design variables (in `names` order) into one labeled `xarray.DataArray`.
+- `assemble_design_matrix(envelopes, names, zscore=True)` — turn a Stage 2 envelope DataArray into the `(len(names), n_samples)` MVAR design matrix, selecting/ordering by `names` and optionally z-scoring.
+- `window_stack(design, win_len, step)` — cut a design matrix into overlapping windows, stacked on a trials axis.
+- `detrend_windows(stack, dtype='linear')` — detrend each (channel, window) time series independently, per window.
+- `window_geometry(win_len_s, overlap_frac, target_sfreq)` — derive integer window length/step (samples) from a length/overlap spec.
+- `DESIGN_VARIABLES` (module constant) — legacy fixed `["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]` node order, kept only because `src/surrogate.py`'s surrogate-pair reassembly is hard-wired to this exact 2-signal-per-role shape. New code should read node order from config via `node_names(nodes)` instead.
+
+### `src/mvar_diag.py`
+MVAR model-order selection and fit-quality diagnostics (Stage 3): the windowed-ACF-averaged fit and its whiteness/stability checks.
+
+- `fit_mvar_avg_acf(design_3d, p)` — fit one MVAR from the autocovariance averaged across windows (the Kaminski sDTF core, via `src.mtmvar.ar_coeff`).
+- `residual_whiteness(design_3d, ar_coeffs, max_lag)` — per-variable residual autocorrelation, averaged across windows.
+- `ar_root_stability(ar_coeffs)` — companion-matrix eigenvalues and stability of a fitted AR coefficient tensor.
+- `select_order(system, max_model_order, crit_types)` — select the MVAR model order under each of several information criteria (thin wrapper over `src.mtmvar.mvar_criterion`).
+- `select_p_used(design, max_model_order, crit_types, primary_crit, eeg_rows, hrv_rows)` — select the shared model order for the joint system, plus diagnostic EEG/HRV sub-block orders.
+- `plot_order_curves(order_range, curves_by_block, orders_by_block, max_model_order, title)` — plot AIC/HQ/SC criterion curves for the full system and each sub-block.
+- `plot_model_order_histogram(manifest_df)` — grouped bar chart of model orders (`p_used`) used, by group.
+- `plot_roots_comparison(roots_global, roots_windowed, max_abs_root_global, max_abs_root_windowed, title)` — plot AR companion eigenvalues for the global vs windowed fit on one unit circle.
+- `plot_acf_comparison(acf_global, acf_windowed, band_global, band_windowed, variable_names, title)` — plot pooled residual ACF, global vs windowed fit, one panel per variable.
+- `plot_detrend_example(stack, stack_detrended, variable_names, win_len_s, coupling_band_hz, title, n_examples=3)` — plot a few example windows, pre- vs post-detrend, one row per variable.
+
+### `src/connectivity.py`
+Granger-estimator (dDTF/ffDTF/GPDC) connectivity estimation (Stage 4): the windowed-ACF-averaged MVAR core, at a fixed model order.
+
+- `Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type='linear', ESTIMATOR='dDTF', box_cox_lambda=-1)` — windowed-ACF-averaged connectivity + multivariate spectra at a fixed order; the stable interface stages 4+ call.
+- `read_edge_value(cube, source, target, names=None, orientation='target_source')` — read one directed edge's value out of a connectivity cube/matrix, by raw index or by name (`names` = e.g. `src.design.node_names(nodes)`).
+- `edge_value(design, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — band-averaged connectivity value for one directed edge of a 2-channel design (combines `Granger_estimator` + `src.surrogate.band_average_cube` + `read_edge_value`).
+
+### `src/surrogate.py`
+Film-matched surrogate-dyad null construction (Stage 5): mismatched-pair reassembly, stability gating, and the signed delta/z against the null.
+
+- `surrogate_pairs(dyad_ids, group_of=None)` — all ordered `(child_dyad, cg_dyad)` pairs with `child_dyad != cg_dyad`; optionally restricted to same-group pairs (`group_of` given) for the within-group null sensitivity.
+- `assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True)` — stitch a foreign child with a foreign caregiver into one design matrix (fixed `child:ROI`/`child:HRV`/`cg:ROI`/`cg:HRV` shape, out of scope for the node-topology generalization).
+- `windowed_ar_stability(design, win_len, step, p, detrend_type='linear')` — companion-matrix stability of the windowed-ACF AR fit of one design matrix; used to gate surrogates and flag real dyads.
+- `band_average_cube(cube, freqs, band_hz)` — average a `(k, k, n_freqs)` cube over an inclusive frequency band -> `(k, k)`.
+- `delta_and_z(real_value, null_values)` — signed delta (`real - null median`) and z (robust, MAD-scaled) of a real edge value against its surrogate null.
+- `real_edge_values(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — per-dyad band-averaged connectivity value for `edge` (the real, same-dyad estimate).
+- `surrogate_null(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — pooled surrogate null for `edge`, over every foreign (child, caregiver) pairing.
+- `edge_class_for(source_name, target_name, edge_class)` — this directed edge's H2/H4/exploratory/`"other"` tag from an `{(source, target): class}` map (defaults to `"other"`).
+- `plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, estimator, box_cox_lambda, title, delta_space=False)` — split violin of the surrogate null vs real dyads (TD left / ASD right), per edge; `delta_space=True` centers on zero and plots `delta_dtf` directly.
+- `plot_delta_summary(delta_table_df, edges_to_plot, title)` — per-group mean +/- SEM of `delta_dtf` for the given edges.
+- `compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type, stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges)` — estimate a surrogate null matrix for one set of candidate mismatched pairs; scope-agnostic core shared by the pooled reference null and the within-group sensitivity null.
+
+### `src/group_model.py`
+Stage 6 Bayesian group model (Bambi/ArviZ): DV prep, formulas/priors, contrasts, convergence diagnostics, and plots.
+
+- `load_delta_table(csv_path)` — load Stage 5's tidy delta table with `film`/`group` as ordered categoricals.
+- `edge_subset(df, edges)` — rows of `df` whose `edge` matches any entry in `edges`.
+- `standardize_within_edge(df, value_col)` — z-score `value_col` within each `edge` group.
+- `asymmetry_dv(df, forward_edge, reverse_edge, value_col)` — per dyad x film forward-minus-reverse asymmetry of `value_col` (signed; positive = forward direction dominates).
+- `asymmetry_specs_from_topology(edge_topology)` — derive `(stem, primary_edge, reverse_edge)` triples from `edge_topology` classes sharing a `<stem>_primary`/`<stem>_reverse` pair (e.g. H2, H4); raises if a `_primary` class has no matching `_reverse`.
+- `bh_fdr(pvalue_like)` — Benjamini-Hochberg adjusted values for a small named family.
+- `add_covariates(df, add_age_covariate, add_iaf_covariate, iaf_metrics_csv=None, iaf_distance_column=None)` — add mean-centred covariate columns per the age/IAF sensitivity toggles.
+- `build_formula(dv_col, extra_terms, extra_grouping=None)` — Stage 6 model formula: `film * group` (sum contrasts) + dyad random intercept.
+- `edge_sd_hyperprior(sd_prior_edge)` — the `(1|edge)` SD hyperprior, selected by `sd_prior_edge`.
+- `build_priors(sd_prior_edge)` — weakly-informative priors on the standardized (or ~unit, for `z_vs_surrogate`) scale.
+- `fit_model(formula, data, mcmc_config, family='t')` — fit one bambi model at the Stage 6 MCMC configuration (L9).
+- `fit_model_with_priors(formula, data, priors, required_group_terms, mcmc_config, family='t')` — fit one bambi model with an explicit priors dict, asserting the expected group-specific terms are present.
+- `common_terms_of(model)` — names of `model`'s fixed (common, non-group-specific) terms, excluding `Intercept`.
+- `reference_grid(films, groups, extra_terms)` — the film x group cells (group rows in `groups` order) used for every contrast.
+- `predict_cell_means(model, idata, grid)` — posterior draws of the population-level mean at each `reference_grid` row.
+- `cell_indices(grid, film=None, group=None)` — row positions of `grid` matching the given `film`/`group` (either may be `None` = any).
+- `summarize_draws(draws, hdi_prob)` — posterior mean, HDI, and directional probabilities (`P(>0)`/`P(<0)`) for a draws array.
+- `compute_contrasts(model, idata, grid, hdi_prob)` — the standard contrast set (group effect, film contrasts, interaction) read off one model's posterior.
+- `back_transform(summary, sd)` — rescale a standardized contrast summary to raw Delta-units.
+- `convergence_row(model_label, idata, n_rows, n_dropped_unstable, rhat_max, ess_min, pareto_k_max)` — one diagnostics-table row: Rhat/ESS/divergences/LOO for one fitted model.
+- `plot_forest(rows, title)` — horizontal forest plot (posterior mean + HDI) for a list of named contrasts.
+- `plot_ppc_figure(model, idata, title)` — posterior-predictive density overlay (`pp_check`).
+- `plot_pareto_k_figure(loo_result, title, pareto_k_max)` — Pareto-k diagnostic scatter with the warning line.
+- `plot_edge_funnel(idata, tag, qc_dir)` — save a plot of each (edge offset, edge SD) pair with divergences flagged, for a model with an `(...|edge)` term.
+- `per_edge_contrasts(model, idata, edges, grid_categories, pooled_data, films, groups, extra_terms, hdi_prob)` — per-edge film/interaction contrasts from an edge-varying model (standardized units, signed).
+- `population_interaction_marginal_over_edge(model, idata, edges, grid_categories, pooled_data, films, groups, extra_terms, hdi_prob)` — film x group interaction marginalized (equal-weight average) over a fixed edge factor.
+- `compute_localization_rows(model_tag, model, idata, emphasis_edges, edge_categories, edge_class_lookup, pooled_data, films, groups, extra_terms, hdi_prob)` — per-edge + population interaction/film rows for one D6 cross-edge-localization model.
+
+### `src/synthetic_mvar.py`
+Synthetic ground-truth generators for validating MVAR / ffDTF connectivity (used by Stage 0/0b and Stage 4's synthetic anchor).
+
+- `edges_to_coupling(edges, n_nodes, max_lag=None)` — build a directed AR coefficient tensor from a readable `(source, target, lag, gain)` edge list.
+- `summarize_coupling_strength(coupling)` — collapse a lagged AR coefficient tensor into one strength matrix.
+- `generate_var_process(coupling, snr, n_samples, burn_in=200, seed=None)` — simulate a k-variable VAR process from a directed AR coefficient tensor.
+- `generate_coupled_oscillators(center_freqs, coupling, snr, fs, n_samples, bandwidth, envelope_fs=2.0, carrier_order=4, seed=None)` — generate k narrow-band oscillatory signals with coupled amplitude envelopes.
+- `self_ar2_coeffs(pole_radius, f0_hz, fs)` — AR(2) resonator coefficients `(a1, a2)` for a pole at a given radius/frequency.
+- `two_channel_ar2_coupling(r_rough, r_smooth, f0_hz, fs, injected_gain=0.0)` — two-channel AR(2) coupling tensor: self-resonators + optional real edge.
+- `zscore_rows(design)` — per-channel z-score, matching the real pipeline's design-matrix convention.
+- `simulate_two_channel_dyads(r_rough, r_smooth, f0_hz, fs, snr, n_samples, injected_gain, n_dyads, base_seed)` — simulate `n_dyads` independent 2-channel dyads at one smoothness setting.
+- `plot_synthetic_anchor(known_strength, recovered_strength, chan_names, title)` — side-by-side heatmaps of known vs recovered coupling strength.
+
+### `src/reporting.py`
+HTML-fragment renderers for the pipeline's interactive per-stage QC gates (stage02-stage06).
+
+- `render_dyad_panel_envelopes(dyad_id, entries, roles)` — Stage 2 dyad QC panel (continuous figures + per-film sections).
+- `render_dyad_panel_mvar_order(dyad_id, entries)` — Stage 3 dyad QC panel (one film-block per case).
+- `render_dyad_panel_ffdtf(dyad_id, entries)` — Stage 4 dyad QC panel (one film-block per case).
+- `render_edge_table(rows)` — one film's edge table (real / null / delta / z) as an HTML fragment.
+- `render_dyad_panel_surrogate(dyad_id, entries)` — Stage 5 dyad QC panel (one film-block per case).
+- `render_diagnostics_table(rows)` — Stage 6 `stage06_diagnostics.csv` rows as an HTML table with pass/fail badges.
+- `render_contrast_table(rows_df)` — a set of Stage 6 `stage06_contrasts.csv` rows (one edge, raw units) as an HTML table.
+- `render_primary_table(df)` — Stage 6 `stage06_primary_summary.csv` (both families) as an HTML table, with BH-FDR shown for the primary family.
+- `render_edge_panel(edge, edge_class, contrasts_df, safe_label_fn)` — one Stage 6 emphasis edge's QC panel: forest/ppcheck/loo images + its contrast table.
+- `render_localization_table(df)` — a set of D6 (Stage 6) per-edge/population interaction rows.
+
+### `src/stats_utils.py`
+Small, generic statistics helpers with no pipeline-stage-specific logic.
+
+- `mean_and_sem(values, axis=0)` — mean and standard error of the mean (SEM) across realizations.
 
 ---
 

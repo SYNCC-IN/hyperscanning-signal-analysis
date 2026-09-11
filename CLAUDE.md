@@ -51,7 +51,7 @@ These are the project owner's explicit conventions for any code written or modif
 ## Environment
 
 - A `.venv` virtualenv exists at the repo root (`.venv/bin/python`); `.vscode/settings.json` points the editor at it.
-- Install dependencies with `pip install -r requirements.txt` (pinned versions; also installs `specparam`, `mne`, `neurokit2`, `xarray`/`netCDF4`, etc). Note `requirements.txt` does not include `pytest` — install it separately if missing. Some scripts additionally need `mne-icalabel` (`classify_and_save_labels` in `src/ica_preprocessing.py`) and `autoreject` (EEG quality checking in `src/mne_bridge.py`).
+- Install dependencies with `pip install -r requirements.txt` 
 
 ## Common commands
 

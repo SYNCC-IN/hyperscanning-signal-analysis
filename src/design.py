@@ -36,6 +36,47 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.envelopes import filter_individual_band, hilbert_envelope, downsample
 
 DESIGN_VARIABLES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
+"""Legacy fixed 4-node default, kept only because `src.surrogate`'s
+surrogate-pair reassembly (`assemble_surrogate_design`) is hard-wired to this
+exact 2-signal-per-role (ROI + HRV) shape and is out of scope for this
+refactor's node-topology generalization. Pipeline stages should read node
+order from `pipeline_config.json`'s `"shared".nodes` via `node_names(nodes)`
+instead of importing this constant."""
+
+
+def node_names(nodes):
+    """Node names, in MVAR row order, from a config `nodes` list.
+
+    Parameters
+    ----------
+    nodes : list of dict
+        `pipeline_config.json`'s `"shared".nodes`, each entry
+        `{"name": str, "role": "child"|"caregiver", "signal": str}`. List
+        order is the MVAR row order.
+
+    Returns
+    -------
+    list of str
+    """
+    return [node["name"] for node in nodes]
+
+
+def rows_for_signal(nodes, signal):
+    """Row indices of the nodes whose `signal` field matches `signal`.
+
+    Parameters
+    ----------
+    nodes : list of dict
+        See `node_names`.
+    signal : str
+        Signal type to match, e.g. `"roi_envelope"` or `"raw_ibi"`.
+
+    Returns
+    -------
+    list of int
+        Indices into `nodes` (== MVAR row indices) in list order.
+    """
+    return [row for row, node in enumerate(nodes) if node["signal"] == signal]
 
 
 def roi_band_envelope(roi_signals, sfreq, center_freq, bandwidth, order, target_sfreq, reduction):
@@ -120,17 +161,20 @@ def segment_signal(signal, fs, t0, film_start_s, film_end_s):
     return signal[mask], time[mask]
 
 
-def stack_design_variables(child_roi, cg_roi, child_hrv, cg_hrv, fs, attrs):
-    """Stack the four MVAR design variables into one labeled DataArray.
+def stack_design(node_signals, names, fs, attrs):
+    """Stack the per-node MVAR design variables into one labeled DataArray.
 
     Parameters
     ----------
-    child_roi, cg_roi : np.ndarray, shape (n_times,)
-        Already-segmented individualized-band amplitude envelopes.
-    child_hrv, cg_hrv : np.ndarray, shape (n_times,)
-        Already-segmented raw (interpolated) IBI signal, downsampled only.
+    node_signals : list of np.ndarray, each shape (n_times,)
+        Already-segmented per-node 1-D signals, in `names` order (a node's
+        ROI amplitude envelope or raw downsampled IBI, per its `nodes[i]`
+        config entry's `signal` field).
+    names : list of str
+        Node names, in the same order as `node_signals` (see
+        `node_names`). Written as the `variable` coordinate.
     fs : float
-        Realized common sampling frequency of all four variables, in Hz.
+        Realized common sampling frequency of every node signal, in Hz.
     attrs : dict
         Written verbatim as the returned DataArray's attrs (e.g. `fs`,
         `roi_label`, `roi_channels`, band parameters, `hrv_signal`, `film`,
@@ -140,40 +184,40 @@ def stack_design_variables(child_roi, cg_roi, child_hrv, cg_hrv, fs, attrs):
     Returns
     -------
     xarray.DataArray, dims ("variable", "time")
-        `variable` coordinate fixed to `DESIGN_VARIABLES`
-        (`["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]`).
+        `variable` coordinate set to `names`.
     """
-    lengths = {child_roi.size, cg_roi.size, child_hrv.size, cg_hrv.size}
+    lengths = {signal.size for signal in node_signals}
     if len(lengths) != 1:
         raise ValueError(f"Design variables must share one length, got {lengths}")
 
-    n_times = child_roi.size
-    data = np.stack([child_roi, cg_roi, child_hrv, cg_hrv], axis=0)
+    n_times = node_signals[0].size
+    data = np.stack(node_signals, axis=0)
     time = np.arange(n_times) / fs
     return xr.DataArray(
         data,
         dims=("variable", "time"),
-        coords={"variable": DESIGN_VARIABLES, "time": time},
+        coords={"variable": names, "time": time},
         attrs=attrs,
     )
 
 
-def assemble_design_matrix(envelopes, zscore=True):
+def assemble_design_matrix(envelopes, names, zscore=True):
     """Turn a Stage 2 envelope DataArray into the (k, n_samples) MVAR design matrix.
 
-    Selects the four design variables in the canonical `DESIGN_VARIABLES`
-    order (`xarray`'s label-based `.sel` raises if any is missing or
-    misnamed -- a real error, not something to mask) and, by default,
-    z-scores each variable across time so the four physically incomparable
-    signals (uV-scale EEG envelope vs ms-scale raw IBI) enter the MVAR on one
-    scale. This is the single source of truth for the design matrix, reused
-    unchanged by Stage 4.
+    Selects the design variables in `names` order (`xarray`'s label-based
+    `.sel` raises if any is missing or misnamed -- a real error, not
+    something to mask) and, by default, z-scores each variable across time
+    so physically incomparable signals (e.g. uV-scale EEG envelope vs
+    ms-scale raw IBI) enter the MVAR on one scale. This is the single source
+    of truth for the design matrix, reused unchanged by Stage 4.
 
     Parameters
     ----------
     envelopes : xarray.DataArray
         Stage 2 output, dims ("variable", "time"), physical units (see
-        `stack_design_variables`).
+        `stack_design`).
+    names : list of str
+        Node names, in MVAR row order (see `node_names`).
     zscore : bool, optional
         If True (default), z-score each variable across time (``ddof=0``,
         matching Stage 2's QC z-scoring). The persisted Stage 2 file stays in
@@ -181,10 +225,10 @@ def assemble_design_matrix(envelopes, zscore=True):
 
     Returns
     -------
-    np.ndarray, shape (4, n_samples)
-        Rows in `DESIGN_VARIABLES` order: child:ROI, cg:ROI, child:HRV, cg:HRV.
+    np.ndarray, shape (len(names), n_samples)
+        Rows in `names` order.
     """
-    design = envelopes.sel(variable=DESIGN_VARIABLES).values
+    design = envelopes.sel(variable=names).values
     if zscore:
         design = _zscore(design, axis=1, ddof=0)
     return design

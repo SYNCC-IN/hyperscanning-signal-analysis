@@ -117,7 +117,7 @@ def assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True):
     data = np.stack([child_values[0], cg_values[0], child_values[1], cg_values[1]], axis=0)
     time = np.arange(n_common) / fs
     stitched = xr.DataArray(data, dims=("variable", "time"), coords={"variable": DESIGN_VARIABLES, "time": time})
-    return assemble_design_matrix(stitched, zscore=zscore)
+    return assemble_design_matrix(stitched, DESIGN_VARIABLES, zscore=zscore)
 
 
 def windowed_ar_stability(design, win_len, step, p, detrend_type="linear"):

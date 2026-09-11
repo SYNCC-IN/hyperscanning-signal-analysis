@@ -63,7 +63,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.assemble import assemble_dyad
 from src.bands import band_lookup
-from src.design import roi_band_envelope, segment_signal, stack_design_variables
+from src.design import node_names, roi_band_envelope, segment_signal, stack_design
 from src.envelopes import (
     average_channels,
     bandpass_filter,
@@ -107,6 +107,19 @@ BAND_ROI_LABEL = ROI_LABEL  # row to read from band_assignments.csv
 
 FILMS = CFG["FILMS"]
 ROLES = CFG["ROLES"]
+
+# Node topology (single source of truth for MVAR row order -- see
+# `src.design.node_names`/`rows_for_signal`). The QC/gate plotting helpers
+# below (`plot_continuous_overlay`, `plot_design_variable_psd`,
+# `render_dyad_panel_envelopes`) are unchanged and still assume exactly one
+# `roi_envelope` node and one `raw_ibi` node per role -- only the design
+# variable computation/stacking below is generalized to iterate over `NODES`.
+NODES = CFG["nodes"]
+NODE_NAMES = node_names(NODES)
+NODE_BY_ROLE_SIGNAL = {(node["role"], node["signal"]): node["name"] for node in NODES}
+ROLE_SIGNALS_NEEDED = {}
+for _node in NODES:
+    ROLE_SIGNALS_NEEDED.setdefault(_node["role"], set()).add(_node["signal"])
 
 BAND = CFG["BAND"]
 EEG_FILTER_ORDER = CFG["EEG_FILTER_ORDER"]
@@ -184,52 +197,52 @@ for dyad_id in INCLUDED_DYADS:
     print(f"Stage 2: {dyad_id} {dyad['group']} {dyad['meta']['age_months']} months" )
     role_continuous = {}
     for role in ROLES:
-        fast_cf, fast_bw = band_lookup(band_assignments, dyad_id, role, BAND_ROI_LABEL, BAND)
-        if fast_cf is None:
-            role_continuous[role] = {"skip_reason": f"no fast band at {BAND_ROI_LABEL} for {dyad_id} {role}"}
-            continue
+        needed_signals = ROLE_SIGNALS_NEEDED.get(role, set())
+        entry = {"skip_reason": None}
 
-        eeg_entry = dyad["eeg"][role]
-        ibi_entry = dyad["ibi"][role]
+        if "roi_envelope" in needed_signals:
+            fast_cf, fast_bw = band_lookup(band_assignments, dyad_id, role, BAND_ROI_LABEL, BAND)
+            if fast_cf is None:
+                role_continuous[role] = {"skip_reason": f"no fast band at {BAND_ROI_LABEL} for {dyad_id} {role}"}
+                continue
 
-        roi_env, roi_env_sfreq = roi_band_envelope(
-            eeg_entry["data"], eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER, TARGET_SFREQ, ROI_REDUCTION,
-        )
-        # HRV variable is the raw IBI, downsampled only -- no band-pass, no Hilbert (see module docstring).
-        hrv_signal, hrv_signal_sfreq = downsample(ibi_entry["data"], ibi_entry["sfreq"], TARGET_SFREQ)
+            eeg_entry = dyad["eeg"][role]
+            roi_env, roi_env_sfreq = roi_band_envelope(
+                eeg_entry["data"], eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER, TARGET_SFREQ, ROI_REDUCTION,
+            )
+            # Shared post-downsample band-pass on the continuous signal, before segmentation
+            # (see DESIGN_HIGHPASS_HZ/DESIGN_LOWPASS_HZ config): identical filter for both
+            # variables so any group delay matches, no interesting HRV content above ~0.8 Hz,
+            # and VLF drift below ~0.05 Hz is removed.
+            roi_env = bandpass_filter(roi_env, roi_env_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER)
 
-        # Shared post-downsample band-pass on the continuous signal, before segmentation
-        # (see DESIGN_HIGHPASS_HZ/DESIGN_LOWPASS_HZ config): identical filter for both
-        # variables so any group delay matches, no interesting HRV content above ~0.8 Hz,
-        # and VLF drift below ~0.05 Hz is removed.
-        roi_env = bandpass_filter(roi_env, roi_env_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER)
-        hrv_signal = bandpass_filter(
-            hrv_signal, hrv_signal_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER,
-        )
+            # Full-rate raw/filtered/envelope trace for the QC gate only (a single
+            # average-raw-then-filter trace regardless of ROI_REDUCTION, since the
+            # gate's purpose is a visual sanity check, not the production signal).
+            raw_avg = average_channels(eeg_entry["data"])
+            filtered_avg = filter_individual_band(raw_avg, eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER)
+            envelope_avg_full = hilbert_envelope(filtered_avg)
 
-        # Full-rate raw/filtered/envelope trace for the QC gate only (a single
-        # average-raw-then-filter trace regardless of ROI_REDUCTION, since the
-        # gate's purpose is a visual sanity check, not the production signal).
-        raw_avg = average_channels(eeg_entry["data"])
-        filtered_avg = filter_individual_band(raw_avg, eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER)
-        envelope_avg_full = hilbert_envelope(filtered_avg)
+            entry.update({
+                "fast_cf": fast_cf, "fast_bw": fast_bw,
+                "roi_env": roi_env, "roi_env_sfreq": roi_env_sfreq, "roi_t0": float(eeg_entry["time"][0]),
+                "eeg_entry": eeg_entry, "raw_avg": raw_avg, "filtered_avg": filtered_avg,
+                "envelope_avg_full": envelope_avg_full,
+            })
 
-        role_continuous[role] = {
-            "skip_reason": None,
-            "fast_cf": fast_cf,
-            "fast_bw": fast_bw,
-            "roi_env": roi_env,
-            "roi_env_sfreq": roi_env_sfreq,
-            "roi_t0": float(eeg_entry["time"][0]),
-            "hrv_signal": hrv_signal,
-            "hrv_signal_sfreq": hrv_signal_sfreq,
-            "hrv_t0": float(ibi_entry["time"][0]),
-            "eeg_entry": eeg_entry,
-            "ibi_entry": ibi_entry,
-            "raw_avg": raw_avg,
-            "filtered_avg": filtered_avg,
-            "envelope_avg_full": envelope_avg_full,
-        }
+        if "raw_ibi" in needed_signals:
+            ibi_entry = dyad["ibi"][role]
+            # HRV variable is the raw IBI, downsampled only -- no band-pass, no Hilbert (see module docstring).
+            hrv_signal, hrv_signal_sfreq = downsample(ibi_entry["data"], ibi_entry["sfreq"], TARGET_SFREQ)
+            hrv_signal = bandpass_filter(
+                hrv_signal, hrv_signal_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER,
+            )
+            entry.update({
+                "hrv_signal": hrv_signal, "hrv_signal_sfreq": hrv_signal_sfreq,
+                "hrv_t0": float(ibi_entry["time"][0]), "ibi_entry": ibi_entry,
+            })
+
+        role_continuous[role] = entry
 
     dyad_skip_reason = next(
         (role_continuous[role]["skip_reason"] for role in ROLES if role_continuous[role]["skip_reason"]), None
@@ -267,18 +280,20 @@ for dyad_id in INCLUDED_DYADS:
 
         film_start_s, film_end_s = film_window(coverage_df, dyad_id, film)
 
-        segments = {}
-        for role in ROLES:
-            rc = role_continuous[role]
-            roi_seg, _ = segment_signal(rc["roi_env"], rc["roi_env_sfreq"], rc["roi_t0"], film_start_s, film_end_s)
-            hrv_seg, _ = segment_signal(rc["hrv_signal"], rc["hrv_signal_sfreq"], rc["hrv_t0"], film_start_s, film_end_s)
-            segments[role] = {"roi": roi_seg, "hrv": hrv_seg}
+        # Segment each node's continuous signal to this film window, keyed by
+        # node name -- generalizes to any `NODES` topology, not just the
+        # fixed 4-node/2-role/2-signal default.
+        signal_keys = {"roi_envelope": ("roi_env", "roi_env_sfreq", "roi_t0"),
+                       "raw_ibi": ("hrv_signal", "hrv_signal_sfreq", "hrv_t0")}
+        node_segments = {}
+        for node in NODES:
+            rc = role_continuous[node["role"]]
+            signal_key, sfreq_key, t0_key = signal_keys[node["signal"]]
+            seg, _ = segment_signal(rc[signal_key], rc[sfreq_key], rc[t0_key], film_start_s, film_end_s)
+            node_segments[node["name"]] = seg
 
-        common_len = min(
-            segments["child"]["roi"].size, segments["caregiver"]["roi"].size,
-            segments["child"]["hrv"].size, segments["caregiver"]["hrv"].size,
-        )
-        fs = role_continuous["child"]["roi_env_sfreq"]
+        common_len = min(seg.size for seg in node_segments.values())
+        fs = role_continuous[NODES[0]["role"]][signal_keys[NODES[0]["signal"]][1]]
 
         attrs = {
             "fs": fs,
@@ -303,17 +318,21 @@ for dyad_id in INCLUDED_DYADS:
             "design_filter_order": DESIGN_FILTER_ORDER,
         }
 
+        node_segments_trimmed = {name: seg[:common_len] for name, seg in node_segments.items()}
+
+        design = stack_design([node_segments_trimmed[name] for name in NODE_NAMES], NODE_NAMES, fs, attrs)
+        out_path = OUTPUT_DIR / f"{dyad_id}_{film}.nc"
+
+        # Role-keyed view for the QC/gate plotting helpers below
+        # (`plot_design_variable_psd`, `plot_eeg_hrv_envelopes`), which are
+        # unmodified and still assume one "roi"/"hrv" pair per role.
         segments_trimmed = {
-            role: {variable: segments[role][variable][:common_len] for variable in ["roi", "hrv"]}
+            role: {
+                "roi": node_segments_trimmed[NODE_BY_ROLE_SIGNAL[(role, "roi_envelope")]],
+                "hrv": node_segments_trimmed[NODE_BY_ROLE_SIGNAL[(role, "raw_ibi")]],
+            }
             for role in ROLES
         }
-
-        design = stack_design_variables(
-            segments_trimmed["child"]["roi"], segments_trimmed["caregiver"]["roi"],
-            segments_trimmed["child"]["hrv"], segments_trimmed["caregiver"]["hrv"],
-            fs, attrs,
-        )
-        out_path = OUTPUT_DIR / f"{dyad_id}_{film}.nc"
         design.to_netcdf(out_path)
 
         manifest_rows.append({

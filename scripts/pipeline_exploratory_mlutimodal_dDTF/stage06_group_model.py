@@ -131,7 +131,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.group_model import (
-    asymmetry_dv, bh_fdr, edge_subset, load_delta_table, standardize_within_edge,
+    asymmetry_dv, asymmetry_specs_from_topology, bh_fdr, edge_subset, load_delta_table, standardize_within_edge,
     add_covariates, build_formula, build_priors, fit_model, fit_model_with_priors, common_terms_of,
     reference_grid, compute_contrasts, back_transform,
     convergence_row, plot_forest, plot_ppc_figure, plot_pareto_k_figure, plot_edge_funnel,
@@ -313,10 +313,7 @@ for edge, edge_class in edges_to_fit:
 # ---------------------------------------------------------------------------
 # 3. Asymmetry track (L6): H2 and H4, primary DV z_vs_surrogate + sensitivity delta_dtf
 # ---------------------------------------------------------------------------
-ASYMMETRY_SPECS = [
-    ("H2", "cg:ROI->child:ROI", "child:ROI->cg:ROI"),
-    ("H4", "cg:HRV->child:HRV", "child:HRV->cg:HRV"),
-]
+ASYMMETRY_SPECS = asymmetry_specs_from_topology(CFG["edge_topology"])  # D3: derived, e.g. H2/H4 primary/reverse pairs
 ASYMMETRY_DV_TRACKS = [("z_vs_surrogate", "native", "z"), (DV_MAIN, "std", "delta")]  # primary, sensitivity (L6)
 asymmetry_summary_rows = []  # for run summary / gate primary section
 
@@ -391,7 +388,7 @@ if FIT_POOLED_MODEL:
 
     pooled_grid = reference_grid(FILMS, GROUPS, EXTRA_TERMS)
     pooled_contrasts = compute_contrasts(pooled_model, pooled_idata, pooled_grid, HDI_PROB)
-    pooled_diagnostics = convergence_row("pooled_emphasis (6 edges, (1|edge))", pooled_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX)
+    pooled_diagnostics = convergence_row(f"pooled_emphasis ({len(EMPHASIS_EDGES)} edges, (1|edge))", pooled_idata, len(pooled_data), 0, RHAT_MAX, ESS_MIN, PARETO_K_MAX)
     diagnostics_rows.append(pooled_diagnostics)
     pooled_funnel_paths = plot_edge_funnel(pooled_idata, "pooled_D2", QC_DIR)
 
@@ -768,13 +765,13 @@ elpd_diff = float(second_row["elpd_diff"])
 dse = float(second_row["dse"])
 
 if best_model == "interaction_varying" and elpd_diff > 2 * dse:
-    verdict = "cross-edge heterogeneity supported; per-edge localization is interpretable (weakly, n=6 edges)."
+    verdict = f"cross-edge heterogeneity supported; per-edge localization is interpretable (weakly, n={len(EMPHASIS_EDGES)} edges)."
 elif best_model == "interaction_fixed":
     verdict = "no support for heterogeneity; the pooled interaction is best read as a single shared effect, not localized."
 elif best_model == "full_varying":
     m2_pass = localization_diagnostics_rows[-1]["pass_l9"]
     if m2_pass:
-        verdict = ("the richer surface (M2) fits best, but at 6 edges M2 is over-parameterized; treat M1's "
+        verdict = (f"the richer surface (M2) fits best, but at {len(EMPHASIS_EDGES)} edges M2 is over-parameterized; treat M1's "
                    "per-edge interaction as the estimate and M2 as agreement/robustness only, not the reference.")
     else:
         verdict = ("M2 ranks best by ELPD but FAILED the L9 convergence gate -- this ranking is not trustworthy; "
