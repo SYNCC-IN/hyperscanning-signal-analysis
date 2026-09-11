@@ -56,7 +56,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator
-from src.design import assemble_design_matrix, node_names, window_geometry
+from src.design import assemble_design_matrix, assert_edges_known, node_names, window_geometry
 from src.io_utils import ensure_dir, parse_case_filename
 from src.mtmvar import mvar_plot
 from src.mvar_diag import plot_model_order_histogram
@@ -86,6 +86,10 @@ TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3's realized design-fil
 # `src.design.node_names`).
 NODES = CFG["nodes"]
 NODE_NAMES = node_names(NODES)
+assert_edges_known(
+    [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]], NODE_NAMES,
+    context="stage04 pipeline_config.json's edge_topology",
+)
 
 MODEL_ORDER = CFG["MODEL_ORDER"] #"auto"  # or set to a specific integer value if not using automatic selection
 # OPEN DECISION (confirm before Stage 5): 100 points, 0.02 Hz -> just under

@@ -13,8 +13,8 @@
     "OVERLAP_FRAC": 0.5,
     "DETREND_TYPE": "linear",
     "nodes": [
-      {"name": "child:ROI", "role": "child",     "signal": "roi_envelope"},
-      {"name": "cg:ROI",    "role": "caregiver", "signal": "roi_envelope"},
+      {"name": "child:ROI", "role": "child",     "signal": "roi_envelope", "roi_channels": ["P7"], "roi_label": "temporo-parietal"},
+      {"name": "cg:ROI",    "role": "caregiver", "signal": "roi_envelope", "roi_channels": ["P7"], "roi_label": "temporo-parietal"},
       {"name": "child:HRV", "role": "child",     "signal": "raw_ibi"},
       {"name": "cg:HRV",    "role": "caregiver", "signal": "raw_ibi"}
     ],

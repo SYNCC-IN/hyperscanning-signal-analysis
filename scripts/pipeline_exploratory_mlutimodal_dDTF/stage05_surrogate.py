@@ -113,7 +113,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator, read_edge_value
-from src.design import assemble_design_matrix, node_names, window_geometry
+from src.design import assemble_design_matrix, assert_edges_known, node_names, window_geometry
 from src.io_utils import ensure_dir, parse_case_filename
 from src.pipeline_config import load_stage_config
 from src.reporting import render_dyad_panel_surrogate
@@ -143,6 +143,10 @@ TARGET_SFREQ = CFG["TARGET_SFREQ"]  # must match Stage 2/3/4's realized design-f
 # `src.design.node_names`).
 NODES = CFG["nodes"]
 NODE_NAMES = node_names(NODES)
+assert_edges_known(
+    [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]], NODE_NAMES,
+    context="stage05 pipeline_config.json's edge_topology",
+)
 
 COMMON_MODEL_ORDER = CFG["COMMON_MODEL_ORDER"]  # L1: fixed order for every fit in this stage, real and surrogate
 
@@ -290,7 +294,7 @@ for film in FILMS:
                 rng = np.random.default_rng(SURROGATE_SUBSAMPLE_SEED)
                 chosen_idx = sorted(rng.choice(len(candidate_pairs), size=min(MAX_SURROGATES_PER_FILM, len(candidate_pairs)), replace=False))
                 candidate_pairs = [candidate_pairs[i] for i in chosen_idx]
-            null_by_group = {None: compute_null(candidate_pairs, envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)}
+            null_by_group = {None: compute_null(candidate_pairs, envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES, NODES)}
             null_group_keys = [None]
         else:  # within_group (D3 sensitivity)
             wg_pairs = surrogate_pairs(dyad_ids, group_of=group_of)  # same-group ordered off-diagonal only
@@ -305,7 +309,7 @@ for film in FILMS:
                     f"{film}/{g}: only {group_counts[g]} dyad(s) -- within_group null (D3) needs >=2 per "
                     f"(film x group). This sensitivity cell is infeasible; drop 'within_group' from "
                     f"NULL_POOL_SCOPES or exclude this cell before re-running.")
-                null_by_group[g] = compute_null(pairs_by_group[g], envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES)
+                null_by_group[g] = compute_null(pairs_by_group[g], envelopes_by_dyad, locked_win_len, locked_step, COMMON_MODEL_ORDER, DETREND_TYPE, SURROGATE_STABILITY_MAX_ROOT, FREQS, TARGET_SFREQ, ESTIMATOR, BOX_COX_LAMBDA, COUPLING_BAND_HZ, ALL_EDGES, NODES)
             null_group_keys = sorted(group_counts)
 
         # --- Persist null pool(s) + QC histogram(s) for this scope ---
@@ -328,13 +332,13 @@ for film in FILMS:
                               else {d: info for d, info in real_by_dyad.items() if info["group"] == gkey})
             hist_title = (f"{film}{'' if gkey is None else ' ' + gkey}: surrogate null vs real "
                           f"({scope}, p={COMMON_MODEL_ORDER})")
-            fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, hist_title)
+            fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, NODE_NAMES, ESTIMATOR, BOX_COX_LAMBDA, hist_title)
             fig.savefig(QC_DIR / f"{film}{gtag}_null_hist{suffix}.png")
             plt.close(fig)
 
             delta_title = (f"{film}{'' if gkey is None else ' ' + gkey}: delta_dtf, surrogate null vs real "
                            f"({scope}, p={COMMON_MODEL_ORDER})")
-            delta_fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, ESTIMATOR, BOX_COX_LAMBDA, delta_title, delta_space=True)
+            delta_fig = plot_null_vs_real_violin(TOPOLOGY_EDGES, pool["null_matrix"], reals_for_hist, ALL_EDGES, EDGE_CLASS, NODE_NAMES, ESTIMATOR, BOX_COX_LAMBDA, delta_title, delta_space=True)
             delta_fig.savefig(QC_DIR / f"{film}{gtag}_delta_violin{suffix}.png")
             plt.close(delta_fig)
 

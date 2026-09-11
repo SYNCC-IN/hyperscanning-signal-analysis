@@ -92,8 +92,12 @@ NODE_NAMES = node_names(NODES)
 CRIT_TYPES = CFG["CRIT_TYPES"]
 PRIMARY_CRIT = CFG["PRIMARY_CRIT"]       # parsimonious default for n ~ 150 (see Stage 3 §5 in the plan)
 MAX_MODEL_ORDER = CFG["MAX_MODEL_ORDER"]      # short-segment guard, not a scientific claim
-EEG_ROWS = rows_for_signal(NODES, "roi_envelope")  # diagnostic-only sub-block order
-HRV_ROWS = rows_for_signal(NODES, "raw_ibi")       # diagnostic-only sub-block order
+
+# D2: diagnostic-only sub-block orders, one per DISTINCT signal type actually
+# present in NODES (not a fixed EEG/HRV pair) -- a signal with no rows is
+# skipped inside select_p_used. Alternative (not implemented): drop sub-block
+# diagnostics entirely.
+SIGNAL_ROW_GROUPS = {signal: rows_for_signal(NODES, signal) for signal in dict.fromkeys(node["signal"] for node in NODES)}
 
 # Locked window geometry (pipeline_plan.md Stage 3): 1/WIN_LEN_S = 0.1 Hz stays
 # below the ~0.2-1 Hz coupling band, each window comfortably exceeds a small
@@ -150,7 +154,7 @@ for nc_path in nc_paths:
     design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
     k, n_samples = design.shape
 
-    order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, EEG_ROWS, HRV_ROWS)
+    order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, SIGNAL_ROW_GROUPS)
     p_used = order["p_used"]
 
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP_FRAC, TARGET_SFREQ)
@@ -186,9 +190,10 @@ for nc_path in nc_paths:
         "group": str(envelopes.attrs.get("group", "")),
         "age_months": float(envelopes.attrs["age_months"]),
         "n_samples": n_samples,
-        "p_eeg": order["p_eeg"], "p_hrv": order["p_hrv"], "p_used": p_used,
+        "p_used": p_used,
+        "p_by_signal": {signal: orders[PRIMARY_CRIT] for signal, orders in order["orders_by_signal"].items()},
         "primary_crit": PRIMARY_CRIT,
-        "orders_full": order["orders_full"], "orders_eeg": order["orders_eeg"], "orders_hrv": order["orders_hrv"],
+        "orders_full": order["orders_full"], "orders_by_signal": order["orders_by_signal"],
         "order_at_cap": order["order_at_cap"],
         "win_len": win_len, "step": step, "step_s": step / TARGET_SFREQ, "n_windows": n_windows,
         "detrend_type": DETREND_TYPE,
@@ -202,7 +207,8 @@ for nc_path in nc_paths:
 
     manifest_rows.append({
         "dyad_id": dyad_id, "film": film, "group": record["group"], "n_samples": n_samples,
-        "p_used": p_used, "p_eeg": order["p_eeg"], "p_hrv": order["p_hrv"], "order_at_cap": order["order_at_cap"],
+        "p_used": p_used, "order_at_cap": order["order_at_cap"],
+        **{f"p_{signal}": p for signal, p in record["p_by_signal"].items()},
         "n_windows": n_windows, "max_abs_root": max_abs_root, "stable": stable,
         "max_abs_root_global": max_abs_root_global,
         "min_white_fraction": min(whiteness_summary.values()),
@@ -212,10 +218,14 @@ for nc_path in nc_paths:
 
     # --- QC figures ---
     case_title = f"{dyad_id} {film}"
+    curves_by_block = {f"full ({k}-var)": order["curves_full"]}
+    orders_by_block = {f"full ({k}-var)": order["orders_full"]}
+    for signal, curves in order["curves_by_signal"].items():
+        block_label = f"{signal} ({len(SIGNAL_ROW_GROUPS[signal])}-var)"
+        curves_by_block[block_label] = curves
+        orders_by_block[block_label] = order["orders_by_signal"][signal]
     fig = plot_order_curves(
-        order["order_range"],
-        {"full (4-var)": order["curves_full"], "EEG (2-var)": order["curves_eeg"], "HRV (2-var)": order["curves_hrv"]},
-        {"full (4-var)": order["orders_full"], "EEG (2-var)": order["orders_eeg"], "HRV (2-var)": order["orders_hrv"]},
+        order["order_range"], curves_by_block, orders_by_block,
         MAX_MODEL_ORDER, f"{case_title}: model-order criteria (global 2-D signal)",
     )
     order_curves_path = QC_DIR / f"{dyad_id}_{film}_order_curves.png"
@@ -292,7 +302,7 @@ for dyad_id, film in SENSITIVITY_DYADS:
     envelopes = xr.load_dataarray(nc_path)
     design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
 
-    order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, EEG_ROWS, HRV_ROWS)
+    order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, SIGNAL_ROW_GROUPS)
     p_used = order["p_used"]  # held fixed across configs: selected on the window-independent global signal
 
     spectra_by_config = {}

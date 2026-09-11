@@ -127,8 +127,8 @@ Per-modality NetCDF readers (thin wrappers over `src/netcdf_io.py`'s core), file
 - `compute_psd_multitaper(data, sfreq, fmin, fmax, bandwidth)` — multitaper PSD for multichannel EEG (`mne.time_frequency.psd_array_multitaper`).
 - `average_psd_across_conditions(psd_dict)` — average PSD arrays across conditions (e.g. movies) for one participant.
 - `plot_continuous_psd_band(raw_avg, sfreq, fast_cf, fast_bw, title)` — plot a continuous ROI signal's PSD with the individualized band shaded (interbrain ffDTF pipeline, Stage 2 QC).
-- `plot_continuous_overlay(role_continuous, films_windows, title)` — plot the continuous downsampled ROI envelope and raw IBI with film windows shaded (interbrain ffDTF pipeline, Stage 2 QC; fixed 4-node/2-role/2-signal shape, see module note in `scripts/stage02_envelopes.py`).
-- `plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth)` — plot the multitaper PSD of each downsampled design variable, to check for aliasing (interbrain ffDTF pipeline, Stage 2 QC; same fixed-shape caveat).
+- `plot_continuous_overlay(node_continuous, names, films_windows, title)` — plot every node's continuous downsampled design signal (one row per node, in `names` order) with film windows shaded (interbrain ffDTF pipeline, Stage 2 QC; node-keyed, any per-role node count).
+- `plot_design_variable_psd(node_segments, names, fs, title, plot_zscore, psd_bandwidth)` — plot the multitaper PSD of each downsampled design variable (`node_segments` keyed by node name), to check for aliasing (interbrain ffDTF pipeline, Stage 2 QC; node-keyed).
 
 ### `src/specparam_utils.py`
 specparam (FOOOF) fitting, extraction, and quality checks.
@@ -209,6 +209,7 @@ Instantaneous-amplitude envelope utilities for narrow-band EEG/HRV signals.
 - `hrv_hf_envelope(ibi_signal, ibi_sfreq, hf_low, hf_high, order, target_sfreq)` — same, for the HRV high-frequency band of an IBI signal.
 - `average_channels(signals)` — average signals across channels (e.g. within an ROI).
 - `plot_signal_filtered_envelope(raw, filtered, envelope, sfreq, title)` — plot raw + filtered + envelope together.
+- `plot_raw_ibi_trace(ibi_segment, sfreq, title)` — plot one film-segmented raw-IBI design variable (interbrain ffDTF pipeline, Stage 2 QC for an HRV node).
 - `plot_dyad_envelopes(env_child, env_caregiver, sfreq, title, labels)` — child + caregiver envelopes on a shared time axis.
 - `plot_eeg_hrv_envelopes(env_eeg, eeg_sfreq, env_hrv, hrv_sfreq, title)` — EEG-band and HRV-HF envelopes on separate shared-time panels.
 
@@ -271,7 +272,7 @@ MVAR design-matrix construction (Stage 2/3): individualized-band ROI envelopes +
 - `window_stack(design, win_len, step)` — cut a design matrix into overlapping windows, stacked on a trials axis.
 - `detrend_windows(stack, dtype='linear')` — detrend each (channel, window) time series independently, per window.
 - `window_geometry(win_len_s, overlap_frac, target_sfreq)` — derive integer window length/step (samples) from a length/overlap spec.
-- `DESIGN_VARIABLES` (module constant) — legacy fixed `["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]` node order, kept only because `src/surrogate.py`'s surrogate-pair reassembly is hard-wired to this exact 2-signal-per-role shape. New code should read node order from config via `node_names(nodes)` instead.
+- `assert_edges_known(edges, names, context='')` — raise a loud, edge-naming `ValueError` if any `(source, target)` pair references a node not in `names`; used at stage load time to validate `pipeline_config.json`'s `edge_topology`/`PRIMARY_FAMILY`.
 
 ### `src/mvar_diag.py`
 MVAR model-order selection and fit-quality diagnostics (Stage 3): the windowed-ACF-averaged fit and its whiteness/stability checks.
@@ -280,7 +281,7 @@ MVAR model-order selection and fit-quality diagnostics (Stage 3): the windowed-A
 - `residual_whiteness(design_3d, ar_coeffs, max_lag)` — per-variable residual autocorrelation, averaged across windows.
 - `ar_root_stability(ar_coeffs)` — companion-matrix eigenvalues and stability of a fitted AR coefficient tensor.
 - `select_order(system, max_model_order, crit_types)` — select the MVAR model order under each of several information criteria (thin wrapper over `src.mtmvar.mvar_criterion`).
-- `select_p_used(design, max_model_order, crit_types, primary_crit, eeg_rows, hrv_rows)` — select the shared model order for the joint system, plus diagnostic EEG/HRV sub-block orders.
+- `select_p_used(design, max_model_order, crit_types, primary_crit, signal_row_groups)` — select the shared model order for the joint system, plus diagnostic per-signal sub-block orders (`signal_row_groups` = `{signal_name: row_indices}`, e.g. from `src.design.rows_for_signal`; a signal with no rows is skipped).
 - `plot_order_curves(order_range, curves_by_block, orders_by_block, max_model_order, title)` — plot AIC/HQ/SC criterion curves for the full system and each sub-block.
 - `plot_model_order_histogram(manifest_df)` — grouped bar chart of model orders (`p_used`) used, by group.
 - `plot_roots_comparison(roots_global, roots_windowed, max_abs_root_global, max_abs_root_windowed, title)` — plot AR companion eigenvalues for the global vs windowed fit on one unit circle.
@@ -298,16 +299,16 @@ Granger-estimator (dDTF/ffDTF/GPDC) connectivity estimation (Stage 4): the windo
 Film-matched surrogate-dyad null construction (Stage 5): mismatched-pair reassembly, stability gating, and the signed delta/z against the null.
 
 - `surrogate_pairs(dyad_ids, group_of=None)` — all ordered `(child_dyad, cg_dyad)` pairs with `child_dyad != cg_dyad`; optionally restricted to same-group pairs (`group_of` given) for the within-group null sensitivity.
-- `assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True)` — stitch a foreign child with a foreign caregiver into one design matrix (fixed `child:ROI`/`child:HRV`/`cg:ROI`/`cg:HRV` shape, out of scope for the node-topology generalization).
+- `assemble_surrogate_design(nodes, child_envelopes, cg_envelopes, zscore=True)` — stitch a foreign child's `role=="child"` node variables with a foreign caregiver's `role=="caregiver"` node variables into one design matrix, in `node_names(nodes)` order (any per-role node count/composition).
 - `windowed_ar_stability(design, win_len, step, p, detrend_type='linear')` — companion-matrix stability of the windowed-ACF AR fit of one design matrix; used to gate surrogates and flag real dyads.
 - `band_average_cube(cube, freqs, band_hz)` — average a `(k, k, n_freqs)` cube over an inclusive frequency band -> `(k, k)`.
 - `delta_and_z(real_value, null_values)` — signed delta (`real - null median`) and z (robust, MAD-scaled) of a real edge value against its surrogate null.
 - `real_edge_values(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — per-dyad band-averaged connectivity value for `edge` (the real, same-dyad estimate).
 - `surrogate_null(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — pooled surrogate null for `edge`, over every foreign (child, caregiver) pairing.
 - `edge_class_for(source_name, target_name, edge_class)` — this directed edge's H2/H4/exploratory/`"other"` tag from an `{(source, target): class}` map (defaults to `"other"`).
-- `plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, estimator, box_cox_lambda, title, delta_space=False)` — split violin of the surrogate null vs real dyads (TD left / ASD right), per edge; `delta_space=True` centers on zero and plots `delta_dtf` directly.
+- `plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, names, estimator, box_cox_lambda, title, delta_space=False)` — split violin of the surrogate null vs real dyads (TD left / ASD right), per edge; `delta_space=True` centers on zero and plots `delta_dtf` directly.
 - `plot_delta_summary(delta_table_df, edges_to_plot, title)` — per-group mean +/- SEM of `delta_dtf` for the given edges.
-- `compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type, stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges)` — estimate a surrogate null matrix for one set of candidate mismatched pairs; scope-agnostic core shared by the pooled reference null and the within-group sensitivity null.
+- `compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type, stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges, nodes)` — estimate a surrogate null matrix for one set of candidate mismatched pairs; scope-agnostic core shared by the pooled reference null and the within-group sensitivity null.
 
 ### `src/group_model.py`
 Stage 6 Bayesian group model (Bambi/ArviZ): DV prep, formulas/priors, contrasts, convergence diagnostics, and plots.

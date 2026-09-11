@@ -228,6 +228,33 @@ def plot_signal_filtered_envelope(raw, filtered, envelope, sfreq, title):
     return figure
 
 
+def plot_raw_ibi_trace(ibi_segment, sfreq, title):
+    """Plot one film-segmented raw-IBI design variable (an HRV node's QC figure).
+
+    Parameters
+    ----------
+    ibi_segment : np.ndarray, shape (n_times,)
+        Raw-IBI signal (downsampled + shared band-pass applied), already
+        segmented to one film window.
+    sfreq : float
+        Sampling frequency in Hz.
+    title : str
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    time = np.arange(ibi_segment.size) / sfreq
+    figure, axis = plt.subplots(figsize=(7, 3), dpi=100)
+    axis.plot(time, ibi_segment, linewidth=0.8)
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("raw IBI (downsampled, band-passed)")
+    axis.set_title(title)
+    figure.tight_layout()
+    return figure
+
+
 def plot_dyad_envelopes(env_child, env_caregiver, sfreq, title, labels):
     """Plot child and caregiver envelopes on a shared time axis.
 

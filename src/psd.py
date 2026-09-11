@@ -85,19 +85,21 @@ def plot_continuous_psd_band(raw_avg, sfreq, fast_cf, fast_bw, title):
     return figure
 
 
-def plot_continuous_overlay(role_continuous, films_windows, title):
-    """Plot the continuous downsampled ROI envelope and raw IBI with film windows shaded.
+def plot_continuous_overlay(node_continuous, names, films_windows, title):
+    """Plot every node's continuous downsampled design signal with film windows shaded.
 
-    One row per design variable (`child:ROI`, `cg:ROI`, `child:HRV`, `cg:HRV`),
-    so filter/anti-alias edge effects can be checked for all four signals that
-    feed the design matrix, not just the EEG envelopes.
+    One row per node (in `names` order), so filter/anti-alias edge effects
+    can be checked for every signal feeding the design matrix, regardless of
+    how many nodes each role carries.
 
     Parameters
     ----------
-    role_continuous : dict
-        ``{'child': {...}, 'caregiver': {...}}`` entries, each with
-        ``roi_env``/``roi_env_sfreq``/``roi_t0`` and
-        ``hrv_signal``/``hrv_signal_sfreq``/``hrv_t0``.
+    node_continuous : dict
+        ``{node_name: {...}}``, each entry with ``signal_full`` (the
+        continuous downsampled signal), ``sfreq``, and ``t0`` (see
+        `scripts/stage02_envelopes.py`'s per-node continuous build).
+    names : list of str
+        Node names, in display order (see `src.design.node_names`).
     films_windows : list of tuple
         ``(film_name, start_s, end_s)`` for every film, to shade as the
         retained (post-segmentation) regions.
@@ -107,31 +109,26 @@ def plot_continuous_overlay(role_continuous, films_windows, title):
     -------
     matplotlib.figure.Figure
     """
-    rows = [
-        ("child", "roi_env", "roi_env_sfreq", "roi_t0", "child:ROI"),
-        ("caregiver", "roi_env", "roi_env_sfreq", "roi_t0", "cg:ROI"),
-        ("child", "hrv_signal", "hrv_signal_sfreq", "hrv_t0", "child:HRV"),
-        ("caregiver", "hrv_signal", "hrv_signal_sfreq", "hrv_t0", "cg:HRV"),
-    ]
-    figure, axes = plt.subplots(nrows=len(rows), sharex=True, figsize=(10, 9), dpi=100)
-    for axis, (role, signal_key, sfreq_key, t0_key, label) in zip(axes, rows):
-        rc = role_continuous[role]
-        time = rc[t0_key] + np.arange(rc[signal_key].size) / rc[sfreq_key]
-        axis.plot(time, rc[signal_key])
+    figure, axes = plt.subplots(nrows=len(names), sharex=True, figsize=(10, 2.2 * len(names)), dpi=100)
+    axes = np.atleast_1d(axes)
+    for axis, name in zip(axes, names):
+        nc = node_continuous[name]
+        time = nc["t0"] + np.arange(nc["signal_full"].size) / nc["sfreq"]
+        axis.plot(time, nc["signal_full"])
         for film_name, start_s, end_s in films_windows:
             axis.axvspan(start_s, end_s, color="green", alpha=0.2)
             axis.text(start_s, axis.get_ylim()[1], film_name, fontsize=8, va="top")
-        axis.set_ylabel(label)
+        axis.set_ylabel(name)
     axes[-1].set_xlabel("Time (s)")
     figure.suptitle(title)
     figure.tight_layout()
     return figure
 
 
-def plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth):
+def plot_design_variable_psd(node_segments, names, fs, title, plot_zscore, psd_bandwidth):
     """Plot the multitaper PSD of each downsampled design variable, to check for aliasing.
 
-    Each variable is z-scored first (plotting only) so the EEG envelope and
+    Each variable is z-scored first (plotting only) so an EEG envelope and a
     raw IBI -- which differ by orders of magnitude in physical units -- can be
     compared on one axis; this is what makes it possible to confirm they
     occupy a comparable frequency band. Multitaper (`compute_psd_multitaper`)
@@ -140,9 +137,10 @@ def plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth):
 
     Parameters
     ----------
-    segments : dict
-        ``{'child': {'roi': array, 'hrv': array}, 'caregiver': {...}}``,
-        already segmented to one film window.
+    node_segments : dict
+        ``{node_name: array}``, already segmented to one film window.
+    names : list of str
+        Node names, in plotting order (see `src.design.node_names`).
     fs : float
         Sampling frequency in Hz (Nyquist is ``fs / 2``).
     title : str
@@ -156,13 +154,12 @@ def plot_design_variable_psd(segments, fs, title, plot_zscore, psd_bandwidth):
     matplotlib.figure.Figure
     """
     figure, axis = plt.subplots()
-    for role in ["child", "caregiver"]:
-        for variable in ["roi", "hrv"]:
-            signal = segments[role][variable]
-            if plot_zscore:
-                signal = zscore(signal)
-            freqs, psd = compute_psd_multitaper(signal[np.newaxis, :], fs, fmin=0.0, fmax=fs / 2, bandwidth=psd_bandwidth)
-            axis.plot(freqs, psd[0], label=f"{role}:{variable}")
+    for name in names:
+        signal = node_segments[name]
+        if plot_zscore:
+            signal = zscore(signal)
+        freqs, psd = compute_psd_multitaper(signal[np.newaxis, :], fs, fmin=0.0, fmax=fs / 2, bandwidth=psd_bandwidth)
+        axis.plot(freqs, psd[0], label=name)
     axis.axvline(fs / 2, color="black", linestyle="--", label="Nyquist")
     axis.set_xlabel("Frequency (Hz)")
     axis.set_ylabel("PSD (z-scored input)" if plot_zscore else "PSD")

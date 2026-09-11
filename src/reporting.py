@@ -10,16 +10,22 @@ No function here reads or writes a file itself.
 import pandas as pd
 
 
-def render_dyad_panel_envelopes(dyad_id, entries, roles):
+def render_dyad_panel_envelopes(dyad_id, entries, names):
     """Render one Stage 2 dyad's QC panel (continuous figures + per-film sections).
+
+    Node-keyed (not role-keyed): renders one continuous PSD figure per ROI
+    node, one node-QC figure per film per node (a ROI node's filter/envelope
+    figure or an IBI node's raw-IBI trace), plus the shared continuous
+    overlay and design-variable PSD figures -- so any per-role node count
+    (zero, one, or several ROI/HRV nodes) renders correctly.
 
     Parameters
     ----------
     dyad_id : str
     entries : list of dict
         This dyad's `gate_entries` rows, one per film.
-    roles : list of str
-        Roles to show continuous/per-film figures for, e.g. `['child', 'caregiver']`.
+    names : list of str
+        Node names, in display order (see `src.design.node_names`).
 
     Returns
     -------
@@ -31,8 +37,9 @@ def render_dyad_panel_envelopes(dyad_id, entries, roles):
     if written:
         qc = written[0]["qc"]
         html.append('<div class="row">')
-        for role in roles:
-            html.append(f'<img src="qc/{qc["psd_band"][role]}" alt="{role} continuous PSD">')
+        for name in names:
+            if name in qc["psd_band"]:
+                html.append(f'<img src="qc/{qc["psd_band"][name]}" alt="{name} continuous PSD">')
         html.append(f'<img src="qc/{qc["overlay"]}" alt="continuous overlay">')
         html.append('</div>')
 
@@ -43,10 +50,8 @@ def render_dyad_panel_envelopes(dyad_id, entries, roles):
         else:
             qc = entry["qc"]
             html.append('<div class="row">')
-            for role in roles:
-                html.append(f'<img src="qc/{qc["filter_envelope"][role]}" alt="{role} filter/envelope">')
-            for role in roles:
-                html.append(f'<img src="qc/{qc["eeg_hrv"][role]}" alt="{role} EEG/HRV envelopes">')
+            for name in names:
+                html.append(f'<img src="qc/{qc["node_figs"][name]}" alt="{name} QC">')
             html.append(f'<img src="qc/{qc["design_psd"]}" alt="design variable PSD aliasing check">')
             html.append('</div>')
         html.append('</div>')

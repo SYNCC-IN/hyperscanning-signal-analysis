@@ -3,13 +3,17 @@
 Reads Stage 1's `Interbrain_ffDTF_analysis/01_coverage/coverage.csv` plus the
 hand-curated `included_dyads` list from `pipeline_config.json`'s "shared"
 section (see that file and Stage 1's module docstring), and for every
-included dyad x film, builds the four MVAR design variables -- `child:ROI`,
-`cg:ROI`, `child:HRV`, `cg:HRV`:
+included dyad x film, builds one MVAR design variable per node in
+`pipeline_config.json`'s `"shared".nodes` (the default topology being
+`child:ROI`, `cg:ROI`, `child:HRV`, `cg:HRV`, but any per-role node
+composition -- e.g. two ROI nodes with distinct `roi_channels`/`roi_label`,
+or HRV-only roles -- is supported; see `src.design.node_names`):
 
-- EEG variable (`*:ROI`): ROI-reduced fast-band amplitude envelope, using each
-  participant's individual band from `band_assignments.csv`.
-- HRV variable (`*:HRV`): the raw (interpolated) IBI signal, downsampled only
-  -- no individualized band-pass, no Hilbert. This reverses the project note's
+- `roi_envelope` nodes: ROI-reduced fast-band amplitude envelope over that
+  node's own `roi_channels`, using that participant's individual band at
+  that node's own `roi_label` from `band_assignments.csv`.
+- `raw_ibi` nodes: the raw (interpolated) IBI signal, downsampled only -- no
+  individualized band-pass, no Hilbert. This reverses the project note's
   original HF-envelope choice: on inspection of the real signals, the EEG
   rhythm envelopes fluctuate in a band that overlaps the raw IBI (RSA,
   ~0.2-1 Hz), whereas the HF-IBI envelope is a second-order, much slower
@@ -21,18 +25,18 @@ included dyad x film, builds the four MVAR design variables -- `child:ROI`,
   internally consistent within each modality, but relevant to interpreting the
   exploratory cross brain-heart edges.
 
-After downsampling, both continuous variables additionally pass through one
-*shared* band-pass (`DESIGN_HIGHPASS_HZ`-`DESIGN_LOWPASS_HZ`, 2nd-order
-Butterworth, `filtfilt`) -- the same filter for both, so any group delay
-matches -- confirmed on inspection of the real PSDs: no interesting HRV
-activity above ~0.8 Hz, plus visible VLF drift below ~0.05 Hz.
+After downsampling, every node's continuous variable additionally passes
+through one *shared* band-pass (`DESIGN_HIGHPASS_HZ`-`DESIGN_LOWPASS_HZ`,
+2nd-order Butterworth, `filtfilt`) -- the same filter for every node, so any
+group delay matches -- confirmed on inspection of the real PSDs: no
+interesting HRV activity above ~0.8 Hz, plus visible VLF drift below ~0.05 Hz.
 
-Both variables are computed on each role's whole continuous `passive_movies`
-chunk (EEG: individual-band filter -> Hilbert -> downsample -> shared
-band-pass; HRV: downsample -> shared band-pass), *then* segmented to a film
-window taken from Stage 1's already-QC'd `film_start_s`/`film_end_s` -- so all
-filter/Hilbert edge transients fall in the discarded pre/post margins and
-inter-film gaps, not inside the retained window. See
+Every node's continuous signal is computed on its role's whole continuous
+`passive_movies` chunk (ROI: individual-band filter -> Hilbert -> downsample
+-> shared band-pass; HRV: downsample -> shared band-pass), *then* segmented to
+a film window taken from Stage 1's already-QC'd `film_start_s`/`film_end_s` --
+so all filter/Hilbert edge transients fall in the discarded pre/post margins
+and inter-film gaps, not inside the retained window. See
 `DTF_analysis_notes/pipeline_plan.md` Stage 2 and `src/design.py` for the
 underlying functions.
 
@@ -41,9 +45,9 @@ Writes one file per dyad x film to `Interbrain_ffDTF_analysis/02_envelopes/`:
 amplitude, not z-scored -- z-scoring is a Stage 3 concern), a
 `stage02_manifest.csv` (one row per included dyad x film, written or
 skipped-with-reason), and a QC gate (`qc/*.png` figures + `envelopes_gate.html`
-index). QC plots z-score every variable first (plotting only, never persisted)
-so the EEG envelope and raw IBI -- which differ by orders of magnitude in
-physical units -- are visually comparable.
+index, one figure set per node). QC plots z-score every variable first
+(plotting only, never persisted) so an EEG envelope and a raw IBI -- which
+differ by orders of magnitude in physical units -- are visually comparable.
 """
 
 import json
@@ -55,13 +59,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.assemble import assemble_dyad
+from src.assemble import assemble_dyad, select_roi_channels
 from src.bands import band_lookup
 from src.design import node_names, roi_band_envelope, segment_signal, stack_design
 from src.envelopes import (
@@ -70,10 +73,10 @@ from src.envelopes import (
     downsample,
     filter_individual_band,
     hilbert_envelope,
-    plot_eeg_hrv_envelopes,
+    plot_raw_ibi_trace,
     plot_signal_filtered_envelope,
 )
-from src.io_utils import ensure_dir, film_window, get_participant_files
+from src.io_utils import ensure_dir, film_window, get_participant_files, safe_label
 from src.pipeline_config import load_stage_config
 from src.psd import plot_continuous_overlay, plot_continuous_psd_band, plot_design_variable_psd
 from src.reporting import render_dyad_panel_envelopes
@@ -99,27 +102,27 @@ BAND_ASSIGNMENTS_PATH = PROJECT_ROOT / "Exploratory_spectral_analysis" / "04_ban
 OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
-# ROI as config -- must match Stage 1's ROI_LABEL/ROI_CHANNELS, since the
-# coverage table's roi_ok gate was computed for this ROI.
-ROI_LABEL = CFG["ROI_LABEL"]
-ROI_CHANNELS = CFG["ROI_CHANNELS"]  # select the right temporo-parietal channel as a proxy to right TPJ ("P7"- removed form ROI_CHANNELS list)
-BAND_ROI_LABEL = ROI_LABEL  # row to read from band_assignments.csv
-
 FILMS = CFG["FILMS"]
-ROLES = CFG["ROLES"]
 
 # Node topology (single source of truth for MVAR row order -- see
-# `src.design.node_names`/`rows_for_signal`). The QC/gate plotting helpers
-# below (`plot_continuous_overlay`, `plot_design_variable_psd`,
-# `render_dyad_panel_envelopes`) are unchanged and still assume exactly one
-# `roi_envelope` node and one `raw_ibi` node per role -- only the design
-# variable computation/stacking below is generalized to iterate over `NODES`.
+# `src.design.node_names`). Every node's continuous signal, QC figures, and
+# attrs/manifest metadata below are computed per NODE (keyed by node name),
+# not per (role, signal) -- so any per-role node count/composition (e.g. two
+# distinct ROI nodes, or an HRV-only role) is supported, not just the fixed
+# one-ROI-plus-one-HRV-per-role default.
 NODES = CFG["nodes"]
 NODE_NAMES = node_names(NODES)
-NODE_BY_ROLE_SIGNAL = {(node["role"], node["signal"]): node["name"] for node in NODES}
-ROLE_SIGNALS_NEEDED = {}
-for _node in NODES:
-    ROLE_SIGNALS_NEEDED.setdefault(_node["role"], set()).add(_node["signal"])
+ROI_NODES = [node for node in NODES if node["signal"] == "roi_envelope"]
+IBI_NODES = [node for node in NODES if node["signal"] == "raw_ibi"]
+
+# D1 default: the dyad-level EEG load below uses the UNION of every ROI
+# node's roi_channels (each node then reselects its own subset via
+# `select_roi_channels`); this also drives assemble_dyad's `roi_ok` flag, so
+# for an asymmetric topology (e.g. one role's ROI channels absent from the
+# other role's node set) `roi_ok` is checked against the union for both
+# roles, not per node. Alternative (not implemented): a per-node coverage
+# gate in Stage 1.
+ROI_CHANNELS_UNION = list(dict.fromkeys(channel for node in ROI_NODES for channel in node["roi_channels"]))
 
 BAND = CFG["BAND"]
 EEG_FILTER_ORDER = CFG["EEG_FILTER_ORDER"]
@@ -130,11 +133,11 @@ EEG_FILTER_ORDER = CFG["EEG_FILTER_ORDER"]
 # anti-aliases both signal types onto this shared rate.
 TARGET_SFREQ = CFG["TARGET_SFREQ"]
 
-# Shared post-downsample band-pass, applied identically to both the ROI envelope
-# and the raw IBI on the continuous signal (before per-film segmentation), so
-# both variables get exactly the same filter (and thus the same time smearing),
-# Confirmed on inspection of the real PSDs: no
-# interesting HRV activity above ~0.8 Hz, plus visible VLF drift below ~0.05 Hz.
+# Shared post-downsample band-pass, applied identically to every node's
+# continuous signal (before per-film segmentation), so every variable gets
+# exactly the same filter (and thus the same time smearing). Confirmed on
+# inspection of the real PSDs: no interesting HRV activity above ~0.8 Hz,
+# plus visible VLF drift below ~0.05 Hz.
 DESIGN_HIGHPASS_HZ = CFG["DESIGN_HIGHPASS_HZ"]
 DESIGN_LOWPASS_HZ = CFG["DESIGN_LOWPASS_HZ"]
 DESIGN_FILTER_ORDER = CFG["DESIGN_FILTER_ORDER"]
@@ -152,7 +155,7 @@ BW_CONVENTION = CFG["BW_CONVENTION"]
 
 # HRV variable = the raw (interpolated) IBI, downsampled only -- no band-pass,
 # no Hilbert (reverses the project note's HF-envelope choice, see module
-# docstring). 
+# docstring).
 HRV_SIGNAL = CFG["HRV_SIGNAL"]
 
 
@@ -161,7 +164,7 @@ HRV_SIGNAL = CFG["HRV_SIGNAL"]
 ROI_REDUCTION = CFG["ROI_REDUCTION"]
 
 # QC plots/PSDs z-score every variable first (plotting only, never persisted to
-# the .nc) so the EEG envelope (uV-scale) and raw IBI (hundreds of ms) are
+# the .nc) so an EEG envelope (uV-scale) and a raw IBI (hundreds of ms) are
 # visually comparable on one axis -- see module docstring.
 PLOT_ZSCORE = CFG["PLOT_ZSCORE"]
 
@@ -185,7 +188,7 @@ print(f"Stage 2: {len(INCLUDED_DYADS)} included dyads from {CONFIG_PATH.name}'s 
 
 
 # ---------------------------------------------------------------------------
-# 2. Per-dyad continuous envelopes, then per-film segmentation + write
+# 2. Per-dyad continuous signals (per node, L3), then per-film segmentation + write
 # ---------------------------------------------------------------------------
 manifest_rows = []
 gate_entries = []
@@ -193,60 +196,67 @@ included_dyad_meta = []
 
 for dyad_id in INCLUDED_DYADS:
     eeg_files = participant_files[participant_files["dyad_id"] == dyad_id]
-    dyad = assemble_dyad(dyad_id, eeg_files, IBI_ROOT, ROI_CHANNELS)
-    print(f"Stage 2: {dyad_id} {dyad['group']} {dyad['meta']['age_months']} months" )
-    role_continuous = {}
-    for role in ROLES:
-        needed_signals = ROLE_SIGNALS_NEEDED.get(role, set())
-        entry = {"skip_reason": None}
+    dyad = assemble_dyad(dyad_id, eeg_files, IBI_ROOT, ROI_CHANNELS_UNION)
+    print(f"Stage 2: {dyad_id} {dyad['group']} {dyad['meta']['age_months']} months")
 
-        if "roi_envelope" in needed_signals:
-            fast_cf, fast_bw = band_lookup(band_assignments, dyad_id, role, BAND_ROI_LABEL, BAND)
+    node_continuous = {}
+    dyad_skip_reason = None
+    for node in NODES:
+        role = node["role"]
+
+        if node["signal"] == "roi_envelope":
+            fast_cf, fast_bw = band_lookup(band_assignments, dyad_id, role, node["roi_label"], BAND)
             if fast_cf is None:
-                role_continuous[role] = {"skip_reason": f"no fast band at {BAND_ROI_LABEL} for {dyad_id} {role}"}
+                dyad_skip_reason = dyad_skip_reason or f"no fast band at {node['roi_label']} for {dyad_id} {role} ({node['name']})"
                 continue
 
             eeg_entry = dyad["eeg"][role]
+            # L6: loud, per-node check that this node's own roi_channels were
+            # actually found among the loaded (union-selected) EEG channels.
+            missing_channels = sorted(set(node["roi_channels"]) - set(eeg_entry["channel_names"]))
+            assert not missing_channels, (
+                f"{dyad_id} {role} node {node['name']!r}: roi_channels {missing_channels} not among "
+                f"the loaded EEG channels {eeg_entry['channel_names']}"
+            )
+            node_data, _ = select_roi_channels(eeg_entry["data"], eeg_entry["channel_names"], node["roi_channels"])
+
             roi_env, roi_env_sfreq = roi_band_envelope(
-                eeg_entry["data"], eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER, TARGET_SFREQ, ROI_REDUCTION,
+                node_data, eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER, TARGET_SFREQ, ROI_REDUCTION,
             )
             # Shared post-downsample band-pass on the continuous signal, before segmentation
-            # (see DESIGN_HIGHPASS_HZ/DESIGN_LOWPASS_HZ config): identical filter for both
-            # variables so any group delay matches, no interesting HRV content above ~0.8 Hz,
+            # (see DESIGN_HIGHPASS_HZ/DESIGN_LOWPASS_HZ config): identical filter for every
+            # node so any group delay matches, no interesting HRV content above ~0.8 Hz,
             # and VLF drift below ~0.05 Hz is removed.
             roi_env = bandpass_filter(roi_env, roi_env_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER)
 
-            # Full-rate raw/filtered/envelope trace for the QC gate only (a single
-            # average-raw-then-filter trace regardless of ROI_REDUCTION, since the
-            # gate's purpose is a visual sanity check, not the production signal).
-            raw_avg = average_channels(eeg_entry["data"])
+            # Full-rate raw/filtered/envelope trace for this node's QC figure only (a
+            # single average-raw-then-filter trace regardless of ROI_REDUCTION, since
+            # the gate's purpose is a visual sanity check, not the production signal).
+            raw_avg = average_channels(node_data)
             filtered_avg = filter_individual_band(raw_avg, eeg_entry["sfreq"], fast_cf, fast_bw / 2, EEG_FILTER_ORDER)
             envelope_avg_full = hilbert_envelope(filtered_avg)
 
-            entry.update({
+            node_continuous[node["name"]] = {
+                "node": node, "signal_full": roi_env, "sfreq": roi_env_sfreq, "t0": float(eeg_entry["time"][0]),
                 "fast_cf": fast_cf, "fast_bw": fast_bw,
-                "roi_env": roi_env, "roi_env_sfreq": roi_env_sfreq, "roi_t0": float(eeg_entry["time"][0]),
                 "eeg_entry": eeg_entry, "raw_avg": raw_avg, "filtered_avg": filtered_avg,
                 "envelope_avg_full": envelope_avg_full,
-            })
+            }
 
-        if "raw_ibi" in needed_signals:
+        elif node["signal"] == "raw_ibi":
             ibi_entry = dyad["ibi"][role]
             # HRV variable is the raw IBI, downsampled only -- no band-pass, no Hilbert (see module docstring).
             hrv_signal, hrv_signal_sfreq = downsample(ibi_entry["data"], ibi_entry["sfreq"], TARGET_SFREQ)
             hrv_signal = bandpass_filter(
                 hrv_signal, hrv_signal_sfreq, DESIGN_HIGHPASS_HZ, DESIGN_LOWPASS_HZ, DESIGN_FILTER_ORDER,
             )
-            entry.update({
-                "hrv_signal": hrv_signal, "hrv_signal_sfreq": hrv_signal_sfreq,
-                "hrv_t0": float(ibi_entry["time"][0]), "ibi_entry": ibi_entry,
-            })
+            node_continuous[node["name"]] = {
+                "node": node, "signal_full": hrv_signal, "sfreq": hrv_signal_sfreq, "t0": float(ibi_entry["time"][0]),
+                "ibi_entry": ibi_entry,
+            }
 
-        role_continuous[role] = entry
-
-    dyad_skip_reason = next(
-        (role_continuous[role]["skip_reason"] for role in ROLES if role_continuous[role]["skip_reason"]), None
-    )
+        else:
+            raise ValueError(f"Unknown node signal {node['signal']!r} for node {node['name']!r}")
 
     dyad_qc = {}
     if dyad_skip_reason is None:
@@ -254,18 +264,18 @@ for dyad_id in INCLUDED_DYADS:
         films_windows = [(film, *film_window(coverage_df, dyad_id, film)) for film in FILMS]
 
         dyad_qc["psd_band"] = {}
-        for role in ROLES:
-            rc = role_continuous[role]
+        for node in ROI_NODES:
+            nc = node_continuous[node["name"]]
             fig = plot_continuous_psd_band(
-                rc["raw_avg"], rc["eeg_entry"]["sfreq"], rc["fast_cf"], rc["fast_bw"] / 2,
-                f"{dyad_id} {role} {ROI_LABEL} continuous PSD",
+                nc["raw_avg"], nc["eeg_entry"]["sfreq"], nc["fast_cf"], nc["fast_bw"] / 2,
+                f"{dyad_id} {node['name']} continuous PSD",
             )
-            path = QC_DIR / f"{dyad_id}_{role}_continuous_psd_band.png"
+            path = QC_DIR / f"{dyad_id}_{safe_label(node['name'])}_continuous_psd_band.png"
             fig.savefig(path)
             plt.close(fig)
-            dyad_qc["psd_band"][role] = path.name
+            dyad_qc["psd_band"][node["name"]] = path.name
 
-        fig = plot_continuous_overlay(role_continuous, films_windows, f"{dyad_id} continuous ROI envelope + raw IBI + film windows")
+        fig = plot_continuous_overlay(node_continuous, NODE_NAMES, films_windows, f"{dyad_id} continuous node signals + film windows")
         path = QC_DIR / f"{dyad_id}_continuous_overlay.png"
         fig.savefig(path)
         plt.close(fig)
@@ -283,26 +293,19 @@ for dyad_id in INCLUDED_DYADS:
         # Segment each node's continuous signal to this film window, keyed by
         # node name -- generalizes to any `NODES` topology, not just the
         # fixed 4-node/2-role/2-signal default.
-        signal_keys = {"roi_envelope": ("roi_env", "roi_env_sfreq", "roi_t0"),
-                       "raw_ibi": ("hrv_signal", "hrv_signal_sfreq", "hrv_t0")}
         node_segments = {}
         for node in NODES:
-            rc = role_continuous[node["role"]]
-            signal_key, sfreq_key, t0_key = signal_keys[node["signal"]]
-            seg, _ = segment_signal(rc[signal_key], rc[sfreq_key], rc[t0_key], film_start_s, film_end_s)
+            nc = node_continuous[node["name"]]
+            seg, _ = segment_signal(nc["signal_full"], nc["sfreq"], nc["t0"], film_start_s, film_end_s)
             node_segments[node["name"]] = seg
 
         common_len = min(seg.size for seg in node_segments.values())
-        fs = role_continuous[NODES[0]["role"]][signal_keys[NODES[0]["signal"]][1]]
+        fs = node_continuous[NODES[0]["name"]]["sfreq"]
+
+        node_segments_trimmed = {name: seg[:common_len] for name, seg in node_segments.items()}
 
         attrs = {
             "fs": fs,
-            "roi_label": ROI_LABEL,
-            "roi_channels": "|".join(ROI_CHANNELS),
-            "child_roi_cf": role_continuous["child"]["fast_cf"],
-            "child_roi_bw_half": role_continuous["child"]["fast_bw"] / 2,
-            "cg_roi_cf": role_continuous["caregiver"]["fast_cf"],
-            "cg_roi_bw_half": role_continuous["caregiver"]["fast_bw"] / 2,
             "eeg_filter_order": EEG_FILTER_ORDER,
             "hrv_signal": HRV_SIGNAL,
             "film": film,
@@ -317,60 +320,54 @@ for dyad_id in INCLUDED_DYADS:
             "design_lowpass_hz": DESIGN_LOWPASS_HZ,
             "design_filter_order": DESIGN_FILTER_ORDER,
         }
-
-        node_segments_trimmed = {name: seg[:common_len] for name, seg in node_segments.items()}
+        # L4: per-node band metadata, flat netCDF-safe keys (replaces the old
+        # fixed child_roi_cf/cg_roi_cf keys) -- one triple per ROI node.
+        for node in ROI_NODES:
+            nc = node_continuous[node["name"]]
+            attrs[f"{node['name']}_cf"] = nc["fast_cf"]
+            attrs[f"{node['name']}_bw_half"] = nc["fast_bw"] / 2
+            attrs[f"{node['name']}_roi_channels"] = "|".join(node["roi_channels"])
 
         design = stack_design([node_segments_trimmed[name] for name in NODE_NAMES], NODE_NAMES, fs, attrs)
         out_path = OUTPUT_DIR / f"{dyad_id}_{film}.nc"
-
-        # Role-keyed view for the QC/gate plotting helpers below
-        # (`plot_design_variable_psd`, `plot_eeg_hrv_envelopes`), which are
-        # unmodified and still assume one "roi"/"hrv" pair per role.
-        segments_trimmed = {
-            role: {
-                "roi": node_segments_trimmed[NODE_BY_ROLE_SIGNAL[(role, "roi_envelope")]],
-                "hrv": node_segments_trimmed[NODE_BY_ROLE_SIGNAL[(role, "raw_ibi")]],
-            }
-            for role in ROLES
-        }
         design.to_netcdf(out_path)
 
-        manifest_rows.append({
+        manifest_row = {
             "dyad_id": dyad_id, "film": film, "status": "written", "reason": "",
             "fs": fs, "n_samples": common_len,
-            "child_fast_cf": role_continuous["child"]["fast_cf"], "child_fast_bw": role_continuous["child"]["fast_bw"],
-            "cg_fast_cf": role_continuous["caregiver"]["fast_cf"], "cg_fast_bw": role_continuous["caregiver"]["fast_bw"],
-        })
+        }
+        for node in ROI_NODES:
+            nc = node_continuous[node["name"]]
+            manifest_row[f"{node['name']}_fast_cf"] = nc["fast_cf"]
+            manifest_row[f"{node['name']}_fast_bw"] = nc["fast_bw"]
+        manifest_rows.append(manifest_row)
 
-        # --- Film-level QC ---
-        film_qc = {"psd_band": dyad_qc["psd_band"], "overlay": dyad_qc["overlay"], "filter_envelope": {}, "eeg_hrv": {}}
-        for role in ROLES:
-            rc = role_continuous[role]
-            eeg_time = rc["eeg_entry"]["time"]
+        # --- Film-level QC: one figure per node (L4) ---
+        film_qc = {"psd_band": dyad_qc["psd_band"], "overlay": dyad_qc["overlay"], "node_figs": {}}
+        for node in ROI_NODES:
+            nc = node_continuous[node["name"]]
+            eeg_time = nc["eeg_entry"]["time"]
             mask = (eeg_time >= film_start_s) & (eeg_time <= film_end_s)
             fig = plot_signal_filtered_envelope(
-                rc["raw_avg"][mask], rc["filtered_avg"][mask], rc["envelope_avg_full"][mask],
-                rc["eeg_entry"]["sfreq"], f"{dyad_id} {role} {film} raw/filtered/envelope (retained window)",
+                nc["raw_avg"][mask], nc["filtered_avg"][mask], nc["envelope_avg_full"][mask],
+                nc["eeg_entry"]["sfreq"], f"{dyad_id} {node['name']} {film} raw/filtered/envelope (retained window)",
             )
-            path = QC_DIR / f"{dyad_id}_{film}_{role}_filter_envelope.png"
+            path = QC_DIR / f"{dyad_id}_{film}_{safe_label(node['name'])}_filter_envelope.png"
             fig.savefig(path)
             plt.close(fig)
-            film_qc["filter_envelope"][role] = path.name
+            film_qc["node_figs"][node["name"]] = path.name
 
-            roi_for_plot = zscore(segments_trimmed[role]["roi"]) if PLOT_ZSCORE else segments_trimmed[role]["roi"]
-            hrv_for_plot = zscore(segments_trimmed[role]["hrv"]) if PLOT_ZSCORE else segments_trimmed[role]["hrv"]
-            fig = plot_eeg_hrv_envelopes(
-                roi_for_plot, fs, hrv_for_plot, fs,
-                f"{dyad_id} {role} {film}: EEG {BAND} envelope and raw IBI"
-                + (" (z-scored)" if PLOT_ZSCORE else ""),
+        for node in IBI_NODES:
+            fig = plot_raw_ibi_trace(
+                node_segments_trimmed[node["name"]], fs, f"{dyad_id} {node['name']} {film}: raw IBI (downsampled, band-passed)",
             )
-            path = QC_DIR / f"{dyad_id}_{film}_{role}_eeg_hrv.png"
+            path = QC_DIR / f"{dyad_id}_{film}_{safe_label(node['name'])}_raw_ibi.png"
             fig.savefig(path)
             plt.close(fig)
-            film_qc["eeg_hrv"][role] = path.name
+            film_qc["node_figs"][node["name"]] = path.name
 
         fig = plot_design_variable_psd(
-            segments_trimmed, fs, f"{dyad_id} {film} downsampled design variable PSD (aliasing check)",
+            node_segments_trimmed, NODE_NAMES, fs, f"{dyad_id} {film} downsampled design variable PSD (aliasing check)",
             PLOT_ZSCORE, DESIGN_PSD_BANDWIDTH_HZ,
         )
         path = QC_DIR / f"{dyad_id}_{film}_design_psd.png"
@@ -425,7 +422,7 @@ HTML_TEMPLATE = """<!doctype html>
 </head>
 <body>
 <h1>Stage 2 envelopes gate</h1>
-<p>ROI: <b>__ROI_LABEL__</b> (__ROI_CHANNELS__), band: __BAND__, reduction: __ROI_REDUCTION__.</p>
+<p>ROI node(s): <b>__ROI_LABEL__</b> (__ROI_CHANNELS__), band: __BAND__, reduction: __ROI_REDUCTION__.</p>
 <label for="dyad-select">Dyad: </label>
 <select id="dyad-select"></select>
 <div id="panels">__PANELS__</div>
@@ -450,11 +447,14 @@ if (dyadIds.length) showDyad(dyadIds[0]);
 """
 
 
-panels_html = "\n".join(render_dyad_panel_envelopes(dyad_id, gate_by_dyad[dyad_id], ROLES) for dyad_id in gate_dyad_ids)
+panels_html = "\n".join(render_dyad_panel_envelopes(dyad_id, gate_by_dyad[dyad_id], NODE_NAMES) for dyad_id in gate_dyad_ids)
+
+ROI_LABELS_DISPLAY = ", ".join(sorted({node["roi_label"] for node in ROI_NODES})) if ROI_NODES else "(none)"
+ROI_CHANNELS_DISPLAY = "|".join(ROI_CHANNELS_UNION) if ROI_CHANNELS_UNION else "(none)"
 
 html = HTML_TEMPLATE.replace("__PANELS__", panels_html)
 html = html.replace("__DYAD_IDS_JSON__", json.dumps(gate_dyad_ids))
-html = html.replace("__ROI_LABEL__", ROI_LABEL).replace("__ROI_CHANNELS__", "|".join(ROI_CHANNELS))
+html = html.replace("__ROI_LABEL__", ROI_LABELS_DISPLAY).replace("__ROI_CHANNELS__", ROI_CHANNELS_DISPLAY)
 html = html.replace("__BAND__", BAND).replace("__ROI_REDUCTION__", ROI_REDUCTION)
 (OUTPUT_DIR / "envelopes_gate.html").write_text(html, encoding="utf-8")
 print(f"Wrote interactive gate to {OUTPUT_DIR / 'envelopes_gate.html'}")

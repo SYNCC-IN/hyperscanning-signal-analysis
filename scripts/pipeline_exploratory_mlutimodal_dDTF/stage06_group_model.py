@@ -137,6 +137,7 @@ from src.group_model import (
     convergence_row, plot_forest, plot_ppc_figure, plot_pareto_k_figure, plot_edge_funnel,
     compute_localization_rows,
 )
+from src.design import assert_edges_known, node_names
 from src.io_utils import ensure_dir, safe_label
 from src.pipeline_config import load_stage_config
 from src.reporting import (
@@ -159,6 +160,18 @@ MODELS_DIR = ensure_dir(OUTPUT_DIR / "models")
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
 ENGINE = CFG["ENGINE"]  # D0, ratified by the project owner (brms/cmdstanr not installed; see module docstring)
+
+# Node topology (L6): validate edge_topology/PRIMARY_FAMILY against the
+# actual node names before anything below relies on them.
+NODE_NAMES = node_names(CFG["nodes"])
+assert_edges_known(
+    [(edge["source"], edge["target"]) for edge in CFG["edge_topology"]], NODE_NAMES,
+    context="stage06 pipeline_config.json's edge_topology",
+)
+assert_edges_known(
+    [tuple(row[0].split("->")) for row in CFG["PRIMARY_FAMILY"]], NODE_NAMES,
+    context="stage06 pipeline_config.json's PRIMARY_FAMILY",
+)
 
 EMPHASIS_EDGES = [
     (f"{edge['source']}->{edge['target']}", edge["class"]) for edge in CFG["edge_topology"]

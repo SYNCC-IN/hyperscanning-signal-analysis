@@ -199,36 +199,49 @@ def select_order(system, max_model_order, crit_types):
     return optimal_orders, curves, model_order_range
 
 
-def select_p_used(design, max_model_order, crit_types, primary_crit, eeg_rows, hrv_rows):
-    """Select the shared model order for the joint system, plus diagnostic sub-block orders.
+def select_p_used(design, max_model_order, crit_types, primary_crit, signal_row_groups):
+    """Select the shared model order for the joint system, plus diagnostic per-signal sub-block orders.
 
-    `p_used` is fit on the joint 4-variable system (required for exploratory
-    cross-block edges, which only exist in the joint model); `p_eeg`/`p_hrv`
-    are reported only to expose an EEG/HRV order mismatch, not to justify
-    splitting the fit.
+    `p_used` is fit on the joint system (required for exploratory cross-block
+    edges, which only exist in the joint model); the per-signal sub-block
+    orders in `orders_by_signal` are reported only to expose a cross-signal
+    order mismatch, not to justify splitting the fit. `signal_row_groups`
+    lets this generalize to however many distinct `signal` values are present
+    in the node topology (e.g. just `roi_envelope`, just `raw_ibi`, or both,
+    each possibly spanning more than 2 rows) -- a signal with no rows is
+    simply skipped.
 
     Parameters
     ----------
     design : np.ndarray, shape (k, n_samples)
         Global (non-windowed) z-scored design matrix.
     max_model_order, crit_types, primary_crit : see `select_order`.
-    eeg_rows, hrv_rows : list of int
-        Row indices for the EEG-only and HRV-only sub-blocks.
+    signal_row_groups : dict of {str: list of int}
+        ``{signal_name: row_indices}`` sub-blocks to additionally diagnose
+        (e.g. from `src.design.rows_for_signal`), keyed by the `nodes`
+        entries' `signal` field. A signal mapped to an empty list is skipped.
 
     Returns
     -------
     dict
-        ``{p_used, p_eeg, p_hrv, orders_full, orders_eeg, orders_hrv,
-        curves_full, curves_eeg, curves_hrv, order_range, order_at_cap}``.
+        ``{p_used, orders_full, curves_full, order_range, order_at_cap,
+        orders_by_signal, curves_by_signal}``, where `orders_by_signal`/
+        `curves_by_signal` are ``{signal_name: ...}`` for each non-empty
+        group in `signal_row_groups`.
     """
     orders_full, curves_full, order_range = select_order(design, max_model_order, crit_types)
-    orders_eeg, curves_eeg, _ = select_order(design[eeg_rows], max_model_order, crit_types)
-    orders_hrv, curves_hrv, _ = select_order(design[hrv_rows], max_model_order, crit_types)
+    orders_by_signal, curves_by_signal = {}, {}
+    for signal, rows in signal_row_groups.items():
+        if not rows:
+            continue
+        orders, curves, _ = select_order(design[rows], max_model_order, crit_types)
+        orders_by_signal[signal] = orders
+        curves_by_signal[signal] = curves
     return {
-        "p_used": orders_full[primary_crit], "p_eeg": orders_eeg[primary_crit], "p_hrv": orders_hrv[primary_crit],
-        "orders_full": orders_full, "orders_eeg": orders_eeg, "orders_hrv": orders_hrv,
-        "curves_full": curves_full, "curves_eeg": curves_eeg, "curves_hrv": curves_hrv,
-        "order_range": order_range, "order_at_cap": any(o == max_model_order for o in orders_full.values()),
+        "p_used": orders_full[primary_crit],
+        "orders_full": orders_full, "curves_full": curves_full, "order_range": order_range,
+        "order_at_cap": any(o == max_model_order for o in orders_full.values()),
+        "orders_by_signal": orders_by_signal, "curves_by_signal": curves_by_signal,
     }
 
 

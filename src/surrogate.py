@@ -1,8 +1,8 @@
 """Film-matched surrogate-dyad null construction (Stage 5).
 
-A surrogate stitches one dyad's child variables with a *different* dyad's
-caregiver variables (same film) into a design matrix in the canonical
-`src.design.DESIGN_VARIABLES` order. Both partners watched the same film but
+A surrogate stitches one dyad's child-role node variables with a *different*
+dyad's caregiver-role node variables (same film) into a design matrix in
+`node_names(nodes)` order. Both partners watched the same film but
 were never in the room together, so any coupling recovered from a surrogate
 reflects the shared stimulus + generic physiology, not real-time interaction
 -- the null that real dyads' ffDTF is compared against
@@ -22,11 +22,11 @@ from scipy.stats import gaussian_kde, median_abs_deviation
 
 try:
     from .connectivity import Granger_estimator, edge_value, read_edge_value
-    from .design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_stack
+    from .design import assemble_design_matrix, detrend_windows, node_names, window_stack
     from .mvar_diag import ar_root_stability, fit_mvar_avg_acf
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.connectivity import Granger_estimator, edge_value, read_edge_value
-    from src.design import DESIGN_VARIABLES, assemble_design_matrix, detrend_windows, window_stack
+    from src.design import assemble_design_matrix, detrend_windows, node_names, window_stack
     from src.mvar_diag import ar_root_stability, fit_mvar_avg_acf
 
 
@@ -73,51 +73,60 @@ def surrogate_pairs(dyad_ids, group_of=None):
     return pairs
 
 
-def assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True):
+def assemble_surrogate_design(nodes, child_envelopes, cg_envelopes, zscore=True):
     """Stitch a foreign child with a foreign caregiver into one design matrix.
 
-    Takes the child variables (`child:ROI`, `child:HRV`) from
-    `child_envelopes` and the caregiver variables (`cg:ROI`, `cg:HRV`) from
-    `cg_envelopes` (each a Stage 2 DataArray for the same film), truncates
-    both to their common (shorter) time length -- the two segments are the
-    same film but may differ by a sample or two -- and reassembles them in
-    the canonical `DESIGN_VARIABLES` order with a fresh, shared time axis
-    (the two source arrays' own time axes are dyad-specific and not
-    meaningful once stitched). Z-scoring is delegated to
-    `src.design.assemble_design_matrix`, so the surrogate design follows the
-    identical per-channel z-score convention as a real one (single source of
-    truth). No silent length-fixing beyond the documented truncate-to-min;
-    a missing variable surfaces as the `.sel` `KeyError` it is.
+    Takes every `role == "child"` node's variable from `child_envelopes` and
+    every `role == "caregiver"` node's variable from `cg_envelopes` (each a
+    Stage 2 DataArray for the same film), truncates both to their common
+    (shorter) time length -- the two segments are the same film but may
+    differ by a sample or two -- and reassembles them in `node_names(nodes)`
+    order with a fresh, shared time axis (the two source arrays' own time
+    axes are dyad-specific and not meaningful once stitched). Works for any
+    per-role node count/composition (L0/L5), not just one ROI + one HRV node
+    per role. Z-scoring is delegated to `src.design.assemble_design_matrix`,
+    so the surrogate design follows the identical per-channel z-score
+    convention as a real one (single source of truth). No silent
+    length-fixing beyond the documented truncate-to-min; a missing variable
+    surfaces as the `.sel` `KeyError` it is.
 
     Parameters
     ----------
+    nodes : list of dict
+        `pipeline_config.json`'s `"shared".nodes` (see `src.design.node_names`).
     child_envelopes : xarray.DataArray
-        Stage 2 output for the dyad supplying the child variables, dims
-        `("variable", "time")`.
+        Stage 2 output for the dyad supplying the child-role node variables,
+        dims `("variable", "time")`.
     cg_envelopes : xarray.DataArray
-        Stage 2 output for the dyad supplying the caregiver variables, same
-        film, same sampling frequency.
+        Stage 2 output for the dyad supplying the caregiver-role node
+        variables, same film, same sampling frequency.
     zscore : bool, optional
         Passed through to `src.design.assemble_design_matrix` (default True).
 
     Returns
     -------
-    np.ndarray, shape (4, n_common)
-        Rows in `DESIGN_VARIABLES` order, z-scored per row when `zscore` is
+    np.ndarray, shape (len(nodes), n_common)
+        Rows in `node_names(nodes)` order, z-scored per row when `zscore` is
         True.
     """
-    child_part = child_envelopes.sel(variable=["child:ROI", "child:HRV"])
-    cg_part = cg_envelopes.sel(variable=["cg:ROI", "cg:HRV"])
+    names = node_names(nodes)
+    child_names = [node["name"] for node in nodes if node["role"] == "child"]
+    cg_names = [node["name"] for node in nodes if node["role"] == "caregiver"]
+
+    child_part = child_envelopes.sel(variable=child_names)
+    cg_part = cg_envelopes.sel(variable=cg_names)
     n_common = min(child_part.sizes["time"], cg_part.sizes["time"])
 
     child_values = child_part.isel(time=slice(0, n_common)).values
     cg_values = cg_part.isel(time=slice(0, n_common)).values
     fs = float(child_envelopes.attrs["fs"])
 
-    data = np.stack([child_values[0], cg_values[0], child_values[1], cg_values[1]], axis=0)
+    values_by_name = dict(zip(child_names, child_values))
+    values_by_name.update(zip(cg_names, cg_values))
+    data = np.stack([values_by_name[name] for name in names], axis=0)
     time = np.arange(n_common) / fs
-    stitched = xr.DataArray(data, dims=("variable", "time"), coords={"variable": DESIGN_VARIABLES, "time": time})
-    return assemble_design_matrix(stitched, DESIGN_VARIABLES, zscore=zscore)
+    stitched = xr.DataArray(data, dims=("variable", "time"), coords={"variable": names, "time": time})
+    return assemble_design_matrix(stitched, names, zscore=zscore)
 
 
 def windowed_ar_stability(design, win_len, step, p, detrend_type="linear"):
@@ -277,7 +286,7 @@ def edge_class_for(source_name, target_name, edge_class):
     return edge_class.get((source_name, target_name), "other")
 
 
-def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class,
+def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, names,
                               estimator, box_cox_lambda, title, delta_space=False):
     """Split violin of the surrogate null vs real dyads (TD left / ASD right), per edge.
 
@@ -303,6 +312,9 @@ def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges
         Column order of `null_matrix`.
     edge_class : dict
         Passed to `edge_class_for` for the panel subtitle.
+    names : list of str
+        Node names, in `real_by_dyad`'s `band_avg` row/column order (see
+        `src.design.node_names`).
     estimator : str
         Estimator name, for the y-axis label.
     box_cox_lambda : float
@@ -337,7 +349,7 @@ def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges
         null_values = null_values - offset
         values_by_group = {
             group_label: np.array([
-                read_edge_value(info["band_avg"], source_name, target_name, names=DESIGN_VARIABLES) - offset
+                read_edge_value(info["band_avg"], source_name, target_name, names=names) - offset
                 for info in real_by_dyad.values() if info["group"] == group_label
             ])
             for group_label in group_sides
@@ -423,7 +435,7 @@ def plot_delta_summary(delta_table_df, edges_to_plot, title):
 
 
 def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type,
-                  stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges):
+                  stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges, nodes):
     """Estimate a surrogate null matrix for one set of candidate mismatched pairs.
 
     Scope-agnostic core shared by a pooled reference null and a within-group
@@ -460,6 +472,10 @@ def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order,
         `(low, high)` band edges in Hz, passed to `band_average_cube`.
     all_edges : list of tuple(str, str)
         Column order for the returned `null_matrix`.
+    nodes : list of dict
+        `pipeline_config.json`'s `"shared".nodes`, passed through to
+        `assemble_surrogate_design` and used to read `all_edges` off the
+        resulting band-averaged cube (see `src.design.node_names`).
 
     Returns
     -------
@@ -467,13 +483,14 @@ def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order,
         Keys: `null_matrix` (n_kept, len(all_edges)), `kept_child_dyads`,
         `kept_cg_dyads`, `n_excluded_unstable`, `n_attempted`.
     """
+    names = node_names(nodes)
     null_rows, kept_child_dyads, kept_cg_dyads = [], [], []
     n_excluded_unstable = 0
     for child_dyad, cg_dyad in candidate_pairs:
         assert child_dyad != cg_dyad
         child_envelopes, _ = envelopes_by_dyad[child_dyad]
         cg_envelopes, _ = envelopes_by_dyad[cg_dyad]
-        design = assemble_surrogate_design(child_envelopes, cg_envelopes, zscore=True)
+        design = assemble_surrogate_design(nodes, child_envelopes, cg_envelopes, zscore=True)
 
         max_abs_root, _ = windowed_ar_stability(design, win_len, step, model_order, detrend_type)
         if max_abs_root >= stability_max_root:
@@ -482,7 +499,7 @@ def compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order,
 
         ffdtf, _ = Granger_estimator(design, freqs, fs, model_order, win_len, step, detrend_type, ESTIMATOR=estimator, box_cox_lambda=box_cox_lambda)
         band_avg = band_average_cube(ffdtf, freqs, band_hz)
-        null_rows.append([read_edge_value(band_avg, s, t, names=DESIGN_VARIABLES) for s, t in all_edges])
+        null_rows.append([read_edge_value(band_avg, s, t, names=names) for s, t in all_edges])
         kept_child_dyads.append(child_dyad)
         kept_cg_dyads.append(cg_dyad)
 

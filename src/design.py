@@ -35,15 +35,6 @@ try:
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.envelopes import filter_individual_band, hilbert_envelope, downsample
 
-DESIGN_VARIABLES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
-"""Legacy fixed 4-node default, kept only because `src.surrogate`'s
-surrogate-pair reassembly (`assemble_surrogate_design`) is hard-wired to this
-exact 2-signal-per-role (ROI + HRV) shape and is out of scope for this
-refactor's node-topology generalization. Pipeline stages should read node
-order from `pipeline_config.json`'s `"shared".nodes` via `node_names(nodes)`
-instead of importing this constant."""
-
-
 def node_names(nodes):
     """Node names, in MVAR row order, from a config `nodes` list.
 
@@ -77,6 +68,32 @@ def rows_for_signal(nodes, signal):
         Indices into `nodes` (== MVAR row indices) in list order.
     """
     return [row for row, node in enumerate(nodes) if node["signal"] == signal]
+
+
+def assert_edges_known(edges, names, context=""):
+    """Raise a loud, edge-naming error if any (source, target) pair references an unknown node.
+
+    Used at stage load time to validate `pipeline_config.json`'s
+    `edge_topology`/`PRIMARY_FAMILY` against the actual node topology
+    (`node_names(nodes)`), instead of letting a typo surface later as a bare
+    `.index()` `ValueError` with no indication of which edge was at fault.
+
+    Parameters
+    ----------
+    edges : list of tuple(str, str)
+        `(source_name, target_name)` pairs to validate.
+    names : list of str
+        Known node names, e.g. `node_names(nodes)`.
+    context : str, optional
+        Prefix identifying the source of `edges` in the raised message (e.g.
+        `"stage05 pipeline_config.json's edge_topology"`).
+    """
+    known = set(names)
+    for source, target in edges:
+        if source not in known:
+            raise ValueError(f"{context}: edge {source}->{target} references unknown source node {source!r}; known nodes: {names}")
+        if target not in known:
+            raise ValueError(f"{context}: edge {source}->{target} references unknown target node {target!r}; known nodes: {names}")
 
 
 def roi_band_envelope(roi_signals, sfreq, center_freq, bandwidth, order, target_sfreq, reduction):
@@ -248,7 +265,7 @@ def window_stack(design, win_len, step):
     Parameters
     ----------
     design : np.ndarray, shape (k, n_samples)
-        Design matrix, fixed `DESIGN_VARIABLES` order.
+        Design matrix, node order per `node_names(nodes)`.
     win_len : int
         Window length in samples.
     step : int
