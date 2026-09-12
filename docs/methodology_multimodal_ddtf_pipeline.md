@@ -1,9 +1,28 @@
-# Methodology: Multimodal Interbrain ffDTF + HRV Pipeline
+# Methodology: Multimodal Interbrain/Intrabrain Connectivity Pipeline (ffDTF + HRV)
 
 Technical description of the eight-stage pipeline (`stage00`–`stage06`) that estimates
-directed, interpersonal (caregiver ↔ child) brain and autonomic connectivity from
-cleaned EEG and interbeat-interval (IBI) data, tests it against a surrogate-dyad null,
-and models group differences (TD vs. ASD) at the population level.
+directed connectivity among an arbitrary, config-declared set of per-role signal
+"nodes" (EEG envelopes, raw IBI, or any further signal type expressed the same way),
+tests it against a surrogate-dyad null, and models group differences at the population
+level.
+
+**This is a general pipeline, not a single-study script.** Everything that changes
+from one analysis to the next — how many nodes exist, which roles/signals/channels
+they represent, which directed edges are of scientific interest, which hypothesis
+class each edge belongs to, what the "group" comparison is — is declared once in
+`pipeline_config.json` and read back by every stage (`src.design.node_names`,
+`rows_for_signal`, `assert_edges_known`); no stage script hard-codes a fixed node
+count, role pair, or edge set. The concrete example worked through below — a 4-node
+caregiver/child model testing the H2 (social-attention) and H4 (autonomic
+co-regulation) hypotheses on a TD-vs-ASD comparison — is the pipeline's **current
+default configuration**, not something baked into the code: a different study can
+repoint `pipeline_config.json` at a different node set, edge set, and group
+definition and run through the identical stage00–stage06 code unchanged. The
+scientific rationale for *this particular* configuration lives in
+`DTF_analysis_notes/notatka_projekt_DTF_HRV_H2_H4.md` (the original scientific note)
+and `DTF_analysis_notes/pipeline_plan.md` (the implementation-decisions log) — read
+both as documentation of one example analysis the pipeline supports, not as a
+specification of what the pipeline *is*.
 
 Code: [`scripts/pipeline_exploratory_mlutimodal_dDTF/`](../scripts/pipeline_exploratory_mlutimodal_dDTF/)
 (`stage00_synthetic_validation.py` … `stage06_group_model.py`), built on
@@ -14,39 +33,17 @@ Code: [`scripts/pipeline_exploratory_mlutimodal_dDTF/`](../scripts/pipeline_expl
 [`src/mtmvar.py`](../src/mtmvar.py) (the underlying MVAR/DTF math),
 [`src/pipeline_config.py`](../src/pipeline_config.py) (config loader) and
 `pipeline_config.json` (all settings, single source of truth).
-Design rationale and locked/open decisions: `DTF_analysis_notes/pipeline_plan.md` and
-`DTF_analysis_notes/notatka_projekt_DTF_HRV_H2_H4.md` (the original scientific note).
 
-Input: cleaned, individually band-parameterized EEG
+Input: for the EEG side, cleaned, individually band-parameterized EEG
 (see [methodology_ica_cleaning_pipeline.md](methodology_ica_cleaning_pipeline.md) and
-[methodology_spectral_analysis_pipeline.md](methodology_spectral_analysis_pipeline.md))
-plus interpolated IBI on the same time grid.
+[methodology_spectral_analysis_pipeline.md](methodology_spectral_analysis_pipeline.md));
+for the autonomic side, interpolated IBI on the same time grid. A future
+configuration could add further node types over other signals without changing this
+contract.
 
 ---
 
-## 1. Scientific goal
-
-The pipeline targets two hypotheses about caregiver–child passive co-viewing:
-
-- **H2 — social-attention coupling**: directed EEG-envelope connectivity
-  caregiver → child over temporo-parietal cortex (P7/P8, a TPJ proxy), predicted to
-  index joint/social-attention alignment and to be reduced in ASD.
-- **H4 — autonomic co-regulation**: directed HRV connectivity caregiver → child,
-  predicted to index autonomic co-regulation and to differ (sign not assumed a
-  priori) in ASD — the literature review behind this pipeline explicitly flags that
-  negative interpersonal HRV synchrony can be *adaptive*, so `TD > ASD` is never
-  hard-coded as the expected direction.
-
-H2 and H4 share one MVAR structure and are fit **together** in one model so each
-hypothesis's estimate is conditioned on the other modality's dynamics — a strictly
-2-variable model per hypothesis could not do this, and it is also what gives access to
-the most exploratory edges (autonomic → cortical "scaffolding", caregiver HRV →
-child ROI and vice versa). The three film stimuli (`Peppa`, `Incredibles`, `Brave`)
-are treated as three **qualitatively different, unordered** valence conditions
-(happy/low-arousal, conflict/high-arousal, mixed — borrowed and validated by prior
-fNIRS work, Esposito et al.), never averaged together or treated as a scale.
-
-## 2. Node topology: the single source of truth
+## 1. Node topology: the single source of truth
 
 Unlike an earlier, hard-wired 4-variable design, the pipeline is **config-driven**
 over an arbitrary set of "nodes" declared once, in `pipeline_config.json`'s
@@ -99,6 +96,44 @@ additionally pass through one identical shared band-pass
 (`DESIGN_HIGHPASS_HZ`–`DESIGN_LOWPASS_HZ`, default 0.05–1.0 Hz, 2nd-order Butterworth,
 zero-phase) so every variable's group delay matches.
 
+## 2. Example configuration currently loaded: the H2/H4 study
+
+The four nodes shown in §1 and the `edge_topology`/`group` settings that go with them
+are the pipeline's **current configuration**, not a constraint of the mechanism
+itself — this section explains why *this particular* study set them up the way it
+did; a different configuration would read differently here while every stage below
+(§3–§9) stayed the same code.
+
+The configured analysis targets two hypotheses about caregiver–child passive
+co-viewing:
+
+- **H2 — social-attention coupling**: directed EEG-envelope connectivity
+  caregiver → child over temporo-parietal cortex (P7/P8, a TPJ proxy), predicted to
+  index joint/social-attention alignment and to be reduced in ASD.
+- **H4 — autonomic co-regulation**: directed HRV connectivity caregiver → child,
+  predicted to index autonomic co-regulation and to differ (sign not assumed a
+  priori) in ASD — the literature review behind this configuration explicitly flags
+  that negative interpersonal HRV synchrony can be *adaptive*, so `TD > ASD` is never
+  hard-coded as the expected direction.
+
+H2 and H4 share one MVAR structure and are fit **together** in one model so each
+hypothesis's estimate is conditioned on the other modality's dynamics — a strictly
+2-variable model per hypothesis could not do this, and it is also what gives access to
+the most exploratory edges (autonomic → cortical "scaffolding", caregiver HRV →
+child ROI and vice versa). The three film stimuli (`Peppa`, `Incredibles`, `Brave`)
+are treated as three **qualitatively different, unordered** valence conditions
+(happy/low-arousal, conflict/high-arousal, mixed — borrowed and validated by prior
+fNIRS work, Esposito et al.), never averaged together or treated as a scale. Full
+scientific rationale, literature review, and the open questions still under
+discussion: `DTF_analysis_notes/notatka_projekt_DTF_HRV_H2_H4.md`.
+
+None of this — the two named hypotheses, the specific edges, the TD/ASD grouping — is
+special-cased in the stage scripts; they read it out of `pipeline_config.json` exactly
+as they would read any other configuration. The rest of this document walks through
+stage00–stage06 using this H2/H4 example throughout for concreteness, but every
+mechanism described is general over whatever nodes/edges/groups a `pipeline_config.json`
+declares.
+
 ---
 
 ## 3. Stage 0 / 0b — Synthetic validation (no real data)
@@ -118,7 +153,7 @@ path (`src.mtmvar.direct_dtf`/`mvar_plot`), checking three things:
 3. **Envelope vs. phase robustness**: as the injected child/caregiver center-frequency
    gap widens from 0 to 10 Hz, the envelope-based ffDTF path stays within 50% of its
    zero-gap baseline while a phase-based path's recovered coupling collapses — the
-   empirical justification for the envelope-not-phase design decision in §2.
+   empirical justification for the envelope-not-phase design decision in §1.
 
 `stage00b_smoothness_artifact.py` is a companion methods check
 (`self_ar2_coeffs`, `two_channel_ar2_coupling`, `simulate_two_channel_dyads`) probing
@@ -285,7 +320,7 @@ over any per-role node count).
    so a handful of extreme surrogate draws cannot dominate either the center or the
    spread. Both quantities are kept **signed everywhere**, never `abs()`-ed or
    clipped, since the sign of a surviving HRV effect is scientifically meaningful
-   (§1).
+   under the current example config's H4 hypothesis (§2).
 4. Real dyads that are `real_stable=False` at the common order are **kept and
    flagged**, never silently dropped — whether to exclude them is deferred to
    Stage 6.
@@ -303,7 +338,15 @@ The original plan specified an R/`brms` group model; `brms`/`cmdstanr` were conf
 not installed while `bambi`/`arviz` already were, so — per an explicit project-owner
 decision recorded in the script — this stage is Python/Bambi throughout, reusing
 `src.group_model` for fitting/contrasts/diagnostics and `src.reporting` for the HTML
-gate. The statistical design is otherwise the one in the original note:
+gate. The statistical design is otherwise the one in the original note.
+
+Everything below is generic over whatever `edge_topology` classes and `group` values
+the loaded config declares: `EMPHASIS_EDGES`/`PRIMARY_FAMILY` are computed from the
+config's class labels, not from the literal strings `H2_primary`/`H4_primary`, and
+`asymmetry_specs_from_topology` matches any `<hypothesis>_primary`/`<hypothesis>_reverse`
+pair by suffix — so a differently-named hypothesis set, or a `group` column holding
+something other than TD/ASD, drives the identical stage06 code path. The steps below
+are written against the current H2/H4/TD-ASD example config for concreteness:
 
 1. **Per-edge models** (confirmatory default): for each of the 6 emphasis edges
    (`H2_primary/reverse`, `H4_primary/reverse`, 2 exploratory cross brain–heart edges
@@ -324,7 +367,8 @@ gate. The statistical design is otherwise the one in the original note:
    of those posterior draws), since Bambi has no `emmeans`/`hypothesis()` equivalent.
    Inference is posterior mean, 95% HDI, and directional probabilities `P(>0)`/`P(<0)`
    — no p-values as the primary object.
-3. **Asymmetry track** (H2/H4 only, via `src.group_model.asymmetry_specs_from_topology`,
+3. **Asymmetry track** (for whichever hypothesis classes the config declares — H2/H4
+   in the current example — via `src.group_model.asymmetry_specs_from_topology`,
    which derives `(hypothesis, forward_edge, reverse_edge)` pairs directly from
    `edge_topology`'s `_primary`/`_reverse` class labels): `asym = value(forward) −
    value(reverse)` per dyad × film, same formula structure; primary DV is
@@ -366,6 +410,11 @@ per-model fitted `idata` (`models/*.nc`), forest/`pp_check`/Pareto-k figures, an
 ---
 
 ## 10. Known limitations and deliberate design choices
+
+Some of the points below are limitations of the pipeline mechanism itself (order
+selection, estimator internals); others — the H4 sign caveat, the `(1|dyad_id)`
+nesting argument — are specific to the currently loaded H2/H4/TD-ASD example config
+and would need re-deriving for a different configuration.
 
 - **Order selection stays 2-D** (`mvar_criterion` does not accept a windowed 3-D
   stack); `p_used` is therefore chosen once per case on the global signal and reused
