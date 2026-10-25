@@ -1,0 +1,80 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 2,
+    "n_dyads": 25,
+    "n_perm": 1000
+  },
+  "implementation_check_max_rel_error": {
+    "dDTF": 1.7457071491605976e-14,
+    "ffDTF": 1.7348464370643616e-14,
+    "GPDC": 7.828306130795316e-15
+  },
+  "partA_orientation": {
+    "dDTF[0,1]": 5.5839394663342306e-06,
+    "dDTF[1,0]": 0.0013244469101156757,
+    "target_source_confirmed": true,
+    "ratio": 237.18862249507058
+  },
+  "partA_recovery": {
+    "cg:ROI->child:ROI": {
+      "forward": 0.0011002009790217569,
+      "reverse": 9.98368480950633e-07,
+      "forward_larger": true
+    },
+    "cg:HRV->child:HRV": {
+      "forward": 0.001178587711090962,
+      "reverse": 2.8657531003219046e-06,
+      "forward_larger": true
+    },
+    "cg:HRV->child:ROI": {
+      "forward": 0.00038984427160171494,
+      "reverse": 8.153848841287892e-07,
+      "forward_larger": true
+    }
+  },
+  "partB": [
+    {
+      "edge": "cg:ROI->child:ROI",
+      "gain": 0.4,
+      "detect_rate": 1.0,
+      "detect_ci_low": 0.3424,
+      "detect_ci_high": 1.0,
+      "beats_reverse_rate": 1.0,
+      "beats_absent_rate": 1.0,
+      "reverse_detect_rate": 1.0,
+      "median_z": 2.9863,
+      "dir_study_rate": 1.0
+    },
+    {
+      "edge": "cg:HRV->child:HRV",
+      "gain": 0.3,
+      "detect_rate": 1.0,
+      "detect_ci_low": 0.3424,
+      "detect_ci_high": 1.0,
+      "beats_reverse_rate": 1.0,
+      "beats_absent_rate": 1.0,
+      "reverse_detect_rate": 1.0,
+      "median_z": 4.209,
+      "dir_study_rate": 1.0
+    },
+    {
+      "edge": "cg:HRV->child:ROI",
+      "gain": 0.3,
+      "detect_rate": 1.0,
+      "detect_ci_low": 0.3424,
+      "detect_ci_high": 1.0,
+      "beats_reverse_rate": 1.0,
+      "beats_absent_rate": 1.0,
+      "reverse_detect_rate": 1.0,
+      "median_z": 3.6293,
+      "dir_study_rate": 1.0
+    }
+  ],
+  "criteria": {
+    "orientation confirmed (dominant axis >= 3x)": true,
+    "Part A planted edges larger than reverse": true,
+    "Part B planted edges beat reverse in >= 95% of studies": true,
+    "Part B planted edges beat absent edges in >= 95% of studies": true
+  }
+}

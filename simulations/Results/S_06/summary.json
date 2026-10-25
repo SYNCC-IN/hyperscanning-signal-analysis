@@ -1,0 +1,22 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 2,
+    "n_dyads": 25,
+    "radii": [
+      0.5,
+      0.65,
+      0.8,
+      0.9,
+      0.95
+    ],
+    "seg_s": 60,
+    "n_perm": 0
+  },
+  "criteria": {
+    "artefact present: uncorrected asymmetry > 0 at the smoothest level (z-scored)": true,
+    "artefact grows with smoothness (smoothest > roughest, z-scored)": true,
+    "|corrected asymmetry| < |uncorrected| at the smoothest level (z-scored)": true,
+    "false-positive rate after correction <= 0.1 in every cell (z-scored)": false
+  }
+}

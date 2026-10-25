@@ -1,0 +1,23 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 2,
+    "n_dyads": 25,
+    "seg_s": 60,
+    "variants": null
+  },
+  "share_variants_fpr_ok": 0.7272727272727273,
+  "variants_failing_fpr": [
+    "order=2",
+    "order=SC",
+    "order=HQ",
+    "order=AIC",
+    "box-cox=none",
+    "band=0.1-0.3"
+  ],
+  "criteria": {
+    "baseline: null FPR <= 0.1": true,
+    "baseline: power of planted edges >= 0.8": true,
+    ">= 80% of variants keep the null FPR <= 0.1": false
+  }
+}

@@ -19,6 +19,7 @@ _EEG_10_20_CHANNELS = frozenset({
     'O1',  'O2',
 })
 _MASTOID_CHANNELS = frozenset({'M1', 'M2'})
+_NON_EEG_CHANNELS = frozenset({'VEOG'})     # Heidelberg exports keep the vertical EOG channel
 
 
 def load_eeg_ncdf_as_mne_raw(
@@ -32,6 +33,7 @@ def load_eeg_ncdf_as_mne_raw(
     Channel types are assigned as follows:
     - Channels in the standard 10-20 set (Fp1, Fp2, …, O2) → 'eeg'
     - M1, M2 (linked-ears reference) → 'misc'
+    - VEOG (Heidelberg exports) → 'eog'
     This means ``picks='eeg'`` in downstream MNE calls automatically
     excludes the mastoid reference channels.
 
@@ -78,7 +80,7 @@ def load_eeg_ncdf_as_mne_raw(
     # Assign initial channel types: eeg for known 10-20 channels, misc for
     # mastoids, eeg as fallback for anything unrecognised (safe default).
     ch_types = [
-        'misc' if ch in _MASTOID_CHANNELS else 'eeg'
+        'eog' if ch in _NON_EEG_CHANNELS else ('misc' if ch in _MASTOID_CHANNELS else 'eeg')
         for ch in ch_names
     ]
 
@@ -198,7 +200,7 @@ def load_eeg_signals(
     mask = (t >= 0.0) & (t <= event_duration_s)
     da_trimmed = da_proc.isel(time=mask)
 
-    drop_ch = [ch for ch in ["M1", "M2"] if ch in da_trimmed.coords["channel"].values]
+    drop_ch = [ch for ch in ["M1", "M2", "VEOG"] if ch in da_trimmed.coords["channel"].values]
     if drop_ch:
         da_trimmed = da_trimmed.drop_sel(channel=drop_ch)
 

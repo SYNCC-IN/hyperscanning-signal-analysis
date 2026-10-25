@@ -1,0 +1,17 @@
+scenario,role,method,study_rate,dyad_rate,direction_accuracy,median_z,n_rep,ci_low,ci_high
+indirect,absent_indirect,dDTF (4-node),1.0,0.30000000000000004,1.0,1.1810300601652957,2,0.34237195288961925,1.0
+indirect,absent_indirect,envelope coherence,1.0,0.18,0.0,0.9946088562324749,2,0.34237195288961925,1.0
+indirect,absent_indirect,lagged cross-correlation,1.0,0.28,1.0,1.5734340317369788,2,0.34237195288961925,1.0
+indirect,absent_indirect,pairwise Granger,1.0,0.5,1.0,2.1957214681759227,2,0.34237195288961925,1.0
+indirect,planted,dDTF (4-node),1.0,0.98,1.0,3.974296225908465,2,0.34237195288961925,1.0
+indirect,planted,envelope coherence,1.0,0.86,0.0,2.840738037640696,2,0.34237195288961925,1.0
+indirect,planted,lagged cross-correlation,1.0,1.0,1.0,3.203920852695777,2,0.34237195288961925,1.0
+indirect,planted,pairwise Granger,1.0,0.98,1.0,4.230499117888868,2,0.34237195288961925,1.0
+null_stimulus,null_edge,dDTF (4-node),0.0,0.03,0.75,-0.025996623005260427,4,0.0,0.48990002040399916
+null_stimulus,null_edge,envelope coherence,0.0,0.0,0.0,-0.13042446519829926,4,0.0,0.48990002040399916
+null_stimulus,null_edge,lagged cross-correlation,0.0,0.0,0.75,0.05208246283170681,4,0.0,0.48990002040399916
+null_stimulus,null_edge,pairwise Granger,0.0,0.01,0.75,0.08059721969372857,4,0.0,0.48990002040399916
+power,planted,dDTF (4-node),1.0,0.97,1.0,3.965803922413939,4,0.5100999795960008,1.0
+power,planted,envelope coherence,1.0,0.8400000000000001,0.0,3.0948409437029833,4,0.5100999795960008,1.0
+power,planted,lagged cross-correlation,1.0,0.9299999999999999,1.0,3.1396906942905174,4,0.5100999795960008,1.0
+power,planted,pairwise Granger,1.0,0.99,1.0,4.30792399468581,4,0.5100999795960008,1.0

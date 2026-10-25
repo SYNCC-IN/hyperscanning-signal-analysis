@@ -1,0 +1,50 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 2,
+    "n_dyads": [
+      10,
+      25,
+      50
+    ],
+    "seg_s": [
+      60,
+      120,
+      300
+    ],
+    "gains": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5
+    ],
+    "n_perm": 500
+  },
+  "min_gain_for_80pct_power": {
+    "A|N=10|60s": 0.2,
+    "A|N=10|120s": 0.1,
+    "A|N=10|300s": 0.1,
+    "A|N=25|60s": 0.2,
+    "A|N=25|120s": 0.1,
+    "A|N=25|300s": 0.1,
+    "A|N=50|60s": 0.1,
+    "A|N=50|120s": 0.1,
+    "A|N=50|300s": 0.1,
+    "B|N=10|60s": null,
+    "B|N=10|120s": null,
+    "B|N=10|300s": 0.2,
+    "B|N=25|60s": 0.2,
+    "B|N=25|120s": 0.1,
+    "B|N=25|300s": 0.1,
+    "B|N=50|60s": 0.2,
+    "B|N=50|120s": 0.1,
+    "B|N=50|300s": 0.1
+  },
+  "criteria": {
+    "false-positive rate at gain 0 <= 0.10 in every cell (design A)": false,
+    "power >= 0.8 at gain 0.4 in the largest N and segment (design A)": true,
+    "power increases with gain at the largest N (design A)": true
+  }
+}

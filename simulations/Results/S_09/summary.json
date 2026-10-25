@@ -1,0 +1,27 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 2,
+    "n_dyads": 25,
+    "gaps": [
+      0.0,
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.3
+    ],
+    "bands": [
+      "narrow",
+      "mid",
+      "wide"
+    ],
+    "seg_s": 60
+  },
+  "criteria": {
+    "no coupling: FPR <= 0.1 at every gap (mid band)": false,
+    "pulling at gap 0: power >= 0.8 (mid band)": true,
+    "pulling: power at the largest gap is below power at gap 0": false,
+    "amplitude-only link not seen by raw IBI (prediction): rate <= 0.1 at every gap": false
+  }
+}
