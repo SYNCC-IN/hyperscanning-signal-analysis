@@ -41,3 +41,6 @@ hyperscanning-signal-analysis.code-workspace
 
 # Local helper scripts
 scripts/parse_event_order.py
+
+# Generated sync outputs (regenerable, large)
+scripts/outputs/

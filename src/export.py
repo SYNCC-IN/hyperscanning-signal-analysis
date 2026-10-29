@@ -33,6 +33,7 @@ def export_chunk_to_xarray(
     verbose=True,
     mne_plot_flag=False,
     logger=None,
+    montage_cfg=None,
 ) -> xr.DataArray:
     """Export a chunk spanning multiple events from a MultimodalData instance to xarray.
 
@@ -56,7 +57,8 @@ def export_chunk_to_xarray(
         data, channels, metadata = _apply_eeg_montage(
             data, channels, multimodal_data.fs,
             EEG_montage, EEG_bad_channels, member, metadata,
-            mne_plot_flag, verbose, logger, chunk_name
+            mne_plot_flag, verbose, logger, chunk_name,
+            montage_cfg=montage_cfg,
         )
 
     # ── 4. Build and annotate DataArray ───────────────────────────────────────
@@ -172,9 +174,19 @@ def _extract_and_strip(
 def _apply_eeg_montage(
     data, channels, fs,
     EEG_montage, EEG_bad_channels, member, metadata,
-    mne_plot_flag, verbose, logger, chunk_name
+    mne_plot_flag, verbose, logger, chunk_name,
+    montage_cfg=None,
 ) -> tuple[np.ndarray, list, dict]:
     """Apply MNE montage, interpolate bad channels and optionally CAR.
+
+    ``montage_cfg`` (optional dict) adapts the procedure to a montage other than
+    the Warsaw one (used by the Heidelberg export); keys, all optional:
+
+    * ``non_eeg_channels`` -- labels typed ``eog`` (kept, but excluded from
+      interpolation and CAR), e.g. ``['VEOG']``;
+    * ``car_channels`` -- the reference is the mean of exactly these channels
+      instead of all EEG channels (e.g. the 19 channels common with Warsaw);
+    * ``reference_note`` -- text stored in ``metadata['references']``.
 
     Parameters
     ----------
@@ -200,7 +212,12 @@ def _apply_eeg_montage(
             _log(logger, f"  '{member}' {chunk_name}: bad channels {bad_channels} → interpolate")
 
     # ── Build RawArray (data is μV, MNE expects V) ────────────────────────────
-    ch_types = ['misc' if ch in _MASTOIDS else 'eeg' for ch in channels_mne]
+    montage_cfg = montage_cfg or {}
+    non_eeg = set(montage_cfg.get('non_eeg_channels', ()))
+    ch_types = [
+        'eog' if ch in non_eeg else ('misc' if ch in _MASTOIDS else 'eeg')
+        for ch in channels_mne
+    ]
     info     = mne.create_info(ch_names=channels_mne, sfreq=fs, ch_types=ch_types)
     raw      = mne.io.RawArray(data.T * 1e-6, info, verbose=False)
     with warnings.catch_warnings():
@@ -223,17 +240,24 @@ def _apply_eeg_montage(
     if EEG_montage == 'CAR':
         if mne_plot_flag:
             _plot_raw(raw.copy(), f"{member} {chunk_name} BEFORE CAR")
-        raw.set_eeg_reference('average', projection=False, verbose=False)
+        car_channels = montage_cfg.get('car_channels')
+        if car_channels:
+            missing = [ch for ch in car_channels if ch not in raw.ch_names]
+            if missing:
+                raise ValueError(f"CAR channels missing from the data: {missing}")
+            raw.set_eeg_reference(ref_channels=list(car_channels), projection=False, verbose=False)
+        else:
+            raw.set_eeg_reference('average', projection=False, verbose=False)
         mastoids = [ch for ch in raw.ch_names if ch in _MASTOIDS]
         if mastoids:
             raw.drop_channels(mastoids)
         if mne_plot_flag:
             _plot_raw(raw, f"{member} {chunk_name} AFTER CAR", block=True)
-        metadata['references'] = (
+        metadata['references'] = montage_cfg.get('reference_note') or (
             "CAR applied; M1/M2 excluded from average and dropped"
         )
         if verbose:
-            _log(logger, f"  '{member}' {chunk_name}: CAR applied, M1/M2 dropped")
+            _log(logger, f"  '{member}' {chunk_name}: CAR applied")
     else:
         metadata['references'] = "Original reference retained"
 
@@ -711,3 +735,146 @@ def export_passive_and_talk_data(
 
     # sanitize_netcdf_attrs_inplace(data_xr.attrs)
     # return data_xr
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Heidelberg: by-task export (same output layout as export_passive_and_talk_data)
+# ══════════════════════════════════════════════════════════════════════════════
+def export_heidelberg_by_task(
+    dyad_id_list,
+    data_dir,
+    export_path,
+    bivital_dir=None,
+    sync_output_dir=None,
+    lowcut=1.0,
+    highcut=64.0,
+    eeg_filter_type='iir',
+    target_fs_hz=128,
+    time_margin=20,
+    EEG_bad_channels=None,
+    sync_params=None,
+    hrv_params=None,
+    dyad_files=None,
+    verbose=False,
+    mne_plot_flag=False,
+    logger: Optional[object] = None,
+):
+    """Export Heidelberg dyads to by-task NetCDF files (``passive_movies`` and ``talk``).
+
+    Output layout, ``signals`` structure and attributes are those of
+    `export_passive_and_talk_data` (Warsaw), so downstream pipelines read both sites alike.
+    Differences specific to Heidelberg:
+
+    * the dyad is loaded with `heidelberg_loader.create_multimodal_data_heidelberg`, which also
+      synchronises the BI-Vital recorders (by-product ``<dyad>_synced_signals.csv`` in
+      ``sync_output_dir``, default ``<export_path>/sync_QC/<dyad>``);
+    * EEG: all 31 recorded scalp channels plus ``VEOG`` (TP9, the recording reference, is not in the
+      data). The attribute ``common_channels_csv`` / ``common_channels_json`` lists the 19 channels
+      shared with Warsaw; ``VEOG`` and the extra channels are not part of it;
+    * EEG is re-referenced to the common average of those 19 channels (``VEOG`` excluded), so the
+      reference is the same as in Warsaw; bad channels (``EEG_bad_channels``, e.g. ``['Fz_ch']``) are
+      interpolated first;
+    * ``ECG`` is in BI-Vital ADC counts (attribute ``units``), ``IBI`` / ``RMSSD`` in ms.
+
+    Parameters mirror `export_passive_and_talk_data`; ``data_dir`` holds ``<dyad>.eeg/.vhdr/.vmrk``
+    and (unless ``bivital_dir`` is given) the BI-Vital CSVs. ``dyad_id_list`` entries look like ``'H032'``.
+    For raw files with other names pass ``dyad_files`` (as returned by
+    `heidelberg_loader.discover_heidelberg_dyads`): ``{dyad_id: {'eeg_stem': ..., 'bivital': {...}}}``;
+    ``data_dir`` may then be None.
+    """
+    from . import heidelberg_loader as hl
+
+    def _say(message: str) -> None:
+        if verbose:
+            _log(logger, message)
+
+    if isinstance(dyad_id_list, str):
+        dyad_id_list = [dyad_id_list]
+    if not dyad_id_list:
+        raise ValueError("dyad_id_list must be a non-empty list of dyad IDs (e.g., ['H032']).")
+
+    members = {'ch': 'child', 'cg': 'caregiver'}
+    movie_events_target = ["Peppa", "Incredibles", "Brave"]
+    units_override = {'ECG': 'ADC counts (BI-Vital)'}
+
+    sync_failures_by_dyad = {}
+    for dyad_id in dyad_id_list:
+        dyad_label = hl.parse_dyad_id(dyad_id)
+        dyad_sync_dir = sync_output_dir or os.path.join(export_path, 'sync_QC')
+        dyad_sync_dir = os.path.join(dyad_sync_dir, dyad_label)
+        _say(f"Loading Heidelberg dyad '{dyad_id}' from '{data_dir}'")
+        files = (dyad_files or {}).get(dyad_id, {})
+        multimodal_data = hl.create_multimodal_data_heidelberg(
+            data_dir, dyad_id, bivital_dir=bivital_dir,
+            eeg_path_stem=files.get('eeg_stem'), bivital_paths=files.get('bivital'),
+            sync_output_dir=dyad_sync_dir,
+            lowcut=lowcut, highcut=highcut, filter_type=eeg_filter_type,
+            target_fs_hz=target_fs_hz, sync_params=sync_params, hrv_params=hrv_params,
+            verbose=verbose,
+        )
+
+        movie_events = [n for n in movie_events_target if n in multimodal_data.events]
+        talk_events = [n for n in multimodal_data.events if "talk" in n.lower()]
+        chunks = [("passive_movies", movie_events), ("talk", talk_events)]
+        _say(f"Events: movies={movie_events}, talks={talk_events}")
+
+        selected_channels = {'EEG': list(multimodal_data.eeg_channel_names_ch)}
+        montage_cfg = {
+            'non_eeg_channels': list(hl.NON_EEG_CHANNELS),
+            'car_channels': list(hl.COMMON_CHANNELS),
+            'reference_note': (
+                f"{hl.EEG_REFERENCE_NOTE}; re-referenced to the common average of the "
+                f"{len(hl.COMMON_CHANNELS)} channels shared with Warsaw (VEOG excluded)"
+            ),
+        }
+
+        for modality in multimodal_data.modalities:
+            for who, member in members.items():
+                path_member = os.path.join(export_path, modality, str(multimodal_data.id), member)
+                os.makedirs(path_member, exist_ok=True)
+                for chunk_name, chunk_events in chunks:
+                    if not chunk_events:
+                        _say(f"Skipping chunk '{chunk_name}' of {multimodal_data.id}: no matching events.")
+                        continue
+                    if modality in ('ECG', 'IBI', 'RMSSD') and f'{modality}_{who}' not in multimodal_data.data.columns:
+                        _say(f"Skipping {modality}/{who}: no BI-Vital data.")
+                        continue
+                    _say(f"Exporting chunk='{chunk_name}', modality='{modality}', member='{who}', events={chunk_events}")
+                    data_xr = export_chunk_to_xarray(
+                        multimodal_data=multimodal_data,
+                        selected_events=chunk_events,
+                        selected_channels=selected_channels.get(modality),
+                        selected_modality=modality,
+                        member=who,
+                        time_margin=time_margin,
+                        chunk_name=chunk_name,
+                        EEG_montage='CAR' if modality == 'EEG' else None,
+                        EEG_bad_channels=EEG_bad_channels if modality == 'EEG' else None,
+                        verbose=verbose,
+                        mne_plot_flag=mne_plot_flag,
+                        logger=logger,
+                        montage_cfg=montage_cfg if modality == 'EEG' else None,
+                    )
+                    data_xr.attrs['site'] = 'H'
+                    sync_failed = who in getattr(multimodal_data, 'sync_failures', {})
+                    data_xr.attrs['sync_status'] = 'failed' if sync_failed else 'ok'
+                    if sync_failed:
+                        data_xr.attrs['sync_failure_reason'] = multimodal_data.sync_failures[who]
+                    data_xr.attrs['sync_info_json'] = json.dumps(multimodal_data.sync_info, default=str)
+                    data_xr.attrs['hrv_info_json'] = json.dumps(multimodal_data.hrv_info.get(who, {}), default=str)
+                    if modality == 'EEG':
+                        exported = [str(c) for c in data_xr['channel'].values]
+                        common = [c for c in hl.COMMON_CHANNELS if c in exported]
+                        data_xr.attrs['common_channels_csv'] = ','.join(common)
+                        data_xr.attrs['common_channels_json'] = json.dumps(common)
+                    if modality in units_override:
+                        data_xr.attrs['units'] = units_override[modality]
+                    sanitize_netcdf_attrs_inplace(data_xr.attrs)
+                    file_path = os.path.join(
+                        path_member, f"{multimodal_data.id}_{modality}_{who}_{chunk_name}.nc"
+                    )
+                    data_xr.to_netcdf(file_path, engine='netcdf4', format='NETCDF4_CLASSIC')
+                    _say(f"Saved: {file_path}")
+        sync_failures_by_dyad[dyad_label] = dict(getattr(multimodal_data, 'sync_failures', {}))
+        _say(f"Finished Heidelberg export of dyad '{multimodal_data.id}'")
+    return sync_failures_by_dyad

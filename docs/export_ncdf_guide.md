@@ -7,6 +7,7 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
 - [Overview](#overview)
 - [Preferred export: by-task NCDF export](#preferred-export-by-task-ncdf-export)
   - [Output folder structure (by-task export)](#output-folder-structure-by-task-export)
+- [Heidelberg by-task export](#heidelberg-by-task-export)
 - [Older per-event export (`write_dyad_to_uniwaw_imported` / `export_to_xarray`)](#older-per-event-export-write_dyad_to_uniwaw_imported--export_to_xarray)
 - [Output folder structure](#output-folder-structure)
 - [Naming conventions used in export](#naming-conventions-used-in-export)
@@ -119,6 +120,68 @@ function are the same as described below for the older per-event export, except 
 `event_order`/embedded event structure lists the individual events making up that chunk
 (see `task_events_structure` in the attrs, used by `src/io_utils.py` to find movie
 boundaries within the `passive_movies` chunk).
+
+---
+
+## Heidelberg by-task export
+
+Heidelberg dyads (BrainVision EEG, 64 channels at 1000 Hz, plus two BI-Vital ECG recorders) are
+exported with `export_heidelberg_by_task(...)` ([src/export.py](../src/export.py)). The output
+folder layout, the `signals` DataArray, the attributes and the two chunks (`passive_movies`,
+`talk`) are the same as for Warsaw, so downstream pipelines read both sites alike; site code `H`,
+dyad ids such as `H_032`.
+
+```python
+from src.export import export_heidelberg_by_task
+
+export_heidelberg_by_task(
+    dyad_id_list=["H032"],
+    data_dir="/path/to/heidelberg_raw",       # H032.eeg/.vhdr/.vmrk, H032-adult.csv, H032-child.csv
+    export_path="/path/to/HEIDELBERG_EEG_exported_BY_TASKS",
+    lowcut=1.0, highcut=64, eeg_filter_type="iir",
+    target_fs_hz=128, time_margin=20,
+    EEG_bad_channels=None,                    # e.g. ['Fz_ch', 'T7_cg']
+)
+```
+
+Batch driver: [scripts/export_heidelberg_by_task_batch.py](../scripts/export_heidelberg_by_task_batch.py).
+The batch driver reads the full raw data from the EEG and EKG `RAW` folders, matches the files by dyad
+number (`synccin_LAKA36_46.vhdr/.eeg/.vmrk` + `LAKA36_46-child.csv` + `LAKA36_46-adult.csv` -> dyad 46, exported
+as `H_046`; `heidelberg_loader.discover_heidelberg_dyads`), exports every dyad with a complete file set,
+lists incomplete or ambiguous ones, continues after a failing dyad and writes `export_report.csv`.
+Methodology: [methodology_export_pipeline.md](methodology_export_pipeline.md#5-heidelberg-variant).
+
+What differs from Warsaw:
+
+| Item | Heidelberg |
+|---|---|
+| Import | `heidelberg_loader.create_multimodal_data_heidelberg` (returns a `MultimodalData`; `export_chunk_to_xarray` is reused) |
+| Sampling rate | EEG filtered at 1000 Hz, then `resample_poly(16/125)` to **128 Hz** (= Warsaw 1024/8) |
+| Events | from `Stimulus` markers: `S1/S10` Incredibles, `S2/S20` Brave, `S3/S30` Peppa, `S4/S40` Talk_1, `S5/S50` Talk_2 (start/end); a missing end marker falls back to the nominal 60 s / 180 s, a missing start marker skips the event |
+| EEG channels | 31 scalp channels + `VEOG` per member (32 in total; TP9, the recording reference, is not in the data) |
+| `common_channels_csv` / `common_channels_json` | the 19 channels shared with Warsaw (`Fp1 Fp2 F7 F3 Fz F4 F8 T7 C3 Cz C4 T8 P7 P3 Pz P4 P8 O1 O2`); **cross-site analyses must select these**, which also leaves out `VEOG` and the extra channels |
+| Reference | recorded vs TP9; at export re-referenced to the **common average of the 19 common channels** (`VEOG` excluded), so the reference equals Warsaw's. Bad channels are interpolated first. Stated in `metadata_json.references` |
+| `ECG` | BI-Vital ECG filtered like Warsaw (high-pass 0.5 Hz, notch 50 Hz) and low-passed at 51 Hz; **units are ADC counts** (attribute `units`), not μV |
+| `IBI`, `RMSSD` (ms) | from R-peaks detected on the native 200 Hz ECG (NeuroKit2, sub-sample refinement), NaN-aware (see below) |
+| Extra attributes | `site`, `sync_info_json` (clock fit per device), `hrv_info_json` (beats, rejected IBI, mean HR), `common_channels_*` (EEG) |
+
+IBI/RMSSD rules (`src/hrv_sync.py`): IBI is stamped at the later R-peak and cubic-spline interpolated
+(as in Warsaw) but never across a dropout longer than 3 s; IBI outside 300-1200 ms (child) /
+400-1500 ms (adult) is rejected; RMSSD uses a 30 s window aligned to the window start, needs at
+least 10 successive IBI differences and a first beat within 3 s of the window start. Dropouts stay NaN.
+
+BI-Vital CSVs of different firmware versions are read by column name (`load.read_bivital`): the 9-column
+format (`Heartrate`, `R-Peak`, `ECG-Quality`, accelerometer) and the older 12-column format (`RR-interval`, `ECG`,
+accelerometer, angular velocity, magnetic field) give the same table; columns absent in a file are NaN and only
+time, ECG and accelerometer are used.
+
+By-product of the import: `<export_path>/sync_QC/<dyad>/<dyad>_synced_signals.csv` (ECG and
+accelerometer of both devices on the EEG time grid at 200 Hz, including times before EEG start) plus
+`_sync_summary.csv`, `_<device>_channel_ranking.csv` and `_<device>_offset_tracks.csv`.
+QC drivers for the synchronisation: [scripts/heidelberg_sync.py](../scripts/heidelberg_sync.py).
+
+Reading the files: `EEG_ch_*`/`EEG_cg_*` loaders see `VEOG` as an extra channel; `mne_bridge`
+types it `eog` (excluded from AutoReject/ICA picks) and drops it in `load_eeg_signals`.
 
 ---
 

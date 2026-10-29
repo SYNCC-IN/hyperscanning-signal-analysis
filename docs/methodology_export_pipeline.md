@@ -277,3 +277,70 @@ for the full quality-report contract.
   already does; the ectopic-beat correction and further HRV feature engineering used
   by the SECORE branch (`src.secore_loader`) is a *separate* pipeline over a
   different acquisition (Polar H10), out of scope here.
+
+---
+
+## 5. Heidelberg variant
+
+Heidelberg dyads use the same per-task export (§3) on a `MultimodalData` built by
+`src.heidelberg_loader.create_multimodal_data_heidelberg` instead of `create_multimodal_data`.
+Code: [`src/heidelberg_loader.py`](../src/heidelberg_loader.py), [`src/bivital_sync.py`](../src/bivital_sync.py),
+[`src/hrv_sync.py`](../src/hrv_sync.py), `export_heidelberg_by_task` in [`src/export.py`](../src/export.py).
+User-level summary: [export_ncdf_guide.md](export_ncdf_guide.md#heidelberg-by-task-export).
+
+### 5.1 Import stages
+
+1. **Read** BrainVision EEG (`.eeg`, INT16, 64 channels, 1000 Hz, 0.1 µV/LSB), markers and the wall-clock
+   start (`src.load`).
+2. **Synchronise the BI-Vital recorders** (`bivital_sync.synchronize_bivital`, a stage of the import).
+   Model `t_dev = a + (1 + b) t_eeg`. The wearer's EEG channels are ranked by how well their cardiac
+   artefact matches the device ECG (5-25 Hz band, 200 Hz), the best agreeing channels form a sign-aligned
+   proxy, and `a`, `b` follow from a Theil-Sen fit of windowed cross-correlation offsets (120 s windows,
+   60 s hop). Typical result: drift 0.7-1.7 ms/min, residual SD about 1 ms. The table of ECG and
+   accelerometer on the EEG grid is saved as `<dyad>_synced_signals.csv` (by-product).
+3. **EEG filtering at 1000 Hz** with the Warsaw filter code (`_design_eeg_filters` / `_apply_filters`:
+   DC removal, 50 Hz notch, 2nd-order Butterworth band-pass 1-64 Hz, zero phase).
+4. **Resampling to 128 Hz** with `scipy.signal.resample_poly(up=16, down=125)`: 1000·16/125 = 128 Hz, the
+   Warsaw export rate (1024/8), which plain decimation of 1000 Hz cannot reach.
+5. **ECG / IBI / RMSSD on the same grid** (`hrv_sync.compute_hrv_on_grid`): dropouts of the BI-Vital
+   stream are located first (gaps > 0.1 s), each continuous run is filtered (0.5 Hz high-pass, 50 Hz notch,
+   51 Hz low-pass), R-peaks are found on the native 200 Hz signal (NeuroKit2; polarity-corrected, snapped to
+   the local extremum, parabolic sub-sample refinement) and their device times are converted to EEG time with
+   the clock fit. The filtered ECG is mapped onto the 128 Hz grid by linear interpolation. The BI-Vital
+   `rpk` column is not used (not present in all recordings).
+6. **Events** from the stimulus markers (`S1/S10` Incredibles, `S2/S20` Brave, `S3/S30` Peppa, `S4/S40`
+   Talk_1, `S5/S50` Talk_2). Durations come from the end markers (about 60.6 s per movie and 180.2 s per
+   talk), so, unlike Warsaw (diode flash), the event start is the marker itself.
+
+The time axis of the returned `MultimodalData` is seconds from the start of the EEG recording.
+
+### 5.2 EEG montage and referencing at export
+
+The recording reference is TP9, which is not a channel in the file; the 31 recorded scalp channels plus
+`VEOG` per member are exported (the labels `FP1`/`FP2` are unified to `Fp1`/`Fp2`; modern 10-20 labels
+are already used, so no `T3→T7` renaming). `_apply_eeg_montage` receives a `montage_cfg`:
+`VEOG` is typed `eog` (kept, not interpolated, not in the reference), and the common average is the mean
+of the **19 channels shared with Warsaw** (`ref_channels=` the common list), so the reference equals Warsaw's
+(19 scalp channels, no mastoids) while the extra Heidelberg channels are re-referenced with it. The 19
+channels are listed in the attributes `common_channels_csv/json`; cross-site analyses select them. Verified
+on H032-H035: the mean of the 19 channels is zero to machine precision after export.
+
+### 5.3 IBI and RMSSD: deviations from Warsaw
+
+Warsaw (`_interpolate_ibi_signals`, `_set_RMSSD_from_ECG`) assumes a continuous ECG without NaN and
+counts in samples. BI-Vital data have dropouts, so the Heidelberg implementation is NaN-aware and time-based:
+IBI across a dropout is not formed and the spline is not bridged over gaps > 3 s; IBI outside 300-1200 ms
+(child) or 400-1500 ms (adult) is rejected; RMSSD (30 s window aligned to the window start as in Warsaw)
+needs at least 10 successive IBI differences and a first beat within 3 s of the window start. The stamping
+convention (IBI at the later R-peak) and the units (ms) are the same.
+
+### 5.4 Known limitations
+
+- ECG amplitude is in BI-Vital ADC counts; no conversion to μV is applied.
+- Bad EEG channels are not detected automatically; `EEG_bad_channels` is passed by hand (as in Warsaw).
+- Peak detection quality is not audited beat by beat; the default IBI range is the only artefact rule
+  (`HrvParams.ibi_median_tol` offers an optional local-median criterion, off by default).
+- A dyad whose marker file lacks an event (H034: no `S5`/`S50`, i.e. no Talk_2) is exported with the events
+  that exist; the `talk` chunk then contains only Talk_1.
+- `check_exported_data_quality` (AutoReject) has been run on the four Heidelberg dyads; it uses `standard_1020`
+  positions, which cover all 31 channels.
