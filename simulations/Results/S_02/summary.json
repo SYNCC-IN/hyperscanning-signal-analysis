@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "settings": {
-    "n_rep": 2,
+    "n_rep": 100,
     "gaps": [
       0.0,
       0.5,

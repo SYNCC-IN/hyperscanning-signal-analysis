@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "settings": {
-    "n_rep": 2,
+    "n_rep": 100,
     "n_dyads": 25,
     "seg_s": 60,
     "b_dyads": 25,

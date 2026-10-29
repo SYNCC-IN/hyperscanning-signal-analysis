@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "settings": {
-    "n_rep": 2,
+    "n_rep": 200,
     "n_dyads": 25,
     "gains": [
       0.2,
