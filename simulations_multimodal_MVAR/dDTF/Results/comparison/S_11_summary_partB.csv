@@ -1,0 +1,31 @@
+truth,gap,method,study_rate dDTF,study_rate GPDC,dyad_rate dDTF,dyad_rate GPDC
+amplitude,0.0,PLV (raw signals),0.06,0.06,0.0084,0.0084
+amplitude,0.0,[est] (4-node),1.0,1.0,0.9704,0.9056
+amplitude,0.0,envelope coherence,1.0,1.0,0.8416,0.8416
+amplitude,0.0,lagged cross-correlation,1.0,1.0,0.9868,0.9868
+amplitude,0.0,pairwise Granger,1.0,1.0,0.986,0.986
+amplitude,3.0,PLV (raw signals),0.06,0.06,0.0084,0.0084
+amplitude,3.0,[est] (4-node),1.0,1.0,0.9688,0.8987999999999999
+amplitude,3.0,envelope coherence,1.0,1.0,0.8508,0.8508
+amplitude,3.0,lagged cross-correlation,1.0,1.0,0.9864,0.9864
+amplitude,3.0,pairwise Granger,1.0,1.0,0.9816,0.9816
+none,0.0,PLV (raw signals),0.03,0.03,0.012,0.012
+none,0.0,[est] (4-node),0.07,0.04,0.034,0.0096
+none,0.0,envelope coherence,0.05,0.05,0.0216,0.0216
+none,0.0,lagged cross-correlation,0.0,0.0,0.0139999999999999,0.0139999999999999
+none,0.0,pairwise Granger,0.03,0.03,0.0184,0.0184
+none,3.0,PLV (raw signals),0.01,0.01,0.0096,0.0096
+none,3.0,[est] (4-node),0.09,0.06,0.0368,0.0092
+none,3.0,envelope coherence,0.07,0.07,0.0248,0.0248
+none,3.0,lagged cross-correlation,0.03,0.03,0.0176,0.0176
+none,3.0,pairwise Granger,0.07,0.07,0.0196,0.0196
+phase,0.0,PLV (raw signals),1.0,1.0,1.0,1.0
+phase,0.0,[est] (4-node),0.19,0.1,0.0512,0.0152
+phase,0.0,envelope coherence,0.05,0.05,0.0248,0.0248
+phase,0.0,lagged cross-correlation,0.02,0.02,0.0012,0.0012
+phase,0.0,pairwise Granger,0.18,0.18,0.0243999999999999,0.0243999999999999
+phase,3.0,PLV (raw signals),1.0,1.0,0.9816,0.9816
+phase,3.0,[est] (4-node),0.02,0.03,0.038,0.0104
+phase,3.0,envelope coherence,0.03,0.03,0.0264,0.0264
+phase,3.0,lagged cross-correlation,0.01,0.01,0.0004,0.0004
+phase,3.0,pairwise Granger,0.08,0.08,0.0152,0.0152

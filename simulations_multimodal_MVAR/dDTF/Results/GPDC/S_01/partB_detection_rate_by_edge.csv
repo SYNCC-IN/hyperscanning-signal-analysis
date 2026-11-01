@@ -1,0 +1,13 @@
+edge,study_reject
+cg:HRV->cg:ROI,0.0
+cg:HRV->child:HRV,1.0
+cg:HRV->child:ROI,1.0
+cg:ROI->cg:HRV,0.015
+cg:ROI->child:HRV,0.005
+cg:ROI->child:ROI,1.0
+child:HRV->cg:HRV,0.09
+child:HRV->cg:ROI,0.005
+child:HRV->child:ROI,0.0
+child:ROI->cg:HRV,0.03
+child:ROI->cg:ROI,0.005
+child:ROI->child:HRV,0.0

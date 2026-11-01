@@ -1,0 +1,23 @@
+{
+  "mode": "full",
+  "settings": {
+    "n_rep": 100,
+    "n_dyads": 25,
+    "seg_s": 60,
+    "b_dyads": 25,
+    "b_duration_s": 120.0,
+    "gaps": [
+      0.0,
+      3.0
+    ]
+  },
+  "criteria": {
+    "GPDC: FPR <= 0.1 under common stimulus": true,
+    "GPDC: power >= 0.8 on planted edges": true,
+    "GPDC: absent indirect edge detected <= 0.1": true,
+    "GPDC has the lowest absent-indirect-edge rate among methods": true,
+    "Part B: envelope GPDC FPR <= 0.1 (truth none)": true,
+    "Part B: envelope GPDC detects the amplitude truth at gap 3 Hz (>= 0.8)": true,
+    "Part B: PLV does not detect the amplitude truth at gap 3 Hz (<= 0.1)": true
+  }
+}
