@@ -27,7 +27,6 @@ stable MVAR estimate.
 
 import numpy as np
 import xarray as xr
-from scipy.signal import detrend as _detrend
 from scipy.stats import zscore as _zscore
 
 try:
@@ -304,12 +303,17 @@ def detrend_windows(stack, dtype='linear'):
     heterogeneity that the averaged-ACF fit (`src.mvar_diag.fit_mvar_avg_acf`)
     is meant to absorb is preserved.
 
+    The least-squares line is computed in closed form (slope against a centred
+    time axis) instead of with `scipy.signal.detrend`: on macOS, Apple
+    Accelerate's dgemm reads past the end of scipy's (win_len, 2) design matrix
+    and intermittently segfaults. The result is the same as scipy's.
+
     Parameters
     ----------
     stack : np.ndarray, shape (k, win_len, n_windows)
         Windowed design matrix from `window_stack`.
     dtype : {'linear', 'constant'}, optional
-        Detrend type passed to `scipy.signal.detrend`. ``'linear'`` (default)
+        Detrend type, as in `scipy.signal.detrend`. ``'linear'`` (default)
         removes mean + slope; its low-frequency attenuation edge sits at
         roughly ``1 / win_len_seconds``, so the window length must keep that
         below the coupling band of interest. ``'constant'`` removes only the
@@ -321,7 +325,14 @@ def detrend_windows(stack, dtype='linear'):
     np.ndarray, shape (k, win_len, n_windows)
         Detrended windows, same shape as `stack`.
     """
-    return _detrend(stack, axis=1, type=dtype)
+    centred = stack - stack.mean(axis=1, keepdims=True)
+    if dtype == 'constant':
+        return centred
+    if dtype != 'linear':
+        raise ValueError(f"dtype must be 'linear' or 'constant', got {dtype!r}")
+    t = np.arange(stack.shape[1]) - (stack.shape[1] - 1) / 2
+    slope = np.sum(centred * t[None, :, None], axis=1) / np.sum(t ** 2)
+    return centred - slope[:, None, :] * t[None, :, None]
 
 
 def window_geometry(win_len_s, overlap_frac, target_sfreq):
