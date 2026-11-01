@@ -1,11 +1,11 @@
 """Run the simulation scripts S01-S11 in sequence and record the run time of each.
 
 Usage:
-    python simulations/run_all.py quick            # smoke test of every script (about a minute in total)
-    python simulations/run_all.py full             # the full protocol (hours; see README.md)
-    python simulations/run_all.py quick 3 5 9      # only S03, S05, S09
+    python simulations_multimodal_MVAR/dDTF/run_all.py quick            # smoke test of every script (about a minute in total)
+    python simulations_multimodal_MVAR/dDTF/run_all.py full             # the full protocol (hours; see README.md)
+    python simulations_multimodal_MVAR/dDTF/run_all.py quick 3 5 9      # only S03, S05, S09
 
-Each script writes to simulations/Results/S_xx/. The timing of this run goes to Results/run_all_timing_<mode>.json.
+Each script writes to simulations_multimodal_MVAR/dDTF/Results/S_xx/. The timing of this run goes to Results/run_all_timing_<mode>.json.
 """
 
 import json

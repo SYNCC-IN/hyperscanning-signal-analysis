@@ -1,13 +1,13 @@
 # Simulations S01–S11 (Table 2 of the methods paper)
 
 Every script follows the numbering of Table 2 of `docs/draft_v02_ddtf_multimodal_hyperscanning_simulations.md`
-and writes its results to `simulations/Results/S_xx/` (`xx` = simulation number).
+and writes its results to `simulations_multimodal_MVAR/dDTF/Results/S_xx/` (`xx` = simulation number).
 
 ```bash
-python simulations/S03_null_calibration.py quick     # smoke test (seconds)
-python simulations/S03_null_calibration.py full      # full protocol
-python simulations/run_all.py quick                  # all scripts, prints criteria met per script
-python simulations/run_all.py full 3 4 7             # selected scripts
+python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py quick     # smoke test (seconds)
+python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py full      # full protocol
+python simulations_multimodal_MVAR/dDTF/run_all.py quick                  # all scripts, prints criteria met per script
+python simulations_multimodal_MVAR/dDTF/run_all.py full 3 4 7             # selected scripts
 ```
 
 Each script has a configuration block at the top (`MODE`, `N_JOBS`, `BASE_SEED`, `SETTINGS` for quick/full, model and
