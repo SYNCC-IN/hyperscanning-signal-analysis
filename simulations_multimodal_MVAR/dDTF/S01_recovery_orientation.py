@@ -3,7 +3,7 @@
 Question: with a known directed structure, does the estimator recover the planted edges, in the
 right direction, and is its source/target convention what we assume?
 
-Part A (replicates Stage 0 Part A): long clean recordings, repository `direct_dtf` with a global fit.
+Part A (replicates Stage 0 Part A): long clean recordings, repository `direct_dtf` (GPDC: `gen_partial_directed_coherence`), global fit.
   (a) orientation check: a single edge 0 -> 1 must give a dominant dDTF in one axis (ratio >= 3);
   (b) four-node VAR mimicking the real design, recovered edges compared with their reverse.
 Part B (realistic): ~150-sample segments, windowed-ACF fit at the common order, surrogate null, many
@@ -11,8 +11,8 @@ Part B (realistic): ~150-sample segments, windowed-ACF fit at the common order, 
   detection rate of every directed edge.
 Also checks that the fast estimator used in all simulations equals the repository estimator.
 
-Usage: python S01_recovery_orientation.py [quick|full]
-Results: Results/S_01/
+Usage: python S01_recovery_orientation.py [quick|full] [dDTF|GPDC]
+Results: Results/<estimator>/S_01/
 """
 
 import contextlib
@@ -32,7 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connectivity import Granger_estimator
 from src.design import window_geometry
-from src.mtmvar import direct_dtf
+from src.mtmvar import direct_dtf, gen_partial_directed_coherence
 from src.sim_estimation import connectivity_cube, fit_mvar
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
@@ -43,6 +43,7 @@ from src.synthetic_mvar import edges_to_coupling, generate_var_process
 # Configuration
 # ---------------------------------------------------------------------------
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 1
 BASE_SEED = 20260101
@@ -58,6 +59,7 @@ NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
 CHILD_NODES = [0, 2]
 
 # --- Part A (as in scripts/pipeline_exploratory_mlutimodal_dDTF/stage00_synthetic_validation.py)
+REPOSITORY_ESTIMATOR = {"dDTF": direct_dtf, "GPDC": gen_partial_directed_coherence}[ESTIMATOR]   # Part A
 PART_A_FS = 2.0
 PART_A_N_SAMPLES = 4000
 PART_A_SNR = 5.0
@@ -117,16 +119,16 @@ def part_a():
     signals = generate_var_process(edges_to_coupling(ORIENTATION_EDGES, 2), ORIENTATION_SNR, ORIENTATION_N_SAMPLES, seed=BASE_SEED)
     freqs = np.arange(PART_A_FREQ_STEP, PART_A_FS / 2, PART_A_FREQ_STEP)
     with contextlib.redirect_stdout(io.StringIO()):
-        cube = direct_dtf(signals, freqs, PART_A_FS, max_model_order=ORIENTATION_MAX_ORDER, crit_type="AIC")
+        cube = REPOSITORY_ESTIMATOR(signals, freqs, PART_A_FS, max_model_order=ORIENTATION_MAX_ORDER, crit_type="AIC")
     mean_01, mean_10 = cube[0, 1].mean(), cube[1, 0].mean()
-    out["orientation"] = {"dDTF[0,1]": float(mean_01), "dDTF[1,0]": float(mean_10),
+    out["orientation"] = {f"{ESTIMATOR}[0,1]": float(mean_01), f"{ESTIMATOR}[1,0]": float(mean_10),
                           "target_source_confirmed": bool(mean_10 > ORIENTATION_RATIO * mean_01),
                           "ratio": float(mean_10 / mean_01)}
     coupling = edges_to_coupling(PART_A_EDGES, 4)
     signals = generate_var_process(coupling, PART_A_SNR, PART_A_N_SAMPLES, seed=BASE_SEED)
     freqs = np.arange(0, PART_A_FS / 2, PART_A_FREQ_STEP)
     with contextlib.redirect_stdout(io.StringIO()):
-        cube = direct_dtf(signals, freqs, PART_A_FS, max_model_order=PART_A_MAX_ORDER, crit_type="AIC")
+        cube = REPOSITORY_ESTIMATOR(signals, freqs, PART_A_FS, max_model_order=PART_A_MAX_ORDER, crit_type="AIC")
     mean = cube.mean(axis=2)
     out["recovery"] = {name: {"forward": float(mean[t, s]), "reverse": float(mean[s, t]), "forward_larger": bool(mean[t, s] > mean[s, t])}
                        for name, (s, t) in {"cg:ROI->child:ROI": (1, 0), "cg:HRV->child:HRV": (3, 2), "cg:HRV->child:ROI": (3, 0)}.items()}
@@ -139,7 +141,7 @@ def run_replication(seed):
     """One replicated study: simulate dyads with planted edges, analyse, return per-edge records and the raw mean matrix."""
     rng = np.random.default_rng(seed)
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], N_SAMPLES, FS, POLE_RADIUS_RANGES, F0_RANGES, list(PLANTED.values()), N_LAGS))
     records = run_study(designs, [0, 1, 2, 3], CHILD_NODES, est, all_edges(), ["pooled"], None, rng,
                         STABILITY_MAX_ROOT, Z_CRIT, ALPHA, SETTINGS["n_perm"])
@@ -158,8 +160,8 @@ def heatmap(ax, matrix, title):
 
 
 def main():
-    """Run S01 and write all outputs to Results/S_01."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S01 and write all outputs to Results/<estimator>/S_01."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     errors = implementation_check()
     a = part_a()
     results = run_parallel(run_replication, spawn_seeds(BASE_SEED, SETTINGS["n_rep"]), N_JOBS)
@@ -190,7 +192,7 @@ def main():
     # Figures
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
     inj = a["injected"].copy(); np.fill_diagonal(inj, 0); rec_mat = a["matrix"].copy(); np.fill_diagonal(rec_mat, 0)
-    heatmap(axes[0], inj, "Injected coupling (|gain| summed over lags)"); heatmap(axes[1], rec_mat, "Recovered mean dDTF (Part A)")
+    heatmap(axes[0], inj, "Injected coupling (|gain| summed over lags)"); heatmap(axes[1], rec_mat, f"Recovered mean {ESTIMATOR} (Part A)")
     fig.tight_layout(); fig.savefig(out_dir / "fig_partA_injected_vs_recovered.png", dpi=150); plt.close(fig)
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
@@ -201,7 +203,7 @@ def main():
     for name, (s, t) in all_edges().items():
         rate[t, s] = detect[name]
     raw_plot = raw_mean.copy(); np.fill_diagonal(raw_plot, 0)
-    heatmap(axes[0], raw_plot, f"Mean raw dDTF, {n_rep} studies (Part B)"); heatmap(axes[1], rate, "Detection rate (signed-rank, alpha=.05)")
+    heatmap(axes[0], raw_plot, f"Mean raw {ESTIMATOR}, {n_rep} studies (Part B)"); heatmap(axes[1], rate, "Detection rate (signed-rank, alpha=.05)")
     for (t, s), v in np.ndenumerate(rate):
         axes[1].text(s, t, f"{v:.2f}" if t != s else "", ha="center", va="center", color="w", fontsize=8)
     fig.tight_layout(); fig.savefig(out_dir / "fig_partB_recovery.png", dpi=150); plt.close(fig)

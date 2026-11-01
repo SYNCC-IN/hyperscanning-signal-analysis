@@ -9,7 +9,7 @@ Analyses compared: 4-node dDTF, 4-node ffDTF (no partial-coherence factor), 4-no
 and bivariate dDTF on the pair that contains the absent edge (the other channels are ignored).
 Readouts: study-level detection (signed-rank) of the absent edge (false positive) and of the planted edges (power).
 
-Usage: python S05_conditioning.py [quick|full]       Results: Results/S_05/
+Usage: python S05_conditioning.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_05/
 """
 
 import json
@@ -32,6 +32,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 5
 BASE_SEED = 20260105
@@ -63,8 +64,8 @@ SCENARIOS = {
     "common_driver": {"planted": [(0, 1), (0, 3)], "absent": (1, 3), "pair": [1, 3]},
 }
 NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
-ANALYSES = {"4-node dDTF": ("dDTF", None), "4-node ffDTF": ("ffDTF", None), "4-node DTF": ("DTF", None),
-            "bivariate dDTF": ("dDTF", "pair")}
+ANALYSES = {f"4-node {ESTIMATOR}": (ESTIMATOR, None), "4-node ffDTF": ("ffDTF", None), "4-node DTF": ("DTF", None),
+            f"bivariate {ESTIMATOR}": (ESTIMATOR, "pair")}
 
 
 def edge_name(edge):
@@ -94,8 +95,8 @@ def run_task(task):
 
 
 def main():
-    """Run S05 and write all outputs to Results/S_05."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S05 and write all outputs to Results/<estimator>/S_05."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(s, g) for s in SCENARIOS for g in SETTINGS["gains"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"scenario": s, "gain": g, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
@@ -121,13 +122,13 @@ def main():
 
     ref_gain = 0.4 if 0.4 in SETTINGS["gains"] else SETTINGS["gains"][0]
     at = summary[summary.gain == ref_gain]
-    absent4 = at[(at.role == "absent") & (at.analysis == "4-node dDTF")].study_rate
-    absent_biv = at[(at.role == "absent") & (at.analysis == "bivariate dDTF")].study_rate
-    planted4 = at[(at.role == "planted") & (at.analysis == "4-node dDTF")].study_rate
+    absent4 = at[(at.role == "absent") & (at.analysis == f"4-node {ESTIMATOR}")].study_rate
+    absent_biv = at[(at.role == "absent") & (at.analysis == f"bivariate {ESTIMATOR}")].study_rate
+    planted4 = at[(at.role == "planted") & (at.analysis == f"4-node {ESTIMATOR}")].study_rate
     criteria = {
-        f"4-node dDTF: absent-edge false-positive rate <= {FPR_MAX} (gain {ref_gain})": bool((absent4 <= FPR_MAX).all()),
-        f"4-node dDTF: planted-edge power >= {POWER_MIN} (gain {ref_gain})": bool((planted4 >= POWER_MIN).all()),
-        "bivariate dDTF produces more false positives than 4-node dDTF in every scenario":
+        f"4-node {ESTIMATOR}: absent-edge false-positive rate <= {FPR_MAX} (gain {ref_gain})": bool((absent4 <= FPR_MAX).all()),
+        f"4-node {ESTIMATOR}: planted-edge power >= {POWER_MIN} (gain {ref_gain})": bool((planted4 >= POWER_MIN).all()),
+        f"bivariate {ESTIMATOR} produces more false positives than 4-node {ESTIMATOR} in every scenario":
             bool((absent_biv.values > absent4.values).all()),
     }
     with open(out_dir / "summary.json", "w") as f:

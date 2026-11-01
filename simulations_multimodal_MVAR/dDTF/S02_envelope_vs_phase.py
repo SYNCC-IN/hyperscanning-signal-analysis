@@ -19,8 +19,8 @@ the gap therefore lowers the mean edge value even with zero coupling (see truth 
 phase-path result. Compare the 'none' rows of the two phase paths.
 Edge of interest: node 1 (caregiver proxy) -> node 0 (child proxy); the reverse edge gives the direction index.
 
-Usage: python S02_envelope_vs_phase.py [quick|full]
-Results: Results/S_02/
+Usage: python S02_envelope_vs_phase.py [quick|full] [dDTF|GPDC]
+Results: Results/<estimator>/S_02/
 """
 
 import json
@@ -46,6 +46,7 @@ from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators
 # Configuration
 # ---------------------------------------------------------------------------
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 2
 BASE_SEED = 20260102
@@ -95,7 +96,7 @@ def edges_from(design, freqs, fs, p_max, p=None, total=False):
 
     Returns the mean over the grid, or the sum if `total`, and the order used.
     """
-    matrix, _, p_used = edge_matrix(design, p, None, None, freqs, fs, "dDTF", (freqs[0], freqs[-1]), p_max=p_max, crit_type="AIC")
+    matrix, _, p_used = edge_matrix(design, p, None, None, freqs, fs, ESTIMATOR, (freqs[0], freqs[-1]), p_max=p_max, crit_type="AIC")
     scale = len(freqs) if total else 1.0
     return matrix[0, 1] * scale, matrix[1, 0] * scale, p_used
 
@@ -134,8 +135,8 @@ def mean_sem(x):
 
 
 def main():
-    """Run S02 and write all outputs to Results/S_02."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S02 and write all outputs to Results/<estimator>/S_02."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     tasks = [{"truth": truth, "rep": rep, "seed": BASE_SEED + rep} for truth in TRUTHS for rep in range(SETTINGS["n_rep"])]
     df = pd.DataFrame([r for recs in run_parallel(run_task, tasks, N_JOBS) for r in recs])
     df["direction_index"] = (df.fwd - df.rev) / (df.fwd + df.rev)
@@ -158,17 +159,17 @@ def main():
                 ax.plot(gaps, stats[:, 0], style, color=colors[path], marker="o", ms=3, label=f"{path} {'1->0' if column == 'fwd' else '0->1'}")
                 ax.fill_between(gaps, stats[:, 0] - stats[:, 1], stats[:, 0] + stats[:, 1], color=colors[path], alpha=0.2)
         ax.set_title(f"ground truth: {truth}"); ax.set_xlabel("centre-frequency gap (Hz)"); ax.axvline(BANDWIDTH_HZ, color="gray", ls=":", lw=1)
-    axes[0].set_ylabel("mean band-averaged dDTF"); axes[0].legend(fontsize=7)
+    axes[0].set_ylabel(f"mean band-averaged {ESTIMATOR}"); axes[0].legend(fontsize=7)
     fig.tight_layout(); fig.savefig(out_dir / "fig_edge_values_by_truth.png", dpi=150); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
     for path in PATHS:
         sub = df[(df.truth == "amplitude") & (df.path == path)]
         stats = np.array([mean_sem(g.relative_fwd.values) for _, g in sub.groupby("gap")]); gaps = sorted(sub.gap.unique())
-        ax.plot(gaps, stats[:, 0], marker="o", color=colors[path], label=f"{path}-based dDTF")
+        ax.plot(gaps, stats[:, 0], marker="o", color=colors[path], label=f"{path}-based {ESTIMATOR}")
         ax.fill_between(gaps, stats[:, 0] - stats[:, 1], stats[:, 0] + stats[:, 1], color=colors[path], alpha=0.25)
     ax.axhline(1.0, color="gray", ls="--", lw=0.8); ax.axhline(ENVELOPE_PASS_FRACTION, color="r", ls=":", lw=0.8)
-    ax.set_xlabel("centre-frequency gap (Hz)"); ax.set_ylabel("dDTF 1->0, relative to own zero-gap value")
+    ax.set_xlabel("centre-frequency gap (Hz)"); ax.set_ylabel(f"{ESTIMATOR} 1->0, relative to own zero-gap value")
     ax.set_title("Amplitude ground truth (estimator matched by construction)"); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_dir / "fig_relative_amplitude_truth.png", dpi=150); plt.close(fig)
 
@@ -185,9 +186,9 @@ def main():
     amp_phase = summary[(summary.truth == "amplitude") & (summary.path == "phase")]
     amp_fixed = summary[(summary.truth == "amplitude") & (summary.path == "phase_fixedgrid")]
     criteria = {
-        f"amplitude truth: envelope dDTF stays >= {ENVELOPE_PASS_FRACTION:.0%} of zero-gap value across the sweep": bool(amp_env.relative_fwd.min() >= ENVELOPE_PASS_FRACTION),
-        "amplitude truth (informative): phase-path dDTF drops >= 50% somewhere": bool(1 - amp_phase.relative_fwd.min() >= 0.5),
-        "amplitude truth (informative): fixed-grid phase-path dDTF drops >= 50% somewhere": bool(1 - amp_fixed.relative_fwd.min() >= 0.5),
+        f"amplitude truth: envelope {ESTIMATOR} stays >= {ENVELOPE_PASS_FRACTION:.0%} of zero-gap value across the sweep": bool(amp_env.relative_fwd.min() >= ENVELOPE_PASS_FRACTION),
+        f"amplitude truth (informative): phase-path {ESTIMATOR} drops >= 50% somewhere": bool(1 - amp_phase.relative_fwd.min() >= 0.5),
+        f"amplitude truth (informative): fixed-grid phase-path {ESTIMATOR} drops >= 50% somewhere": bool(1 - amp_fixed.relative_fwd.min() >= 0.5),
     }
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": {k: (list(map(float, v)) if k == "gaps" else v) for k, v in SETTINGS.items()},

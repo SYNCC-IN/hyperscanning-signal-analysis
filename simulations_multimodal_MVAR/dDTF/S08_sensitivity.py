@@ -1,12 +1,12 @@
 """S08 - Sensitivity to estimator, model order, window geometry, detrending, Box-Cox and band (Table 2, S8).
 
-One-factor-at-a-time variations around the baseline (dDTF, p = 4, 10 s windows with 50% overlap, linear
+One-factor-at-a-time variations around the baseline (ESTIMATOR = dDTF or GPDC, p = 4, 10 s windows with 50% overlap, linear
 detrending, Box-Cox 0.25, band 0.15-0.5 Hz). All variants analyse the same simulated studies (paired comparison).
 Scenarios: 'null' (no coupling) and 'planted' (cg:ROI->child:ROI, cg:HRV->child:HRV, cg:HRV->child:ROI).
 Readouts per variant: false-positive rate (null, mean over the six cross-person edges), power of the planted edges,
 rate of detection of the three reverse edges in the planted scenario, direction accuracy, share of unstable fits.
 
-Usage: python S08_sensitivity.py [quick|full]       Results: Results/S_08/
+Usage: python S08_sensitivity.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_08/
 """
 
 import json
@@ -29,6 +29,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 8
 BASE_SEED = 20260108
@@ -40,10 +41,10 @@ if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
 
 FS = 2.5
-BASE = {"p": 4, "win_s": 10.0, "overlap": 0.5, "estimator": "dDTF", "detrend_type": "linear", "box_cox_lambda": 0.25,
+BASE = {"p": 4, "win_s": 10.0, "overlap": 0.5, "estimator": ESTIMATOR, "detrend_type": "linear", "box_cox_lambda": 0.25,
         "band_hz": (0.15, 0.5), "p_max": 8, "crit_type": "SC"}
 VARIANTS = {"baseline": {},
-            "estimator=DTF": {"estimator": "DTF"}, "estimator=ffDTF": {"estimator": "ffDTF"}, "estimator=GPDC": {"estimator": "GPDC"},
+            **{f"estimator={e}": {"estimator": e} for e in ("DTF", "ffDTF", "dDTF", "GPDC") if e != ESTIMATOR},
             "order=2": {"p": 2}, "order=3": {"p": 3}, "order=6": {"p": 6}, "order=8": {"p": 8},
             "order=SC": {"p": None, "crit_type": "SC"}, "order=HQ": {"p": None, "crit_type": "HQ"}, "order=AIC": {"p": None, "crit_type": "AIC"},
             "window=6s": {"win_s": 6.0}, "window=15s": {"win_s": 15.0}, "window=20s": {"win_s": 20.0},
@@ -95,8 +96,8 @@ def run_task(task):
 
 
 def main():
-    """Run S08 and write all outputs to Results/S_08."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S08 and write all outputs to Results/<estimator>/S_08."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     seeds = spawn_seeds(BASE_SEED, 2 * SETTINGS["n_rep"])
     tasks = [{"scenario": sc, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]} for i, sc in enumerate(["null", "planted"]) for r in range(SETTINGS["n_rep"])]
     df = pd.DataFrame([r for recs in run_parallel(run_task, tasks, N_JOBS) for r in recs])

@@ -1,22 +1,44 @@
 # Simulations S01–S11 (Table 2 of the methods paper)
 
 Every script follows the numbering of Table 2 of `docs/draft_v02_ddtf_multimodal_hyperscanning_simulations.md`
-and writes its results to `simulations_multimodal_MVAR/dDTF/Results/S_xx/` (`xx` = simulation number).
+and is run once per connectivity estimator, dDTF (the proposed method) or GPDC. Results go to
+`simulations_multimodal_MVAR/dDTF/Results/<estimator>/S_xx/` (`xx` = simulation number).
 
 ```bash
-python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py quick     # smoke test (seconds)
-python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py full      # full protocol
-python simulations_multimodal_MVAR/dDTF/run_all.py quick                  # all scripts, prints criteria met per script
-python simulations_multimodal_MVAR/dDTF/run_all.py full 3 4 7             # selected scripts
+python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py quick          # smoke test (seconds), dDTF
+python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py full GPDC      # full protocol, GPDC
+python simulations_multimodal_MVAR/dDTF/run_all.py quick                       # all scripts, dDTF and GPDC, then the comparison
+python simulations_multimodal_MVAR/dDTF/run_all.py full 3 4 7                  # selected scripts, both estimators
+python simulations_multimodal_MVAR/dDTF/run_all.py full GPDC                   # GPDC only (dDTF results already exist)
+python simulations_multimodal_MVAR/dDTF/compare_estimators.py                  # rebuild the comparison from existing results
 ```
 
-Each script has a configuration block at the top (`MODE`, `N_JOBS`, `BASE_SEED`, `SETTINGS` for quick/full, model and
+Each script has a configuration block at the top (`MODE`, `ESTIMATOR`, `N_JOBS`, `BASE_SEED`, `SETTINGS` for quick/full, model and
 band parameters). Parameters that are not yet decided in the paper are marked `[TBD]`; acceptance thresholds are marked
 `[proposed]` and must be fixed (ideally registered) before the full runs are interpreted. `SIM_NREP=<n>` overrides the number of
 replicates (diagnostics, timing).
 
-**`Results/` currently holds quick-mode smoke-test output only** (6 or fewer replicates, small N). Each `summary.json`
-contains the `mode` it was produced with. Do not interpret quick-mode numbers.
+**Quick and full runs write to the same folders**: a quick run overwrites the full results of that estimator. Each
+`summary.json` contains the `mode` it was produced with (and `Results/comparison/runs.csv` lists it per estimator).
+Do not interpret quick-mode numbers. `Results/dDTF/` currently holds the full dDTF runs.
+
+## Comparing dDTF and GPDC
+
+The estimator replaces dDTF everywhere it is the method under test: the 4-node analysis of S01–S10, the
+reference method of S11, the baseline of S08 (whose estimator variants then include dDTF), the envelope and phase
+paths of S02 and S01 Part A (repository `gen_partial_directed_coherence`). The fixed comparisons (ffDTF and DTF in S05,
+the competitors in S11) are computed in both runs and are identical. Both runs use the same seeds, so they analyse
+the same simulated studies and every comparison is paired.
+
+`run_all.py` ends with `compare_estimators.py`, which writes `Results/comparison/`:
+
+- `criteria.csv`: every acceptance criterion, met or not, per estimator;
+- `runs.csv`: mode and number of replicates of each run;
+- `S_xx_<table>.csv`: the main readouts of each summary table, with the dDTF and GPDC columns next to each other;
+- `comparison.md`: all of these as Markdown tables, ready to copy into the manuscript.
+
+Labels that contain the estimator's name (`4-node dDTF`, `dDTF (4-node)`, criteria) appear as `[est]` so that the rows
+of both runs line up. The readouts shown per table are listed in `TABLES` at the top of `compare_estimators.py`.
 
 | ID | Script | Question | Level | Main outputs |
 |---|---|---|---|---|
@@ -42,7 +64,7 @@ the pass/fail status of the proposed acceptance criteria).
 - `sim_estimation.py` – vectorized DTF/ffDTF/dDTF/GPDC and windowed MVAR; identical to `src.connectivity.Granger_estimator`
   (`tests/test_sim_estimation.py`). A callable `estimator` is accepted for competitor statistics (S11).
 - `sim_inference.py` – film-matched surrogate dyads, delta and robust z, dyad/study/group-level tests, replicate-study driver.
-- `sim_harness.py` – parallel runner, seeds, `Results/S_xx` folders.
+- `sim_harness.py` – parallel runner, seeds, `Results/<estimator>/S_xx` folders.
 
 ## Conventions
 
@@ -54,7 +76,7 @@ used for real and surrogate fits except in S08.
 ## Run time (4 cores, full mode, extrapolated from 2-replicate runs)
 
 S01 ≈ 4 min, S02 ≈ 6 min, S03 ≈ 15 min, S04 ≈ 1.7 h, S05 ≈ 9 min, S06 ≈ 6 min, S07 ≈ 26 min, S08 ≈ 15 min,
-S09 ≈ 9 min, S10 ≈ 6 min, S11 ≈ 9 min; about 3.5 h in total. S04 dominates (3 N × 3 segment lengths × 6 gains × 2 designs).
+S09 ≈ 9 min, S10 ≈ 6 min, S11 ≈ 9 min; about 3.5 h in total per estimator (about 7 h for dDTF and GPDC). S04 dominates (3 N × 3 segment lengths × 6 gains × 2 designs).
 
 ## Points to check before the full runs are interpreted
 

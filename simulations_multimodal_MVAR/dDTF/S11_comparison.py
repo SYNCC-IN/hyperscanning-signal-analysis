@@ -5,7 +5,7 @@ Competitors (all evaluated inside the same surrogate-null framework, statistic t
   (ii)  lagged cross-correlation of envelopes, max over lags 1..5 samples of |r| (source leads);
   (iii) magnitude-squared coherence of envelopes, averaged over 0.15-0.5 Hz (symmetric);
   (iv)  phase-locking value (PLV) of individually band-passed raw signals (symmetric; Part B only).
-Reference: 4-node dDTF (the proposed method).
+Reference: 4-node dDTF (the proposed method), or 4-node GPDC when run with the GPDC argument.
 
 Part A (Level 1, envelope level, 4 nodes as in S3/S4/S5):
   'null_stimulus' - no coupling, common stimulus -> false-positive rate of cg->child edges;
@@ -14,7 +14,7 @@ Part A (Level 1, envelope level, 4 nodes as in S3/S4/S5):
 Part B (Level 2, two oscillators with different centre frequencies as in S2; truths none / amplitude / phase;
   frequency gap 0 and 3 Hz): FPR and power of all methods, with envelopes (i-iii and dDTF) or raw signals (iv).
 
-Usage: python S11_comparison.py [quick|full]       Results: Results/S_11/
+Usage: python S11_comparison.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_11/
 """
 
 import json
@@ -40,6 +40,7 @@ from src.sim_inference import run_study, wilson_interval
 from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 11
 BASE_SEED = 20260111
@@ -145,7 +146,7 @@ def callable_est(fn):
 def methods_level1():
     """Method name -> `edge_matrix` kwargs on envelope-level designs."""
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    return {"dDTF (4-node)": dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX),
+    return {f"{ESTIMATOR} (4-node)": dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX),
             "pairwise Granger": callable_est(gc_matrix), "lagged cross-correlation": callable_est(xcorr_matrix),
             "envelope coherence": callable_est(coherence_matrix)}
 
@@ -208,8 +209,8 @@ def run_task_b(task):
 
 
 def main():
-    """Run S11 and write all outputs to Results/S_11."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S11 and write all outputs to Results/<estimator>/S_11."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     n_rep = SETTINGS["n_rep"]
     cells_a = list(A_SCENARIOS)
     cells_b = [(t, g) for t in ("none", "amplitude", "phase") for g in SETTINGS["gaps"]]
@@ -252,7 +253,7 @@ def main():
     axes[0, 0].set_ylabel("detection rate cg -> child"); axes[0, 0].legend(fontsize=7)
     fig.tight_layout(); fig.savefig(out_dir / "fig_partB_methods.png", dpi=150); plt.close(fig)
 
-    ref = "dDTF (4-node)"
+    ref = f"{ESTIMATOR} (4-node)"
     def rate(df, **kw):
         s = df
         for k_, v in kw.items():
@@ -260,13 +261,13 @@ def main():
         return s.study_rate.to_numpy()
     comp_a = sum_a[sum_a.method != ref]
     criteria = {
-        f"dDTF: FPR <= {FPR_MAX} under common stimulus": bool((rate(sum_a, scenario="null_stimulus", method=ref) <= FPR_MAX).all()),
-        f"dDTF: power >= {POWER_MIN} on planted edges": bool((rate(sum_a, scenario="power", method=ref) >= POWER_MIN).all()),
-        f"dDTF: absent indirect edge detected <= {FPR_MAX}": bool((rate(sum_a, scenario="indirect", role="absent_indirect", method=ref) <= FPR_MAX).all()),
-        "dDTF has the lowest absent-indirect-edge rate among methods": bool(
+        f"{ESTIMATOR}: FPR <= {FPR_MAX} under common stimulus": bool((rate(sum_a, scenario="null_stimulus", method=ref) <= FPR_MAX).all()),
+        f"{ESTIMATOR}: power >= {POWER_MIN} on planted edges": bool((rate(sum_a, scenario="power", method=ref) >= POWER_MIN).all()),
+        f"{ESTIMATOR}: absent indirect edge detected <= {FPR_MAX}": bool((rate(sum_a, scenario="indirect", role="absent_indirect", method=ref) <= FPR_MAX).all()),
+        f"{ESTIMATOR} has the lowest absent-indirect-edge rate among methods": bool(
             rate(sum_a, scenario="indirect", role="absent_indirect", method=ref)[0] <= comp_a[(comp_a.scenario == "indirect") & (comp_a.role == "absent_indirect")].study_rate.min()),
-        f"Part B: envelope dDTF FPR <= {FPR_MAX} (truth none)": bool((rate(sum_b, truth="none", method=ref) <= FPR_MAX).all()),
-        f"Part B: envelope dDTF detects the amplitude truth at gap 3 Hz (>= {POWER_MIN})": bool(rate(sum_b, truth="amplitude", gap=3.0, method=ref)[0] >= POWER_MIN) if 3.0 in SETTINGS["gaps"] else False,
+        f"Part B: envelope {ESTIMATOR} FPR <= {FPR_MAX} (truth none)": bool((rate(sum_b, truth="none", method=ref) <= FPR_MAX).all()),
+        f"Part B: envelope {ESTIMATOR} detects the amplitude truth at gap 3 Hz (>= {POWER_MIN})": bool(rate(sum_b, truth="amplitude", gap=3.0, method=ref)[0] >= POWER_MIN) if 3.0 in SETTINGS["gaps"] else False,
         f"Part B: PLV does not detect the amplitude truth at gap 3 Hz (<= {FPR_MAX})": bool(rate(sum_b, truth="amplitude", gap=3.0, method="PLV (raw signals)")[0] <= FPR_MAX) if 3.0 in SETTINGS["gaps"] else False,
     }
     with open(out_dir / "summary.json", "w") as f:

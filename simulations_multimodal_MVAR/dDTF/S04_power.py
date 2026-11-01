@@ -6,7 +6,7 @@ test on the group difference of delta, using the within-group null.
 Readouts: dyad-level detection rate (z > 1.96), study-level power (signed-rank, alpha = .05), group-contrast power,
 direction accuracy (planted edge beats its reverse, dir_study), with Wilson intervals.
 
-Usage: python S04_power.py [quick|full]       Results: Results/S_04/
+Usage: python S04_power.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_04/
 """
 
 import json
@@ -29,6 +29,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 4
 BASE_SEED = 20260104
@@ -64,7 +65,7 @@ def run_task(task):
     n, seg_s, gain = task["n_dyads"], task["seg_s"], task["gain"]
     n_samples = int(seg_s * FS)
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     out = []
     # Design A: all dyads coupled
     designs = zscore_designs(simulate_dyads(rng, n, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS))
@@ -82,8 +83,8 @@ def run_task(task):
 
 
 def main():
-    """Run S04 and write all outputs to Results/S_04."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S04 and write all outputs to Results/<estimator>/S_04."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(n, s, g) for n in SETTINGS["n_dyads"] for s in SETTINGS["seg_s"] for g in SETTINGS["gains"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "gain": g, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}

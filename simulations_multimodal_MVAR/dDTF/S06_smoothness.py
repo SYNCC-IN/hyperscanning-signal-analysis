@@ -7,7 +7,7 @@ Factors: smoothness of cg:HRV, z-scoring of designs (on/off; without z-scoring d
 Readouts: uncorrected asymmetry (real dDTF smooth->rough minus rough->smooth, Box-Cox scale), corrected asymmetry
 (median delta difference), study-level false-positive rate of both edges after the surrogate correction.
 
-Usage: python S06_smoothness.py [quick|full]       Results: Results/S_06/
+Usage: python S06_smoothness.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_06/
 """
 
 import json
@@ -30,6 +30,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 6
 BASE_SEED = 20260106
@@ -64,7 +65,7 @@ def run_task(task):
     """One replicated null study for (smoothness, z-scoring)."""
     rng = np.random.default_rng(task["seed"])
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     raw = simulate_dyads(rng, SETTINGS["n_dyads"], int(SETTINGS["seg_s"] * FS), FS, radius_ranges(task["radius"]), F0_RANGES, [], N_LAGS)
     designs = zscore_designs(raw) if task["zscore"] else raw
     out = []
@@ -74,8 +75,8 @@ def run_task(task):
 
 
 def main():
-    """Run S06 and write all outputs to Results/S_06."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S06 and write all outputs to Results/<estimator>/S_06."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(r, z) for r in SETTINGS["radii"] for z in (True, False)]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"radius": r, "zscore": z, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]}
@@ -103,7 +104,7 @@ def main():
         axes[0].plot(sub.radius, sub.uncorrected_asymmetry, marker="o", label=f"uncorrected, z-score={z}")
         axes[0].plot(sub.radius, sub.corrected_asymmetry, marker="s", ls="--", label=f"surrogate-corrected, z-score={z}")
         axes[1].plot(sub.radius, sub[["fpr_smooth_to_rough", "fpr_rough_to_smooth"]].max(axis=1), marker="o", label=f"worst direction, z-score={z}")
-    axes[0].axhline(0, color="k", lw=0.6); axes[0].set_xlabel("pole radius of cg:HRV (smoothness)"); axes[0].set_ylabel("dDTF asymmetry (smooth->rough minus reverse)")
+    axes[0].axhline(0, color="k", lw=0.6); axes[0].set_xlabel("pole radius of cg:HRV (smoothness)"); axes[0].set_ylabel(f"{ESTIMATOR} asymmetry (smooth->rough minus reverse)")
     axes[0].legend(fontsize=7)
     axes[1].axhline(ALPHA, color="k", lw=0.6); axes[1].set_xlabel("pole radius of cg:HRV (smoothness)"); axes[1].set_ylabel("false-positive rate after correction")
     axes[1].legend(fontsize=7)

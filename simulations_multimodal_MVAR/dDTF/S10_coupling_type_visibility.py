@@ -10,7 +10,7 @@ Options (Table 1 of the draft): A = raw IBI + EEG envelope (shared 0.05-1 Hz ban
 Readouts: power (truth present) and FPR (truth absent) of the edge cg:cardiac -> child:EEG, reverse-edge detection.
 Prediction to test: A sees 'linear' but not 'amp_to_eeg'; A'/B see 'amp_to_eeg' but not 'linear'.
 
-Usage: python S10_coupling_type_visibility.py [quick|full]       Results: Results/S_10/
+Usage: python S10_coupling_type_visibility.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_10/
 """
 
 import json
@@ -34,6 +34,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 10
 BASE_SEED = 20260110
@@ -77,15 +78,15 @@ def run_task(task):
             designs.append(pair if cfg["seg_s"] is None else pair[:, : int(cfg["seg_s"] * FS_ANALYSIS)])
         designs = zscore_designs(np.stack(designs))
         win_len, step = window_geometry(cfg["win_s"], OVERLAP, FS_ANALYSIS)
-        est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS_ANALYSIS, estimator="dDTF", band_hz=cfg["band"], box_cox_lambda=BOX_COX)
+        est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS_ANALYSIS, estimator=ESTIMATOR, band_hz=cfg["band"], box_cox_lambda=BOX_COX)
         for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
             out.append(dict(r, option=option, truth=truth, strength=strength, rep=task["rep"]))
     return out
 
 
 def main():
-    """Run S10 and write all outputs to Results/S_10."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S10 and write all outputs to Results/<estimator>/S_10."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [("none", 0.0)] + [(t, s) for t in TRUTHS[1:] for s in SETTINGS["strengths"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"truth": t, "strength": s, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]} for c, (t, s) in enumerate(cells) for i in range(SETTINGS["n_rep"])]

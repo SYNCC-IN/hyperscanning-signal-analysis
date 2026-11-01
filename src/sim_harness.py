@@ -42,20 +42,22 @@ def spawn_seeds(base_seed, n):
     return [int(s.generate_state(1)[0]) for s in np.random.SeedSequence(base_seed).spawn(n)]
 
 
-def results_dir(sim_root, sim_id):
-    """Create and return ``<sim_root>/Results/S_<id>`` (id zero-padded to two digits).
+def results_dir(sim_root, sim_id, estimator):
+    """Create and return ``<sim_root>/Results/<estimator>/S_<id>`` (id zero-padded to two digits).
 
     Parameters
     ----------
     sim_root : str or Path
-        The `simulations` folder.
+        The folder holding the simulation scripts.
     sim_id : int
+    estimator : str
+        Connectivity estimator of the run (e.g. 'dDTF', 'GPDC'); one results tree per estimator.
 
     Returns
     -------
     Path
     """
-    path = Path(sim_root) / "Results" / f"S_{sim_id:02d}"
+    path = Path(sim_root) / "Results" / estimator / f"S_{sim_id:02d}"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

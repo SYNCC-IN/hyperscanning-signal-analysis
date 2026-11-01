@@ -10,7 +10,7 @@ Questions:
  (c) film matching: what happens when the null is built from dyads that watched a different film?
 Readouts: study-level and group-contrast false-positive rates of the cross-person edges.
 
-Usage: python S07_shared_stimulus.py [quick|full]       Results: Results/S_07/
+Usage: python S07_shared_stimulus.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_07/
 """
 
 import json
@@ -33,6 +33,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import (delta_and_z_all, edge_summary, real_matrices, run_study, surrogate_values, wilson_interval)
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 7
 BASE_SEED = 20260107
@@ -76,7 +77,7 @@ def run_task(task):
     gain, sd_log, ratio = task["gain"], task["sd_log"], task["ratio"]
     n_samples = int(SETTINGS["seg_s"] * FS)
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     stimulus = make_stimulus(rng, n_samples, FS, STIM_RADIUS, STIM_F0)
     designs, groups = simulate_study(rng, gain, sd_log, ratio, stimulus)
     out = []
@@ -97,8 +98,8 @@ def run_task(task):
 
 
 def main():
-    """Run S07 and write all outputs to Results/S_07."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S07 and write all outputs to Results/<estimator>/S_07."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(g, s, r) for g in SETTINGS["gains"] for s in SETTINGS["sd_log"] for r in SETTINGS["ratios"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"gain": g, "sd_log": s, "ratio": r, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]}

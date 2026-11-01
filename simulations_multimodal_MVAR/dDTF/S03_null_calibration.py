@@ -10,8 +10,8 @@ Readouts per edge: dyad-level false-positive rate (z > 1.96), study-level (one-s
 delta > 0, alpha = .05), group-level (permutation test of a difference between two groups of N/2 dyads that
 differ in nothing), and the distribution of z.
 
-Usage: python S03_null_calibration.py [quick|full]
-Results: Results/S_03/
+Usage: python S03_null_calibration.py [quick|full] [dDTF|GPDC]
+Results: Results/<estimator>/S_03/
 """
 
 import json
@@ -36,6 +36,7 @@ from src.sim_inference import (delta_and_z_all, edge_summary, real_matrices, sur
 # Configuration
 # ---------------------------------------------------------------------------
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 3
 BASE_SEED = 20260103
@@ -73,7 +74,7 @@ def run_task(task):
     rng = np.random.default_rng(task["seed"])
     n_dyads, seg_s = task["n_dyads"], task["seg_s"]
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator="dDTF", band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     designs = zscore_designs(simulate_dyads(rng, n_dyads, int(seg_s * FS), FS, POLE_RADIUS_RANGES, F0_RANGES, [], N_LAGS))
     groups = (np.arange(n_dyads) >= n_dyads // 2).astype(int)
     real, roots, _ = real_matrices(designs, NODES, est)
@@ -93,8 +94,8 @@ def run_task(task):
 
 
 def main():
-    """Run S03 and write all outputs to Results/S_03."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S03 and write all outputs to Results/<estimator>/S_03."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(n, s) for n in SETTINGS["n_dyads"] for s in SETTINGS["seg_s"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}

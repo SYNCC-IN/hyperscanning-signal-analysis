@@ -9,7 +9,7 @@ Factors: frequency gap, width of the dDTF coupling band.
 Readouts: false-positive rate and power of the edge cg:IBI -> child:IBI (study level), reverse-edge detection, and the shift of the
 surrogate null (mean null median) with the gap.
 
-Usage: python S09_cardiac_carrier_mismatch.py [quick|full]       Results: Results/S_09/
+Usage: python S09_cardiac_carrier_mismatch.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_09/
 """
 
 import json
@@ -33,6 +33,7 @@ from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
+ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
 N_JOBS = 4
 SIM_ID = 9
 BASE_SEED = 20260109
@@ -72,15 +73,15 @@ def run_task(task):
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS_ANALYSIS)
     out = []
     for band_name in SETTINGS["bands"]:
-        est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS_ANALYSIS, estimator="dDTF", band_hz=BANDS[band_name], box_cox_lambda=BOX_COX)
+        est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS_ANALYSIS, estimator=ESTIMATOR, band_hz=BANDS[band_name], box_cox_lambda=BOX_COX)
         for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
             out.append(dict(r, truth=task["truth"], gap=task["gap"], band=band_name, rep=task["rep"]))
     return out
 
 
 def main():
-    """Run S09 and write all outputs to Results/S_09."""
-    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID)
+    """Run S09 and write all outputs to Results/<estimator>/S_09."""
+    out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
     cells = [(t, g) for t in TRUTHS for g in SETTINGS["gaps"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"truth": t, "gap": g, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]} for c, (t, g) in enumerate(cells) for i in range(SETTINGS["n_rep"])]
@@ -105,7 +106,7 @@ def main():
             axes[row, 0].plot(sub.gap, sub.forward_rate, marker="o", label=truth)
             axes[row, 1].plot(sub.gap, sub.null_median_mean, marker="o", label=truth)
         axes[row, 0].axhline(ALPHA, color="k", lw=0.6); axes[row, 0].set_ylabel(f"edge detection rate\nband {BANDS[band]} Hz")
-        axes[row, 1].set_ylabel("mean surrogate-null median (Box-Cox dDTF)")
+        axes[row, 1].set_ylabel(f"mean surrogate-null median (Box-Cox {ESTIMATOR})")
         for col in (0, 1):
             axes[row, col].set_xlabel("carrier-frequency gap (Hz)")
     axes[0, 0].legend(fontsize=7)
