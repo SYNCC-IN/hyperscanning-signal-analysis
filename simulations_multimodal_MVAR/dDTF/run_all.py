@@ -7,7 +7,8 @@ Usage:
     python simulations_multimodal_MVAR/dDTF/run_all.py full GPDC             # only the GPDC runs (e.g. dDTF results already exist)
 
 Each script writes to simulations_multimodal_MVAR/dDTF/Results/<estimator>/S_xx/. Afterwards compare_estimators.py
-writes the side-by-side tables to Results/comparison/. The timing of this run goes to Results/run_all_timing_<mode>.json.
+writes the side-by-side tables to Results/comparison/. The timings go to Results/run_all_timing_<mode>.json
+(merged with the timings already there, so runs of single estimators or scripts keep the others).
 """
 
 import json
@@ -40,7 +41,9 @@ def main():
             status[estimator, name] = "FAILED TO RUN" if criteria is None else f"{sum(criteria.values())}/{len(criteria)} criteria met"
             if proc.returncode != 0:
                 print(proc.stderr[-2000:])
-    (HERE / "Results" / f"run_all_timing_{mode}.json").write_text(json.dumps(timing, indent=2))
+    timing_path = HERE / "Results" / f"run_all_timing_{mode}.json"
+    previous = json.loads(timing_path.read_text()) if timing_path.exists() else {}
+    timing_path.write_text(json.dumps(previous | timing, indent=2))
     print("       " + "".join(f"{e:<24}" for e in estimators))
     for sim_id in ids:
         name = f"S{sim_id:02d}"
