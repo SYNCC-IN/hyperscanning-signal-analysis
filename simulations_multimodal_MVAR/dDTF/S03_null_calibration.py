@@ -6,8 +6,8 @@ Design: heterogeneous dyads (pole radius, resonance frequency vary between perso
 (child/caregiver envelope-like ROI nodes, child/caregiver IBI-like resonant nodes), NO coupling. Factors: number
 of dyads N, segment length, and the null pool: 'pooled' (all foreign pairs, which include the real dyad's
 members) vs 'exclude' (foreign pairs involving neither member of the scored dyad).
-Readouts per edge: dyad-level false-positive rate (z > 1.96), study-level (one-sided signed-rank test of
-delta > 0, alpha = .05), group-level (permutation test of a difference between two groups of N/2 dyads that
+Readouts per edge: dyad-level false-positive rate (empirical p < .05 among the surrogates), study-level (one-sided
+pairing permutation test, alpha = .05), group-level (permutation test of a difference between two groups of N/2 dyads that
 differ in nothing), and the distribution of z.
 
 Usage: python S03_null_calibration.py [quick|full] [dDTF|GPDC]
@@ -30,7 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
-from src.sim_inference import (delta_and_z_all, edge_summary, real_matrices, surrogate_values, wilson_interval)
+from src.sim_inference import (delta_and_z_all, real_matrices, score_study, surrogate_values, wilson_interval)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -41,8 +41,8 @@ N_JOBS = 4
 SIM_ID = 3
 BASE_SEED = 20260103
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": [8], "seg_s": [60], "n_perm": 100, "max_pairs": None},
-    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "n_perm": 500, "max_pairs": None},
+    "quick": {"n_rep": 6, "n_dyads": [8], "seg_s": [60], "max_pairs": None},
+    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "max_pairs": None},
 }[MODE]
 import os
 if os.environ.get("SIM_NREP"):            # optional override for diagnostics
@@ -64,7 +64,8 @@ NODES, CHILD_NODES = [0, 1, 2, 3], [0, 2]
 EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1), "cg:HRV->child:HRV": (3, 2),
          "child:HRV->cg:HRV": (2, 3), "cg:HRV->child:ROI": (3, 0), "child:HRV->cg:ROI": (2, 1)}
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_BAND = (0.03, 0.07)               # accepted false-positive rate around nominal 0.05 [proposed]
 MEDIAN_Z_MAX = 0.2                    # |median z| must not exceed this [proposed]
 
@@ -80,13 +81,13 @@ def run_task(task):
     real, roots, _ = real_matrices(designs, NODES, est)
     values, n_attempted, n_unstable = surrogate_values(designs, NODES, CHILD_NODES, est, STABILITY_MAX_ROOT, rng, SETTINGS["max_pairs"])
     stable = roots < STABILITY_MAX_ROOT
-    records, z_store = [], None
+    real, values, groups = real[stable], values[stable][:, stable], groups[stable]
+    _, z = delta_and_z_all(real, values, "pooled", groups)
+    z_store = np.stack([z[:, t, s] for s, t in EDGES.values()], axis=1)
+    records = []
     for mode in NULL_MODES:
-        delta, z = delta_and_z_all(real, values, mode, groups)
-        if mode == "pooled":
-            z_store = np.stack([z[stable][:, t, s] for s, t in EDGES.values()], axis=1)
-        for name, edge in EDGES.items():
-            summary = edge_summary(delta[stable], z[stable], edge, groups[stable], Z_CRIT, ALPHA, rng, SETTINGS["n_perm"])
+        summaries = score_study(real, values, real, mode, groups, EDGES, DYAD_ALPHA, ALPHA, rng, N_PERM)
+        for name, summary in summaries.items():
             summary.update({"n_dyads": n_dyads, "seg_s": seg_s, "mode": mode, "edge": name, "rep": task["rep"],
                             "n_real_unstable": int((~stable).sum()), "n_pairs_unstable": n_unstable, "n_pairs": n_attempted})
             records.append(summary)
@@ -119,7 +120,7 @@ def main():
 
     # Figures: FPR by cell, z distribution
     fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
-    for ax, column, title in zip(axes, ["dyad_fpr", "study_fpr", "group_fpr"], ["dyad level (z > 1.96)", "study level (signed-rank)", "group contrast (permutation)"]):
+    for ax, column, title in zip(axes, ["dyad_fpr", "study_fpr", "group_fpr"], [f"dyad level (empirical p < {DYAD_ALPHA})", "study level (pairing permutation)", "group contrast (permutation)"]):
         for (mode, n), sub in summary.groupby(["mode", "n_dyads"]):
             sub = sub.groupby("seg_s")[column].mean()
             ax.plot(sub.index, sub.values, marker="o", ls="-" if mode == "pooled" else "--", label=f"{mode}, N={n}")

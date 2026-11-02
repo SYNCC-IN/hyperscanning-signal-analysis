@@ -55,7 +55,8 @@ FREQS = np.linspace(0.02, FS_ANALYSIS / 2 - 0.02, 100)
 EDGES = {"cg:IBI->child:IBI": (1, 0), "child:IBI->cg:IBI": (0, 1)}
 NODES, CHILD_NODES = [0, 1], [0]
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX, POWER_MIN = 0.10, 0.80       # [proposed]
 
 
@@ -74,7 +75,7 @@ def run_task(task):
     out = []
     for band_name in SETTINGS["bands"]:
         est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS_ANALYSIS, estimator=ESTIMATOR, band_hz=BANDS[band_name], box_cox_lambda=BOX_COX)
-        for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+        for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
             out.append(dict(r, truth=task["truth"], gap=task["gap"], band=band_name, rep=task["rep"]))
     return out
 

@@ -78,7 +78,8 @@ FS_RAW = 32.0
 B_EDGE = {"cg->child": (1, 0), "child->cg": (0, 1)}
 
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX, POWER_MIN = 0.10, 0.80       # [proposed]
 
 
@@ -166,7 +167,7 @@ def run_task_a(task):
     edges = {name: edge for name, (edge, _) in sc["report"].items()}
     out = []
     for method, est in methods_level1().items():
-        for r in run_study(designs, NODES, CHILD_NODES, est, edges, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+        for r in run_study(designs, NODES, CHILD_NODES, est, edges, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
             out.append(dict(r, part="A", scenario=task["scenario"], method=method, role=sc["report"][r["edge"]][1], rep=task["rep"]))
     return out
 
@@ -201,9 +202,9 @@ def run_task_b(task):
     out = []
     for method, est in methods_level1().items():
         # the 2-node problem: dDTF over both nodes
-        for r in run_study(env_designs, [0, 1], [0], est, B_EDGE, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+        for r in run_study(env_designs, [0, 1], [0], est, B_EDGE, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
             out.append(dict(r, part="B", scenario=f"{truth}, gap {gap:g} Hz", truth=truth, gap=gap, method=method, rep=task["rep"]))
-    for r in run_study(raw_designs, [0, 1], [0], callable_est(plv_matrix), B_EDGE, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+    for r in run_study(raw_designs, [0, 1], [0], callable_est(plv_matrix), B_EDGE, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, part="B", scenario=f"{truth}, gap {gap:g} Hz", truth=truth, gap=gap, method="PLV (raw signals)", rep=task["rep"]))
     return out
 

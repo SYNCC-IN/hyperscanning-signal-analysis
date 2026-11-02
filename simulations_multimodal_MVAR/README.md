@@ -69,9 +69,15 @@ the pass/fail status of the proposed acceptance criteria).
 ## Conventions
 
 Connectivity matrices are `[target, source]`. Node order in Level-1 designs: 0 child ROI, 1 caregiver ROI, 2 child HRV,
-3 caregiver HRV. Edge names read `source->target`. Study-level test: one-sided Wilcoxon signed-rank on delta (alpha = .05);
-dyad-level: z > 1.96; group-level: permutation test of the group difference of delta. A common model order (p = 4) is
-used for real and surrogate fits except in S08.
+3 caregiver HRV. Edge names read `source->target`. None of the tests assumes a symmetric or normal null:
+- study level: one-sided pairing permutation test (alpha = .05). Under H0 (the persons of a dyad are independent given the
+  film) the real pairing is exchangeable with re-pairings of children and caregivers, so the mean real value is compared
+  with the means of 1000 randomly re-paired studies (re-paired within groups for the within-group null);
+- dyad level: empirical one-sided p-value of the real value among its surrogate values, p < .05;
+- group level: permutation test (1000 label permutations) of the difference in group means of delta.
+
+Delta and robust z (`real - median(null)`, divided by the scaled MAD) are kept as descriptive readouts. A common model
+order (p = 4) is used for real and surrogate fits except in S08.
 
 ## Run time (4 cores, full mode, extrapolated from 2-replicate runs)
 

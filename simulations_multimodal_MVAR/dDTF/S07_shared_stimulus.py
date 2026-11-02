@@ -30,7 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import make_stimulus, sample_stimulus_gain, simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
-from src.sim_inference import (delta_and_z_all, edge_summary, real_matrices, run_study, surrogate_values, wilson_interval)
+from src.sim_inference import (real_matrices, run_study, score_study, surrogate_values, wilson_interval)
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
 ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
@@ -38,8 +38,8 @@ N_JOBS = 4
 SIM_ID = 7
 BASE_SEED = 20260107
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": 16, "gains": [0.0, 1.0], "sd_log": [0.5], "ratios": [1.0, 2.0], "seg_s": 60, "n_perm": 100},
-    "full": {"n_rep": 200, "n_dyads": 30, "gains": [0.0, 0.5, 1.0, 2.0], "sd_log": [0.0, 0.5], "ratios": [1.0, 2.0, 3.0], "seg_s": 60, "n_perm": 500},
+    "quick": {"n_rep": 6, "n_dyads": 16, "gains": [0.0, 1.0], "sd_log": [0.5], "ratios": [1.0, 2.0], "seg_s": 60},
+    "full": {"n_rep": 200, "n_dyads": 30, "gains": [0.0, 0.5, 1.0, 2.0], "sd_log": [0.0, 0.5], "ratios": [1.0, 2.0, 3.0], "seg_s": 60},
 }[MODE]
 if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
@@ -57,7 +57,8 @@ NODES, CHILD_NODES = [0, 1, 2, 3], [0, 2]
 EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1), "cg:HRV->child:HRV": (3, 2), "child:HRV->cg:HRV": (2, 3)}
 STIM_RADIUS, STIM_F0 = 0.7, 0.3
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX = 0.10                        # [proposed]
 
 
@@ -82,17 +83,19 @@ def run_task(task):
     designs, groups = simulate_study(rng, gain, sd_log, ratio, stimulus)
     out = []
     for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled", "exclude", "within_group"], groups, rng,
-                       STABILITY_MAX_ROOT, Z_CRIT, ALPHA, SETTINGS["n_perm"]):
+                       STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, null_source="same film", gain=gain, sd_log=sd_log, ratio=ratio, rep=task["rep"]))
     # (c) null from another film (different stimulus, same gains structure)
     other_stimulus = make_stimulus(rng, n_samples, FS, STIM_RADIUS, STIM_F0)
     other_designs, _ = simulate_study(rng, gain, sd_log, ratio, other_stimulus)
     real, roots, _ = real_matrices(designs, NODES, est)
+    other_real, other_roots, _ = real_matrices(other_designs, NODES, est)
     values, _, _ = surrogate_values(other_designs, NODES, CHILD_NODES, est, STABILITY_MAX_ROOT, rng, None)
-    stable = roots < STABILITY_MAX_ROOT
-    delta, z = delta_and_z_all(real, values, "pooled", groups)
-    for name, edge in EDGES.items():
-        s = edge_summary(delta[stable], z[stable], edge, groups[stable], Z_CRIT, ALPHA, rng, SETTINGS["n_perm"])
+    stable = (roots < STABILITY_MAX_ROOT) & (other_roots < STABILITY_MAX_ROOT)
+    # the other film's real dyads fill the diagonal of the pairing table (they are other-film pairs too)
+    summaries = score_study(real[stable], values[stable][:, stable], other_real[stable], "pooled", groups[stable], EDGES,
+                            DYAD_ALPHA, ALPHA, rng, N_PERM)
+    for name, s in summaries.items():
         out.append(dict(s, mode="pooled", edge=name, null_source="other film", gain=gain, sd_log=sd_log, ratio=ratio, rep=task["rep"]))
     return out
 
@@ -119,7 +122,7 @@ def main():
         axes[0].plot(one.gain, one.study_fpr, marker="o", label=f"{null_source}, {mode}")
         contrast = sub[sub.ratio == max(SETTINGS["ratios"])].sort_values("gain")
         axes[1].plot(contrast.gain, contrast.group_fpr, marker="o", label=f"{null_source}, {mode}")
-    for ax, title in zip(axes, ["one group (signed-rank)", f"group contrast, gain ratio {max(SETTINGS['ratios'])} (permutation)"]):
+    for ax, title in zip(axes, ["one group (pairing permutation)", f"group contrast, gain ratio {max(SETTINGS['ratios'])} (permutation)"]):
         ax.axhline(ALPHA, color="k", lw=0.6); ax.set_xlabel("stimulus gain"); ax.set_title(title)
     axes[0].set_ylabel("false-positive rate"); axes[0].legend(fontsize=6)
     fig.tight_layout(); fig.savefig(out_dir / "fig_stimulus_false_positives.png", dpi=150); plt.close(fig)

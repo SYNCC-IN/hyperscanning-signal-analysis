@@ -5,10 +5,17 @@ One *study* is one simulated set of dyads that saw the same stimulus. For a stud
 (child from dyad b, caregiver from dyad c) surrogate pair, (iii) turn the real values
 into signed delta and robust z against the surrogate null, and (iv) read out dyad-level
 and study-level decisions. All functions take their settings as arguments.
+
+Tests (none assumes a symmetric or normal null):
+- dyad level: empirical one-sided p-value of the real value among its surrogate values;
+- study level: pairing permutation test. Under H0 (the two persons of a dyad are independent
+  given the film) the real pairing of children and caregivers is exchangeable with any
+  re-pairing, so the mean real value is compared with the means of randomly re-paired studies;
+- group contrast: permutation of the group labels, difference of group means of delta.
 """
 
 import numpy as np
-from scipy.stats import median_abs_deviation, wilcoxon
+from scipy.stats import median_abs_deviation
 
 try:
     from .sim_estimation import edge_matrix
@@ -100,8 +107,8 @@ def surrogate_values(designs, nodes, child_nodes, est, stability_max_root, rng, 
     return values, len(pairs), n_unstable
 
 
-def null_stats(pair_values, dyad, mode, groups=None):
-    """Median and scaled MAD of the surrogate null that applies to one real dyad.
+def null_mask(pair_values, dyad, mode, groups=None):
+    """Which surrogate pairs form the null of one real dyad.
 
     Parameters
     ----------
@@ -118,10 +125,7 @@ def null_stats(pair_values, dyad, mode, groups=None):
 
     Returns
     -------
-    median, mad : np.ndarray, shape (k, k)
-        Median and median absolute deviation scaled by 1.4826 (`scale='normal'`).
-    n_pairs : int
-        Number of surrogate pairs used.
+    np.ndarray of bool, shape (n_dyads, n_dyads)
     """
     n_dyads = pair_values.shape[0]
     mask = np.isfinite(pair_values[:, :, 0, 0])
@@ -130,6 +134,29 @@ def null_stats(pair_values, dyad, mode, groups=None):
         mask = mask & (index[:, None] != dyad) & (index[None, :] != dyad)
     elif mode == "within_group":
         mask = mask & (groups[:, None] == groups[dyad]) & (groups[None, :] == groups[dyad])
+    return mask
+
+
+def null_stats(pair_values, dyad, mode, groups=None):
+    """Median and scaled MAD of the surrogate null that applies to one real dyad.
+
+    Parameters
+    ----------
+    pair_values : np.ndarray, shape (n_dyads, n_dyads, k, k)
+        From `surrogate_values`.
+    dyad : int
+    mode : {'pooled', 'exclude', 'within_group'}
+        See `null_mask`.
+    groups : np.ndarray, shape (n_dyads,), optional
+
+    Returns
+    -------
+    median, mad : np.ndarray, shape (k, k)
+        Median and median absolute deviation scaled by 1.4826 (`scale='normal'`).
+    n_pairs : int
+        Number of surrogate pairs used.
+    """
+    mask = null_mask(pair_values, dyad, mode, groups)
     values = pair_values[mask]
     return np.median(values, axis=0), median_abs_deviation(values, axis=0, scale="normal"), int(mask.sum())
 
@@ -161,22 +188,59 @@ def delta_and_z_all(real_matrices_, pair_values, mode, groups=None):
     return delta, z
 
 
-def signed_rank_pvalue(delta):
-    """One-sided Wilcoxon signed-rank p-value for 'median delta > 0'.
+def dyad_pvalues(real_matrices_, pair_values, mode, groups=None):
+    """Empirical one-sided p-value of every dyad's every edge against its surrogate null.
+
+    ``p = (1 + #{null >= real}) / (1 + n_null)``, with the null of `null_mask`.
 
     Parameters
     ----------
-    delta : np.ndarray, shape (n,)
+    real_matrices_ : np.ndarray, shape (n_dyads, k, k)
+    pair_values : np.ndarray, shape (n_dyads, n_dyads, k, k)
+    mode : {'pooled', 'exclude', 'within_group'}
+    groups : np.ndarray, optional
+
+    Returns
+    -------
+    np.ndarray, shape (n_dyads, k, k)
+    """
+    p = np.empty_like(real_matrices_)
+    for dyad in range(real_matrices_.shape[0]):
+        values = pair_values[null_mask(pair_values, dyad, mode, groups)]
+        p[dyad] = (1 + np.sum(values >= real_matrices_[dyad], axis=0)) / (1 + values.shape[0])
+    return p
+
+
+def pairing_permutation_pvalue(table, rng, n_perm, groups=None):
+    """One-sided pairing permutation p-value for 'the real pairing has a larger mean than re-pairings'.
+
+    Parameters
+    ----------
+    table : np.ndarray, shape (n_dyads, n_dyads)
+        Value of one edge for child of dyad b paired with caregiver of dyad c; the diagonal holds
+        the real dyads. NaN entries (unstable surrogate fits) are left out of the means.
+    rng : numpy.random.Generator
+    n_perm : int
+        Number of random re-pairings (caregivers permuted across children).
+    groups : np.ndarray, shape (n_dyads,), optional
+        If given, caregivers are permuted only within groups (the within-group null).
 
     Returns
     -------
     float
     """
-    return float(wilcoxon(delta, alternative="greater").pvalue)
+    n_dyads = table.shape[0]
+    observed = np.mean(np.diag(table))
+    perms = np.tile(np.arange(n_dyads), (n_perm, 1))
+    for label in (np.unique(groups) if groups is not None else [None]):
+        members = np.arange(n_dyads) if label is None else np.flatnonzero(groups == label)
+        perms[:, members] = rng.permuted(perms[:, members], axis=1)
+    permuted = np.nanmean(table[np.arange(n_dyads), perms], axis=1)
+    return float((1 + np.sum(permuted >= observed)) / (1 + n_perm))
 
 
 def permutation_pvalue(values_a, values_b, rng, n_perm):
-    """Two-sided permutation p-value for a difference in medians between two groups.
+    """Two-sided permutation p-value for a difference in means between two groups.
 
     Parameters
     ----------
@@ -188,52 +252,55 @@ def permutation_pvalue(values_a, values_b, rng, n_perm):
     -------
     float
     """
-    observed = abs(np.median(values_a) - np.median(values_b))
+    observed = abs(np.mean(values_a) - np.mean(values_b))
     pooled = np.concatenate([values_a, values_b])
-    n_a = values_a.size
-    count = 0
-    for _ in range(n_perm):
-        shuffled = rng.permutation(pooled)
-        count += abs(np.median(shuffled[:n_a]) - np.median(shuffled[n_a:])) >= observed
-    return float((count + 1) / (n_perm + 1))
+    in_a = rng.permuted(np.tile(np.arange(pooled.size) < values_a.size, (n_perm, 1)), axis=1)
+    diffs = np.abs((in_a * pooled).sum(1) / values_a.size - (~in_a * pooled).sum(1) / values_b.size)
+    return float((1 + np.sum(diffs >= observed)) / (1 + n_perm))
 
 
-def edge_summary(delta, z, edge, groups, z_crit, alpha, rng, n_perm):
-    """Dyad-level and study-level readouts for one directed edge.
+def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha, alpha, rng, n_perm):
+    """Dyad-level, study-level and group-level readouts for one directed edge.
 
     Parameters
     ----------
-    delta, z : np.ndarray, shape (n_dyads, k, k)
-        From `delta_and_z_all` (``[dyad, target, source]``).
+    table : np.ndarray, shape (n_dyads, n_dyads, k, k)
+        Pairing table of `score_study` (diagonal = real dyads).
+    delta, z, p_dyad : np.ndarray, shape (n_dyads, k, k)
+        From `delta_and_z_all` and `dyad_pvalues` (``[dyad, target, source]``).
     edge : tuple of int
         ``(source, target)`` positions in the analysed node order.
     groups : np.ndarray or None
         Group label (0/1) per dyad; None skips the group contrast.
-    z_crit : float
-        Dyad-level threshold on z.
+    within_group : bool
+        Re-pair only within groups in the study-level test.
+    dyad_alpha : float
+        Dyad-level significance level (one-sided).
     alpha : float
-        Study-level significance level.
+        Study-level and group-level significance level.
     rng : numpy.random.Generator
     n_perm : int
+        Number of permutations of the study-level and group-level tests.
 
     Returns
     -------
     dict
-        dyad_rate (share of dyads with z > z_crit), study_p / study_reject (signed-rank test of
-        delta > 0), group_p / group_reject (permutation test of a group difference in delta),
-        dir_dyad (share of dyads with delta_forward > delta_reverse), dir_study (1 if the median
-        forward-minus-reverse delta is positive), median_z, mean_z, sd_z, median_delta.
+        dyad_rate (share of dyads with p < dyad_alpha), study_p / study_reject (pairing permutation
+        test of a larger mean in real dyads), group_p / group_reject (permutation test of a group
+        difference in mean delta), dir_dyad (share of dyads with delta_forward > delta_reverse),
+        dir_study (1 if the median forward-minus-reverse delta is positive), median_z, mean_z, sd_z,
+        median_delta.
     """
     source, target = edge
     d_fwd, d_rev = delta[:, target, source], delta[:, source, target]
     z_edge = z[:, target, source]
     ok = np.isfinite(z_edge)
-    study_p = signed_rank_pvalue(d_fwd[ok])
+    study_p = pairing_permutation_pvalue(table[:, :, target, source], rng, n_perm, groups if within_group else None)
     group_p = np.nan
     if groups is not None:
         group_p = permutation_pvalue(d_fwd[ok & (groups == 0)], d_fwd[ok & (groups == 1)], rng, n_perm)
     return {
-        "dyad_rate": float(np.mean(z_edge[ok] > z_crit)),
+        "dyad_rate": float(np.mean(p_dyad[ok, target, source] < dyad_alpha)),
         "study_p": study_p, "study_reject": bool(study_p < alpha),
         "group_p": group_p, "group_reject": bool(group_p < alpha) if groups is not None else np.nan,
         "dir_dyad": float(np.mean(d_fwd[ok] > d_rev[ok])),
@@ -243,9 +310,45 @@ def edge_summary(delta, z, edge, groups, z_crit, alpha, rng, n_perm):
     }
 
 
+def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, alpha, rng, n_perm):
+    """Readouts of every edge of one study against one surrogate null.
+
+    Parameters
+    ----------
+    real : np.ndarray, shape (n_dyads, k, k)
+        Real matrices of the (stable) dyads.
+    pair_values : np.ndarray, shape (n_dyads, n_dyads, k, k)
+        Surrogate values of the same dyads (from `surrogate_values`).
+    diagonal : np.ndarray, shape (n_dyads, k, k)
+        Values placed on the diagonal of the pairing table: `real` for a same-film null, or the real
+        dyads of the film the surrogates come from (other-film null).
+    mode : {'pooled', 'exclude', 'within_group'}
+    groups : np.ndarray or None
+    edges : dict of {str: (int, int)}
+        ``name -> (source, target)``.
+    dyad_alpha, alpha : float
+    rng : numpy.random.Generator
+    n_perm : int
+
+    Returns
+    -------
+    dict of {str: dict}
+        `edge_summary` per edge name.
+    """
+    delta, z = delta_and_z_all(real, pair_values, mode, groups)
+    p_dyad = dyad_pvalues(real, pair_values, mode, groups)
+    table = pair_values.copy()
+    index = np.arange(real.shape[0])
+    table[index, index] = diagonal
+    return {name: edge_summary(table, delta, z, p_dyad, edge, groups, mode == "within_group", dyad_alpha, alpha, rng, n_perm)
+            for name, edge in edges.items()}
+
+
 def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stability_max_root,
-              z_crit, alpha, n_perm, max_pairs=None):
+              dyad_alpha, alpha, n_perm, max_pairs=None):
     """Analyse one simulated study end to end and return one record per (mode, edge).
+
+    Dyads whose real fit is unstable are dropped together with their surrogate pairs.
 
     Parameters
     ----------
@@ -264,8 +367,10 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     groups : np.ndarray or None
     rng : numpy.random.Generator
     stability_max_root : float
-    z_crit, alpha : float
+    dyad_alpha, alpha : float
+        Dyad-level and study/group-level significance levels.
     n_perm : int
+        Permutations of the study-level and group-level tests.
     max_pairs : int, optional
 
     Returns
@@ -277,23 +382,19 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     """
     real, roots, _ = real_matrices(designs, nodes, est)
     values, n_attempted, n_unstable = surrogate_values(designs, nodes, child_nodes, est, stability_max_root, rng, max_pairs)
-    stable = roots < stability_max_root
+    keep = roots < stability_max_root
+    real, values = real[keep], values[keep][:, keep]
+    kept_groups = None if groups is None else groups[keep]
     records = []
     for mode in modes:
-        delta, z = delta_and_z_all(real, values, mode, groups)
-        keep = stable
-        for name, edge in edges.items():
-            summary = edge_summary(delta[keep], z[keep], edge, None if groups is None else groups[keep],
-                                   z_crit, alpha, rng, n_perm)
-            source, target = edge
-            summary.update({
-                "mode": mode, "edge": name,
-                "real_mean": float(real[keep][:, target, source].mean()),
-                "null_median_mean": float(np.mean(real[keep][:, target, source] - delta[keep][:, target, source])),
-                "n_real_unstable": int((~stable).sum()), "n_pairs_attempted": n_attempted,
-                "n_pairs_unstable": n_unstable,
-            })
-            records.append(summary)
+        delta, _ = delta_and_z_all(real, values, mode, kept_groups)
+        summaries = score_study(real, values, real, mode, kept_groups, edges, dyad_alpha, alpha, rng, n_perm)
+        for name, (source, target) in edges.items():
+            records.append(dict(summaries[name], mode=mode, edge=name,
+                                real_mean=float(real[:, target, source].mean()),
+                                null_median_mean=float(np.mean(real[:, target, source] - delta[:, target, source])),
+                                n_real_unstable=int((~keep).sum()), n_pairs_attempted=n_attempted,
+                                n_pairs_unstable=n_unstable))
     return records
 
 

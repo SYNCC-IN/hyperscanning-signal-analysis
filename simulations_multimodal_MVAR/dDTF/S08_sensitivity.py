@@ -62,7 +62,8 @@ EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1), "cg:HRV->chil
 PLANTED_NAMES = ["cg:ROI->child:ROI", "cg:HRV->child:HRV", "cg:HRV->child:ROI"]
 REVERSE_NAMES = ["child:ROI->cg:ROI", "child:HRV->cg:HRV", "child:HRV->cg:ROI"]
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX, POWER_MIN, SHARE_OK = 0.10, 0.80, 0.80      # [proposed]
 
 
@@ -90,7 +91,7 @@ def run_task(task):
     designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], int(SETTINGS["seg_s"] * FS), FS, POLE_RADIUS_RANGES, F0_RANGES, edges, N_LAGS))
     out = []
     for name, overrides in active_variants().items():
-        for r in run_study(designs, NODES, CHILD_NODES, variant_est(overrides), EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+        for r in run_study(designs, NODES, CHILD_NODES, variant_est(overrides), EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
             out.append(dict(r, variant=name, scenario=task["scenario"], rep=task["rep"]))
     return out
 

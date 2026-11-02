@@ -3,7 +3,7 @@
 Design A (one group): every dyad has the planted edge cg:ROI->child:ROI with gain g (g = 0 gives the false-positive rate).
 Design B (group contrast): half of the dyads have gain g, the other half gain 0; the test is the permutation
 test on the group difference of delta, using the within-group null.
-Readouts: dyad-level detection rate (z > 1.96), study-level power (signed-rank, alpha = .05), group-contrast power,
+Readouts: dyad-level detection rate (empirical p < .05), study-level power (pairing permutation, alpha = .05), group-contrast power,
 direction accuracy (planted edge beats its reverse, dir_study), with Wilson intervals.
 
 Usage: python S04_power.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_04/
@@ -34,8 +34,8 @@ N_JOBS = 4
 SIM_ID = 4
 BASE_SEED = 20260104
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": [10], "seg_s": [60], "gains": [0.0, 0.3, 0.6], "n_perm": 100},
-    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "gains": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5], "n_perm": 500},
+    "quick": {"n_rep": 6, "n_dyads": [10], "seg_s": [60], "gains": [0.0, 0.3, 0.6]},
+    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "gains": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]},
 }[MODE]
 if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
@@ -54,7 +54,8 @@ NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
 TARGET_EDGE = "cg:ROI->child:ROI"
 EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1)}
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 POWER_TARGET = 0.80                   # conventional target [proposed]
 GAIN_FOR_POWER_CRITERION = 0.4        # [proposed]
 
@@ -69,7 +70,7 @@ def run_task(task):
     out = []
     # Design A: all dyads coupled
     designs = zscore_designs(simulate_dyads(rng, n, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS))
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, design="A", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
     # Design B: first half uncoupled, second half coupled
     half = n // 2
@@ -77,7 +78,7 @@ def run_task(task):
     d1 = simulate_dyads(rng, n - half, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS)
     designs = zscore_designs(np.concatenate([d0, d1]))
     groups = np.r_[np.zeros(half, int), np.ones(n - half, int)]
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["within_group"], groups, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, SETTINGS["n_perm"]):
+    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["within_group"], groups, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, design="B", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
     return out
 

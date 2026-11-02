@@ -7,7 +7,7 @@ Scenario 'common_driver': planted child:ROI -> cg:ROI and child:ROI -> cg:HRV. T
   (shared source only).
 Analyses compared: 4-node dDTF, 4-node ffDTF (no partial-coherence factor), 4-node DTF (normalized per frequency),
 and bivariate dDTF on the pair that contains the absent edge (the other channels are ignored).
-Readouts: study-level detection (signed-rank) of the absent edge (false positive) and of the planted edges (power).
+Readouts: study-level detection (pairing permutation test) of the absent edge (false positive) and of the planted edges (power).
 
 Usage: python S05_conditioning.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_05/
 """
@@ -54,7 +54,8 @@ F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
 N_LAGS = 3
 CHILD_NODES = [0, 2]
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX = 0.10                        # accepted false-positive rate of an absent edge [proposed]
 POWER_MIN = 0.80                      # [proposed]
 
@@ -87,7 +88,7 @@ def run_task(task):
         pos = {n: i for i, n in enumerate(nodes)}
         wanted = {"absent": sc["absent"]} | {f"planted {i}": e for i, e in enumerate(sc["planted"])}
         edge_dict = {k: (pos[s], pos[t]) for k, (s, t) in wanted.items() if s in pos and t in pos}
-        for r in run_study(designs, nodes, CHILD_NODES, est, edge_dict, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, 0):
+        for r in run_study(designs, nodes, CHILD_NODES, est, edge_dict, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
             role = "absent" if r["edge"] == "absent" else "planted"
             out.append(dict(r, analysis=label, role=role, edge_label=edge_name(wanted[r["edge"]]),
                             scenario=task["scenario"], gain=task["gain"], rep=task["rep"]))

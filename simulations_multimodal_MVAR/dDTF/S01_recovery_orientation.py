@@ -48,8 +48,8 @@ N_JOBS = 4
 SIM_ID = 1
 BASE_SEED = 20260101
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": 10, "n_perm": 100},
-    "full": {"n_rep": 200, "n_dyads": 25, "n_perm": 1000},
+    "quick": {"n_rep": 6, "n_dyads": 10},
+    "full": {"n_rep": 200, "n_dyads": 25},
 }[MODE]
 import os
 if os.environ.get("SIM_NREP"):            # optional override (timing / diagnostics)
@@ -87,7 +87,8 @@ F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
 N_LAGS = 3
 PLANTED = {"cg:ROI->child:ROI": (1, 0, 1, 0.4), "cg:HRV->child:HRV": (3, 2, 1, 0.3), "cg:HRV->child:ROI": (3, 0, 2, 0.3)}
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 CRITERION_MIN_RATE = 0.95            # planted edge must beat its reverse and the absent edges in >= 95% of studies [proposed]
 
 
@@ -144,7 +145,7 @@ def run_replication(seed):
     est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], N_SAMPLES, FS, POLE_RADIUS_RANGES, F0_RANGES, list(PLANTED.values()), N_LAGS))
     records = run_study(designs, [0, 1, 2, 3], CHILD_NODES, est, all_edges(), ["pooled"], None, rng,
-                        STABILITY_MAX_ROOT, Z_CRIT, ALPHA, SETTINGS["n_perm"])
+                        STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM)
     raw_est = dict(est, box_cox_lambda=-1)
     raw, roots, _ = real_matrices(designs, [0, 1, 2, 3], raw_est)
     return records, raw[roots < STABILITY_MAX_ROOT].mean(axis=0)
@@ -203,7 +204,7 @@ def main():
     for name, (s, t) in all_edges().items():
         rate[t, s] = detect[name]
     raw_plot = raw_mean.copy(); np.fill_diagonal(raw_plot, 0)
-    heatmap(axes[0], raw_plot, f"Mean raw {ESTIMATOR}, {n_rep} studies (Part B)"); heatmap(axes[1], rate, "Detection rate (signed-rank, alpha=.05)")
+    heatmap(axes[0], raw_plot, f"Mean raw {ESTIMATOR}, {n_rep} studies (Part B)"); heatmap(axes[1], rate, "Detection rate (pairing permutation, alpha=.05)")
     for (t, s), v in np.ndenumerate(rate):
         axes[1].text(s, t, f"{v:.2f}" if t != s else "", ha="center", va="center", color="w", fontsize=8)
     fig.tight_layout(); fig.savefig(out_dir / "fig_partB_recovery.png", dpi=150); plt.close(fig)

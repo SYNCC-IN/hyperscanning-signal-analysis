@@ -35,8 +35,8 @@ N_JOBS = 4
 SIM_ID = 6
 BASE_SEED = 20260106
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": 15, "radii": [0.5, 0.9], "seg_s": 60, "n_perm": 0},
-    "full": {"n_rep": 200, "n_dyads": 25, "radii": [0.5, 0.65, 0.8, 0.9, 0.95], "seg_s": 60, "n_perm": 0},
+    "quick": {"n_rep": 6, "n_dyads": 15, "radii": [0.5, 0.9], "seg_s": 60},
+    "full": {"n_rep": 200, "n_dyads": 25, "radii": [0.5, 0.65, 0.8, 0.9, 0.95], "seg_s": 60},
 }[MODE]
 if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
@@ -52,7 +52,8 @@ N_LAGS = 3
 NODES, CHILD_NODES = [0, 1, 2, 3], [0, 2]
 EDGES = {"smooth->rough (cg:HRV->child:ROI)": (3, 0), "rough->smooth (child:ROI->cg:HRV)": (0, 3)}
 STABILITY_MAX_ROOT = 1.0
-Z_CRIT, ALPHA = 1.96, 0.05
+DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
+N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX = 0.10                        # [proposed]
 
 
@@ -69,7 +70,7 @@ def run_task(task):
     raw = simulate_dyads(rng, SETTINGS["n_dyads"], int(SETTINGS["seg_s"] * FS), FS, radius_ranges(task["radius"]), F0_RANGES, [], N_LAGS)
     designs = zscore_designs(raw) if task["zscore"] else raw
     out = []
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, Z_CRIT, ALPHA, SETTINGS["n_perm"]):
+    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, radius=task["radius"], zscore=task["zscore"], rep=task["rep"]))
     return out
 
