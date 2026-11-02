@@ -13,6 +13,6 @@
   "criteria": {
     "4-node GPDC: absent-edge false-positive rate <= 0.1 (gain 0.4)": true,
     "4-node GPDC: planted-edge power >= 0.8 (gain 0.4)": false,
-    "bivariate GPDC produces more false positives than 4-node GPDC in every scenario": false
+    "bivariate GPDC produces more false positives than 4-node GPDC in every scenario": true
   }
 }

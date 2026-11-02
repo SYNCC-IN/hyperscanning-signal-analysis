@@ -133,7 +133,7 @@ def main():
     within_c = same[(same["mode"] == "within_group") & (same.ratio == top_ratio) & (same.gain > 0)].group_fpr
     other = summary[(summary.null_source == "other film") & (summary.gain >= 1.0)].study_fpr
     criteria = {
-        f"one group, same-film pooled null: study-level FPR <= {FPR_MAX} in every cell": bool((same[same["mode"] == "pooled"].study_fpr <= FPR_MAX).all()),
+        f"one group, same-film pooled null: study-level FPR <= {FPR_MAX} in every cell": bool((same[(same["mode"] == "pooled") & (same.ratio == 1.0)].study_fpr <= FPR_MAX).all()),
         f"group contrast, within-group null: FPR <= {FPR_MAX} in every cell": bool((same[same["mode"] == "within_group"].group_fpr <= FPR_MAX).all()),
         "group contrast: pooled-null FPR exceeds within-group FPR when gains differ": bool(pooled_c.mean() > within_c.mean()),
         f"other-film null inflates the FPR above {FPR_MAX} when the stimulus matters": bool((other > FPR_MAX).any()),

@@ -6,27 +6,27 @@ S_01,Part B planted edges beat absent edges in >= 95% of studies,True,True
 S_02,amplitude truth: envelope [est] stays >= 50% of zero-gap value across the sweep,True,True
 S_02,amplitude truth (informative): phase-path [est] drops >= 50% somewhere,True,False
 S_02,amplitude truth (informative): fixed-grid phase-path [est] drops >= 50% somewhere,True,False
-S_03,study-level FPR within band in every cell (mean over edges),False,False
-S_03,group-level FPR within band in every cell (mean over edges),False,False
+S_03,study-level FPR within band in every cell (mean over edges),True,True
+S_03,group-level FPR within band in every cell (mean over edges),True,True
 S_03,|median z| <= limit in every cell,True,True
 S_04,false-positive rate at gain 0 <= 0.10 in every cell (design A),True,True
 S_04,power >= 0.8 at gain 0.4 in the largest N and segment (design A),True,True
 S_04,power increases with gain at the largest N (design A),True,True
 S_05,4-node [est]: absent-edge false-positive rate <= 0.1 (gain 0.4),False,True
 S_05,4-node [est]: planted-edge power >= 0.8 (gain 0.4),False,False
-S_05,bivariate [est] produces more false positives than 4-node [est] in every scenario,False,False
+S_05,bivariate [est] produces more false positives than 4-node [est] in every scenario,False,True
 S_06,artefact present: uncorrected asymmetry > 0 at the smoothest level (z-scored),True,True
 S_06,"artefact grows with smoothness (smoothest > roughest, z-scored)",True,True
 S_06,|corrected asymmetry| < |uncorrected| at the smoothest level (z-scored),True,True
 S_06,false-positive rate after correction <= 0.1 in every cell (z-scored),True,True
-S_07,"one group, same-film pooled null: study-level FPR <= 0.1 in every cell",False,True
+S_07,"one group, same-film pooled null: study-level FPR <= 0.1 in every cell",True,True
 S_07,"group contrast, within-group null: FPR <= 0.1 in every cell",True,True
 S_07,group contrast: pooled-null FPR exceeds within-group FPR when gains differ,True,True
 S_07,other-film null inflates the FPR above 0.1 when the stimulus matters,True,True
 S_08,baseline: null FPR <= 0.1,True,True
 S_08,baseline: power of planted edges >= 0.8,True,True
 S_08,>= 80% of variants keep the null FPR <= 0.1,True,True
-S_09,no coupling: FPR <= 0.1 at every gap (mid band),True,True
+S_09,no coupling: FPR <= 0.1 at every gap (mid band),False,True
 S_09,pulling at gap 0: power >= 0.8 (mid band),True,True
 S_09,pulling: power at the largest gap is below power at gap 0,False,False
 S_09,amplitude-only link not seen by raw IBI (prediction): rate <= 0.1 at every gap,False,False

@@ -12,7 +12,6 @@
       120,
       300
     ],
-    "n_perm": 500,
     "max_pairs": null
   },
   "fpr_band": [
@@ -20,74 +19,9 @@
     0.07
   ],
   "criteria": {
-    "study-level FPR within band in every cell (mean over edges)": false,
-    "group-level FPR within band in every cell (mean over edges)": false,
+    "study-level FPR within band in every cell (mean over edges)": true,
+    "group-level FPR within band in every cell (mean over edges)": true,
     "|median z| <= limit in every cell": true
   },
-  "cells_outside_band_study": [
-    {
-      "n_dyads": 25,
-      "seg_s": 300,
-      "mode": "exclude",
-      "study_fpr": 0.074,
-      "group_fpr": 0.048,
-      "median_z": 0.001
-    },
-    {
-      "n_dyads": 25,
-      "seg_s": 300,
-      "mode": "pooled",
-      "study_fpr": 0.075,
-      "group_fpr": 0.046,
-      "median_z": 0.002
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 60,
-      "mode": "exclude",
-      "study_fpr": 0.074,
-      "group_fpr": 0.048,
-      "median_z": -0.003
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 60,
-      "mode": "pooled",
-      "study_fpr": 0.075,
-      "group_fpr": 0.045,
-      "median_z": -0.004
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 120,
-      "mode": "exclude",
-      "study_fpr": 0.082,
-      "group_fpr": 0.035,
-      "median_z": -0.009
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 120,
-      "mode": "pooled",
-      "study_fpr": 0.081,
-      "group_fpr": 0.032,
-      "median_z": -0.009
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 300,
-      "mode": "exclude",
-      "study_fpr": 0.078,
-      "group_fpr": 0.057,
-      "median_z": -0.009
-    },
-    {
-      "n_dyads": 50,
-      "seg_s": 300,
-      "mode": "pooled",
-      "study_fpr": 0.079,
-      "group_fpr": 0.054,
-      "median_z": -0.008
-    }
-  ]
+  "cells_outside_band_study": []
 }

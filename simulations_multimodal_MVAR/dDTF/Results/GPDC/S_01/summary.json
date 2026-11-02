@@ -2,8 +2,7 @@
   "mode": "full",
   "settings": {
     "n_rep": 200,
-    "n_dyads": 25,
-    "n_perm": 1000
+    "n_dyads": 25
   },
   "implementation_check_max_rel_error": {
     "dDTF": 1.787941999543568e-14,
@@ -54,7 +53,7 @@
       "detect_ci_high": 1.0,
       "beats_reverse_rate": 1.0,
       "beats_absent_rate": 1.0,
-      "reverse_detect_rate": 0.09,
+      "reverse_detect_rate": 0.135,
       "median_z": 2.7887,
       "dir_study_rate": 1.0
     },
@@ -66,7 +65,7 @@
       "detect_ci_high": 1.0,
       "beats_reverse_rate": 1.0,
       "beats_absent_rate": 1.0,
-      "reverse_detect_rate": 0.03,
+      "reverse_detect_rate": 0.05,
       "median_z": 2.5364,
       "dir_study_rate": 1.0
     }

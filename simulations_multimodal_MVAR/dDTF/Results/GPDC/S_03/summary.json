@@ -12,7 +12,6 @@
       120,
       300
     ],
-    "n_perm": 500,
     "max_pairs": null
   },
   "fpr_band": [
@@ -20,18 +19,9 @@
     0.07
   ],
   "criteria": {
-    "study-level FPR within band in every cell (mean over edges)": false,
-    "group-level FPR within band in every cell (mean over edges)": false,
+    "study-level FPR within band in every cell (mean over edges)": true,
+    "group-level FPR within band in every cell (mean over edges)": true,
     "|median z| <= limit in every cell": true
   },
-  "cells_outside_band_study": [
-    {
-      "n_dyads": 50,
-      "seg_s": 60,
-      "mode": "pooled",
-      "study_fpr": 0.029,
-      "group_fpr": 0.052,
-      "median_z": -0.012
-    }
-  ]
+  "cells_outside_band_study": []
 }

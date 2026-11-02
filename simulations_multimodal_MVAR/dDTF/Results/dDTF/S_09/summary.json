@@ -19,7 +19,7 @@
     "seg_s": 60
   },
   "criteria": {
-    "no coupling: FPR <= 0.1 at every gap (mid band)": true,
+    "no coupling: FPR <= 0.1 at every gap (mid band)": false,
     "pulling at gap 0: power >= 0.8 (mid band)": true,
     "pulling: power at the largest gap is below power at gap 0": false,
     "amplitude-only link not seen by raw IBI (prediction): rate <= 0.1 at every gap": false

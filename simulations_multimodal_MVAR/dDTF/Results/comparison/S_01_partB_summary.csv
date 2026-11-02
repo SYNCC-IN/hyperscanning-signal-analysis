@@ -1,4 +1,4 @@
 edge,gain,detect_rate dDTF,detect_rate GPDC,beats_reverse_rate dDTF,beats_reverse_rate GPDC,beats_absent_rate dDTF,beats_absent_rate GPDC,reverse_detect_rate dDTF,reverse_detect_rate GPDC,median_z dDTF,median_z GPDC
-cg:HRV->child:HRV,0.3,1.0,1.0,1.0,1.0,1.0,1.0,0.99,0.09,4.093003508954917,2.7887149754111675
-cg:HRV->child:ROI,0.3,1.0,1.0,1.0,1.0,1.0,1.0,0.985,0.03,3.662350840601235,2.536358518541913
-cg:ROI->child:ROI,0.4,1.0,1.0,1.0,1.0,1.0,1.0,0.995,0.005,3.029561808261417,2.628634880536456
+cg:HRV->child:HRV,0.3,1.0,1.0,1.0,1.0,1.0,1.0,0.98,0.135,4.093003508954901,2.7887149754111675
+cg:HRV->child:ROI,0.3,1.0,1.0,1.0,1.0,1.0,1.0,0.985,0.05,3.662350840601235,2.536358518541913
+cg:ROI->child:ROI,0.4,1.0,1.0,1.0,1.0,1.0,1.0,0.995,0.005,3.0295618082614215,2.628634880536456
