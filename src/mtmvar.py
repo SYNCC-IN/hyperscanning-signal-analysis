@@ -31,6 +31,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 
+try:
+    from .design import detrend_windows, window_geometry, window_stack
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from src.design import detrend_windows, window_geometry, window_stack
+
 
 def count_corr(x, ip, iwhat):
     """
@@ -185,7 +190,7 @@ def multivariate_spectra(signals, freqs, fs, max_model_order=20, optimal_model_o
         Multivariate spectra of shape (N_chan, N_chan, N_f).
     """
     if optimal_model_order is None:
-        _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, True)
+        _, _, optimal_model_order = mvar_criterion(signals, max_model_order, crit_type, False)
         print('Optimal model order for all channels: p = ', str(optimal_model_order))
     else:
         print('Using provided model order: p = ', str(optimal_model_order))
@@ -196,10 +201,72 @@ def multivariate_spectra(signals, freqs, fs, max_model_order=20, optimal_model_o
     n_freqs = freqs.shape[0]
     spectra = np.zeros((n_chan, n_chan, n_freqs), dtype=np.complex128)  # initialize the multivariate spectrum
     for fi in range(n_freqs):  # compute spectrum for all channels
-        spectra[:, :, fi] = transfer_function_matrix[:, :, fi].dot(variance.dot(transfer_function_matrix[:, :, fi].T))
+        spectra[:, :, fi] = transfer_function_matrix[:, :, fi].dot(variance.dot(transfer_function_matrix[:, :, fi].conj().T))
 
     return spectra
 
+def box_cox_transform(x, box_cox_lambda):
+    """Elementwise Box-Cox power transform, `(x**box_cox_lambda - 1) / box_cox_lambda`.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Non-negative array to transform (e.g. a Granger/DTF connectivity cube).
+    box_cox_lambda : float
+        Box-Cox exponent. `-1` is the sentinel for "no transform" (returns `x`
+        unchanged) -- deliberately distinct from the mathematically valid
+        `box_cox_lambda=1` (a pure shift, `x - 1`), so callers can request a
+        no-op pass-through explicitly and keep prior behaviour by default.
+        Any other value applies the transform as-is; `box_cox_lambda=0` is a
+        singularity of the formula (division by zero) and is not special-cased
+        to the log(x) limit -- left to surface as a real error.
+
+    Returns
+    -------
+    np.ndarray
+        `x` unchanged if `box_cox_lambda == -1`, else the transformed array.
+    """
+    if box_cox_lambda == -1:
+        return x
+    return (x ** box_cox_lambda - 1) / box_cox_lambda
+
+
+def dtf_estimator(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC', ESTIMATOR="dDTF", box_cox_lambda=-1):
+    """
+    Select and compute the directed transfer function (DTF) or its variants for the multivariate case.
+
+    Parameters:
+    signals : np.ndarray
+        Input signals of shape (N_chan, N_samp).
+    freqs : np.ndarray
+        Frequency vector.
+    fs : float
+        Sampling frequency.
+    max_model_order : int
+        Maximum model order.
+    optimal_model_order : int or None
+        Optimal model order. If None, it will be computed.
+    crit_type : str
+        Criterion type for model order selection.
+    ESTIMATOR : {'dDTF', 'ffDTF', 'GPDC'}, optional
+        Estimator type for the directed transfer function calculation (default is "dDTF").
+    box_cox_lambda : float, optional
+        Box-Cox exponent applied to the returned cube via `box_cox_transform`
+        (default -1 = no transform, preserving prior behaviour).
+
+    Returns:
+    np.ndarray
+        Multivariate DTF (or its variant) of shape (N_chan, N_chan, N_f).
+    """
+    if ESTIMATOR == "dDTF":
+        result = direct_dtf(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
+    elif ESTIMATOR == "ffDTF":
+        result = full_freq_dtf(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
+    elif ESTIMATOR == "GPDC":
+        result = gen_partial_directed_coherence(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
+    else:
+        raise ValueError(f"Unknown ESTIMATOR: {ESTIMATOR}")
+    return box_cox_transform(result, box_cox_lambda)
 
 def dtf_multivariate(signals, freqs, fs, max_model_order=20, optimal_model_order=None, crit_type='AIC', comment=None):
     """
@@ -469,7 +536,8 @@ def gen_partial_directed_coherence(signals, freqs, fs, max_model_order=20, optim
 
 
 # Plotting function for graph visualization
-def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear'):
+def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear', fig_size=(8, 8),
+              band_hz=None, fig=None, max_on_diag=None, max_off_diag=None):
     """
     Plot MVAR results using bar plots for diagonal (auto) and off-diagonal (cross) terms.
 
@@ -477,7 +545,10 @@ def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title,
     on_diag : np.ndarray
         Auto components (shape: N_chan x N_chan x len(freqs))
     off_diag : np.ndarray
-        Cross components (shape: N_chan x N_chan x len(freqs))
+        Cross components (shape: N_chan x N_chan x len(freqs)). Sign is
+        preserved (not forced non-negative) since a Box-Cox-transformed
+        connectivity cube (see `box_cox_transform`) can be negative and its
+        sign is meaningful.
     freqs : np.ndarray
         Frequency vector
     x_label : str
@@ -490,48 +561,74 @@ def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title,
         Main plot title
     scale : str
         'linear', 'sqrt', or 'log'
+    fig_size : tuple of int, optional
+        Figure size (width, height). Ignored when `fig` is given. Default is (8, 8).
+    band_hz : tuple of float, optional
+        `(low, high)` frequency band edges in Hz. When given, shaded as a
+        background span behind every subplot to mark a coupling band of
+        interest. Default None (no shading).
+    fig : matplotlib.figure.Figure or matplotlib.figure.SubFigure, optional
+        Draw the n_chan x n_chan grid into this figure (or subfigure) instead
+        of creating a new standalone figure -- lets a caller embed this plot
+        as one panel of a larger composite figure (e.g. via
+        `fig.subfigures(...)`). Default None creates a new figure via
+        `plt.subplots(..., figsize=fig_size)`, the original behaviour.
+    max_on_diag : float, optional
+        Maximum value for the on-diagonal plots. Default is None, which uses the actual max.
+    max_off_diag : float, optional
+        Maximum value for the off-diagonal plots. Default is None, which uses the actual max.
+        The lower bound is derived automatically: 0 unless `off_diag` has
+        negative entries, in which case it is their common minimum (shared
+        across all off-diagonal panels), and each panel's fill/shading is
+        drawn down to that lower bound rather than hard-coded to 0.
     """
+    # on_diag holds auto-spectra (always >= 0); off_diag may be a
+    # Box-Cox-transformed connectivity cube (see box_cox_transform) whose
+    # sign is meaningful, so it is not forced non-negative here -- doing so
+    # used to turn its troughs into apparent peaks.
     on_diag = np.abs(on_diag)
-    off_diag = np.abs(off_diag)
 
     if scale == 'sqrt':
         on_diag = np.sqrt(on_diag)
-        off_diag = np.sqrt(off_diag)
+        off_diag = np.sign(off_diag) * np.sqrt(np.abs(off_diag))
     elif scale == 'log':
         on_diag = np.log(on_diag + 1e-12)  # Avoid log(0)
-        off_diag = np.log(off_diag + 1e-12)
+        off_diag = np.sign(off_diag) * np.log(np.abs(off_diag) + 1e-12)
 
     n_chan = on_diag.shape[0]
+    diag_mask = np.eye(n_chan, dtype=bool)
 
-    # Zero-out irrelevant parts
-    for i in range(n_chan):
-        for j in range(n_chan):
-            if i != j:
-                on_diag[i, j, :] = 0
-            else:
-                off_diag[i, i, :] = 0
+    # Only the entries actually plotted in each panel type (diagonal for
+    # on_diag, off-diagonal for off_diag) feed the shared axis scale.
+    max_on_diag = np.max(on_diag[diag_mask]) if max_on_diag is None else max_on_diag
+    max_off_diag = np.max(off_diag[~diag_mask]) if max_off_diag is None else max_off_diag # we want to have the same scale for all plots, so we can set max_val to a fixed value if desired
+    # Lower bound stays 0 unless off_diag actually goes negative, so
+    # untransformed callers keep their original [0, max] axes.
+    min_off_diag = min(0.0, np.min(off_diag[~diag_mask]))
 
-    max_on_diag = np.max(on_diag)
-    max_off_diag = np.max(off_diag)
-
-    _, axs = plt.subplots(n_chan, n_chan, figsize=(8, 8),
-                          gridspec_kw={'wspace': 0, 'hspace': 0})
+    if fig is None:
+        _, axs = plt.subplots(n_chan, n_chan, figsize=fig_size,
+                              gridspec_kw={'wspace': 0, 'hspace': 0})
+    else:
+        axs = fig.subplots(n_chan, n_chan, gridspec_kw={'wspace': 0, 'hspace': 0})
 
     for i in range(n_chan):
         for j in range(n_chan):
             ax = axs[i, j] if n_chan > 1 else axs
+            if band_hz is not None:
+                ax.axvspan(band_hz[0], band_hz[1], color='orange', alpha=0.2, zorder=0, lw=0)
             if i != j:
                 y = np.real(off_diag[i, j, :])
-                ax.plot(freqs, off_diag[i, j, :])
-                ax.fill_between(freqs, y, 0, color='skyblue', alpha=0.4)
-                ax.set_ylim([0, max_off_diag])
-                ax.set_yticks([0, max_off_diag // 2])
+                ax.plot(freqs, y)
+                ax.fill_between(freqs, y, min_off_diag, color='skyblue', alpha=0.4)
+                ax.set_ylim([min_off_diag, max_off_diag])
+                #ax.set_yticks([0, max_off_diag // 2])
             else:
                 y = np.real(on_diag[i, j, :])
                 ax.plot(freqs, y, color=[0.7, 0.7, 0.7])
                 ax.fill_between(freqs, y, 0, color=[0.7, 0.7, 0.7], alpha=0.4)
                 ax.set_ylim([0, max_on_diag])
-                ax.set_yticks([0, max_on_diag // 2])
+                #ax.set_yticks([0, max_on_diag // 2])
 
             # Set xtick and ytick labels only on leftmost and bottom plots
             ax.tick_params(labelleft=(j == 0), labelbottom=(i == n_chan - 1))
@@ -546,6 +643,125 @@ def mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title,
     else:
         axs.set_title(top_title)
     # plt.tight_layout()
+
+
+def example_dyads_figure(dyad, r_smooth, r_rough, freqs, fs, p, win_len, step, detrend_type, estimator,
+                          channel_labels, channel_colors, output_dir, max_on_diag=None, max_off_diag=None):
+    """One example dyad's two channels (left) and its MVAR spectra/dDTF (right) at one r_smooth setting.
+
+    Runs `dyad` through `src.connectivity.Granger_estimator` and hands the
+    result to `mvar_plot` for the connectivity panel, so the panel shown is
+    exactly what that estimator path would compute for this dyad -- not a
+    separate illustrative re-implementation. Saves
+    `<output_dir>/example_dyads_r_smooth_<r_smooth>.png`.
+
+    Parameters
+    ----------
+    dyad : np.ndarray, shape (2, n_samples)
+        The two-channel dyad to plot.
+    r_smooth, r_rough : float
+        Smoothness settings for this dyad (used only for the title/filename,
+        `r_smooth - r_rough` = the contrast label).
+    freqs, fs, p, win_len, step, detrend_type, estimator :
+        Passed through to `Granger_estimator`.
+    channel_labels : tuple of str
+        Two labels, one per channel (row 0 top, row 1 bottom).
+    channel_colors : tuple
+        Two matplotlib colors, one per channel.
+    output_dir : pathlib.Path
+        Directory the figure is saved into.
+    max_on_diag, max_off_diag : float, optional
+        Fixed y-axis scales for `mvar_plot`'s diagonal/off-diagonal panels
+        (so two figures can share one scale); default None computes them
+        from this dyad's own spectra/dDTF and returns them.
+
+    Returns
+    -------
+    max_on_diag, max_off_diag : float
+        The scales actually used (either the ones passed in, or freshly
+        computed from this dyad).
+    """
+    try:
+        from .connectivity import Granger_estimator  # deferred: src.connectivity imports this module
+    except ImportError:  # pragma: no cover - fallback for direct script execution
+        from src.connectivity import Granger_estimator
+
+    dDTF, spectra = Granger_estimator(dyad, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda=-1)
+    max_on_diag = max_on_diag if max_on_diag is not None else np.max(spectra)
+    max_off_diag = max_off_diag if max_off_diag is not None else np.max(dDTF[~np.eye(dDTF.shape[0], dtype=bool)])
+    print(f"example_dyads_figure: r_smooth={r_smooth:.2f}, max_on_diag={max_on_diag:.5f}, max_off_diag={max_off_diag:.5f}")
+    fig = plt.figure(figsize=(11.5, 5.0))
+    subfig_signals, subfig_mvar = fig.subfigures(1, 2, width_ratios=[1.0, 1.2])
+
+    ax_top, ax_bot = subfig_signals.subplots(2, 1, sharex=True)
+    ax_top.plot(dyad[0], color=channel_colors[0], linewidth=0.8)
+    ax_top.set_ylabel(f"{channel_labels[0]}")
+    ax_bot.plot(dyad[1], color=channel_colors[1], linewidth=0.8)
+    ax_bot.set_ylabel(f"{channel_labels[1]}")
+    ax_bot.set_xlabel("time (samples)")
+    subfig_signals.suptitle(f"Simulated dyad at smoothness contrast={r_smooth - r_rough:+.2f})")
+
+    mvar_plot(spectra, dDTF, freqs, "from ", "to ", ["ch0", "ch1"],
+              "spectra (diag) / dDTF (off-diag)", fig=subfig_mvar, band_hz=None,
+              max_on_diag=max_on_diag, max_off_diag=max_off_diag)
+
+    fig_path = output_dir / f"example_dyads_r_smooth_{r_smooth:.2f}.png"
+    fig.savefig(fig_path, dpi=150)
+    plt.close(fig)
+    return max_on_diag, max_off_diag
+
+
+def plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs,
+                    variable_names, title, coupling_band_hz, scale="linear", ESTIMATOR="dDTF", box_cox_lambda=-1):
+    """Grid of pairwise Granger_estimator (off-diagonal) and auto power spectra (diagonal).
+
+    Windows and detrends `design` at a fixed geometry and fits one
+    windowed-ACF-averaged MVAR at a fixed model order, for a figure that's
+    directly comparable across cases regardless of each case's own
+    order/window selection. Delegates the actual figure to `mvar_plot`, which
+    creates its own figure rather than returning one -- `plt.gcf()` recovers
+    it for saving.
+
+    Parameters
+    ----------
+    design : np.ndarray, shape (k, n_samples)
+        Global (non-windowed) z-scored design matrix for one dyad x film.
+    model_order : int
+        Fixed MVAR model order.
+    win_len_s, overlap_frac : float
+        Fixed window geometry (seconds, fractional overlap).
+    target_sfreq : float
+        Sampling frequency in Hz.
+    detrend_type : {'linear', 'constant'}
+        Per-window detrend type.
+    freqs : np.ndarray
+        Frequency axis (Hz) for the granger_estimator/spectra grid.
+    variable_names : list of str
+        Channel labels, in `design`'s row order.
+    title : str
+        Figure title.
+    coupling_band_hz : tuple of float
+        `(low, high)` band edges in Hz, shaded behind every `mvar_plot` panel.
+    scale : {'linear', 'sqrt', 'log'}, optional
+        Amplitude scale passed to `mvar_plot`.
+    ESTIMATOR : {'dDTF', 'ffDTF', 'GPDC'}, optional
+        Estimator type for the directed transfer function calculation.
+    box_cox_lambda : float, optional
+        Box-Cox exponent applied to the granger_estimator cube (see
+        `box_cox_transform`). Default -1 = no transform.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    win_len, step = window_geometry(win_len_s, overlap_frac, target_sfreq)
+    assert win_len > model_order, f"win_len={win_len} must exceed model_order={model_order}"
+    stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
+    spectra = multivariate_spectra(stack, freqs, target_sfreq, optimal_model_order=model_order)
+    granger_estimator = dtf_estimator(stack, freqs, target_sfreq, optimal_model_order=model_order, ESTIMATOR=ESTIMATOR, box_cox_lambda=box_cox_lambda)
+    mvar_plot(spectra, granger_estimator, freqs, x_label="from ", y_label="to ", chan_names=variable_names,
+              top_title=title, scale=scale, fig_size=(9, 9), band_hz=coupling_band_hz)
+    return plt.gcf()
 
 
 def mvar_criterion(data, max_model_order, crit_type='AIC', plot=False):
@@ -1058,7 +1274,7 @@ def compute_and_plot_mvar(
               when ``optimal_model_order`` is fixed).
             - **p_opt** (*int*): Selected (or provided) model order.
     """
-    from .export import load_eeg_signals, plot_loaded_eeg_signals
+    from .multimodal_io import load_eeg_signals, plot_loaded_eeg_signals
 
     signals, chan_names, fs, time_s, event_duration_s = load_eeg_signals(
         ncdf_path,

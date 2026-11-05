@@ -24,6 +24,15 @@ RESULTS/
 DATA_film_cleaned/
 DATA_film_raw/
 
+# Exploratory spectral parameterization pipeline: regenerable outputs
+# (run scripts/01_compute_psd.py ... 07_movie_stability_check.py to rebuild)
+# Includes Exploratory_spectral_analysis/derived_data/, the pipeline's intermediate cache.
+Exploratory_spectral_analysis/
+
+# Interbrain ffDTF + HRV pipeline: regenerable outputs
+# (run scripts/stage00_synthetic_validation.py, stage01_*.py, ... to rebuild)
+Interbrain_ffDTF_analysis/
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
@@ -39,3 +48,5 @@ scripts/parse_event_order.py
 *.pdf
 images_to_pdf.py
 change_IBI_files_dir.ps1
+# Generated sync outputs (regenerable, large)
+scripts/outputs/

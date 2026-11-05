@@ -5,6 +5,10 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
 ## Table of contents
 
 - [Overview](#overview)
+- [Preferred export: by-task NCDF export](#preferred-export-by-task-ncdf-export)
+  - [Output folder structure (by-task export)](#output-folder-structure-by-task-export)
+- [Heidelberg by-task export](#heidelberg-by-task-export)
+- [Older per-event export (`write_dyad_to_uniwaw_imported` / `export_to_xarray`)](#older-per-event-export-write_dyad_to_uniwaw_imported--export_to_xarray)
 - [Output folder structure](#output-folder-structure)
 - [Naming conventions used in export](#naming-conventions-used-in-export)
   - [Dyad members](#dyad-members)
@@ -29,19 +33,163 @@ This document describes how to export processed multimodal data to NetCDF (`.nc`
   - [Batch processing notebook](#batch-processing-notebook)
 - [MVAR / DTF analysis helpers](#mvar--dtf-analysis-helpers)
   - [load_eeg_signals](#load_eeg_signals)
-  - [plot_loaded_eeg_signals](#plot_loaded_eeg_signals)
+  - [compute_and_plot_mvar](#compute_and_plot_mvar-srcmtmvarpy)
 - [MATLAB R2019b compatibility (channel names)](#matlab-r2019b-compatibility-channel-names)
 
 ---
 
 ## Overview
 
-The export/import workflow is implemented in [src/export.py](../src/export.py):
+The export/import workflow is split across three modules:
 
-- `write_dyad_to_uniwaw_imported(...)` exports a whole dyad into a folder tree with one `.nc` file per modality/member/event.
-- `export_to_xarray(...)` exports one selected modality/member/event to a single `xarray.DataArray`.
-- `load_xarray_from_netcdf(...)` loads a saved `.nc` file back into `xarray.DataArray`.
-- `get_export_metadata(...)` reads the structured metadata payload from `metadata_json`.
+- [src/export.py](../src/export.py):
+  - `export_passive_and_talk_data(...)` — **preferred, current export path.** Exports two
+    continuous per-task chunks (`passive_movies`, `talk`) per modality/member, instead of
+    one file per individual event. See [Preferred export: by-task NCDF export](#preferred-export-by-task-ncdf-export) below.
+  - `write_dyad_to_uniwaw_imported(...)` — older export path; exports a whole dyad into a
+    folder tree with one `.nc` file per modality/member/**event**.
+  - `export_to_xarray(...)` — older export path; exports one selected modality/member/event
+    to a single `xarray.DataArray`.
+- [src/netcdf_io.py](../src/netcdf_io.py):
+  - `load_xarray_from_netcdf(...)` loads a saved `.nc` file back into `xarray.DataArray`.
+  - `get_export_metadata(...)` reads the structured metadata payload from `metadata_json`.
+- [src/mne_bridge.py](../src/mne_bridge.py): converts exported EEG NetCDF to MNE and runs
+  quality checks — see [EEG quality checking](#eeg-quality-checking) below.
+
+## Preferred export: by-task NCDF export
+
+`export_passive_and_talk_data(...)` (in [src/export.py](../src/export.py)) is the
+current, preferred way to export a dyad. For each modality and member it loads the
+dyad via `dataloader.create_multimodal_data(...)` and writes **two chunks** instead of
+one file per event:
+
+- `passive_movies` — one continuous chunk covering the movie events (Peppa, Incredibles,
+  Brave) back to back.
+- `talk` — one continuous chunk covering every event whose name contains `"talk"`.
+
+```python
+from src.export import export_passive_and_talk_data
+from src.mne_bridge import check_exported_data_quality
+
+export_passive_and_talk_data(
+    dyad_id_list=["W_030"],
+    input_data_path="/path/to/UNIWAW_RAW_DATA",
+    export_path="/path/to/UNIWAW_EEG_exported_BY_TASKS",
+    load_eeg=True,
+    load_et=False,
+    lowcut=1.0,
+    highcut=64,          # wide, to leave room for ICLabel-based ICA cleaning downstream
+    eeg_filter_type="iir",
+    decimate_factor=8,
+    time_margin=20,
+    verbose=True,
+)
+
+# Optional: run an AutoReject-based quality report and save it alongside the export
+check_exported_data_quality(
+    dyad="W_030", modality="EEG", member="ch", task="passive_movies",
+    export_folder="/path/to/UNIWAW_EEG_exported_BY_TASKS",
+)
+```
+
+[scripts/export_dyade_to_ncdf_by_task_batch.py](../scripts/export_dyade_to_ncdf_by_task_batch.py)
+runs this for every dyad flagged `EEG Passive == 1.0` in the project's metadata file,
+plus a list of special-case dyads with known bad channels
+(`EEG_bad_channels=[...]`, interpolated before CAR referencing). See
+[scripts/export_dyade_to_ncdf_by_task_demo.py](../scripts/export_dyade_to_ncdf_by_task_demo.py)
+for a single-dyad walkthrough that also reloads and plots the exported chunk.
+
+### Output folder structure (by-task export)
+
+```
+UNIWAW_EEG_exported_BY_TASKS/<MODALITY>/<dyad_id>/<child|caregiver>/<dyad_id>_<MODALITY>_<ch|cg>_<passive_movies|talk>.nc
+```
+
+Example:
+
+- `UNIWAW_EEG_exported_BY_TASKS/EEG/W_030/child/W_030_EEG_ch_passive_movies.nc`
+
+This is the folder tree that `src/io_utils.py` and downstream analysis pipelines (e.g.
+[scripts/Exploratory_spectral_analysis_pipelnie/](../scripts/Exploratory_spectral_analysis_pipelnie/))
+expect — after ICA cleaning (see the project [README](../README.md#current-data-pipeline)),
+under `UNIWAW_EEG_exported_BY_TASKS/ICA_output/EEG_ICA_CLEANED/`.
+
+The `signals` DataArray structure, attributes, and metadata payload written by this
+function are the same as described below for the older per-event export, except that
+`event_name` is the task name (`passive_movies` or `talk`) and the metadata payload's
+`event_order`/embedded event structure lists the individual events making up that chunk
+(see `task_events_structure` in the attrs, used by `src/io_utils.py` to find movie
+boundaries within the `passive_movies` chunk).
+
+---
+
+## Heidelberg by-task export
+
+Heidelberg dyads (BrainVision EEG, 64 channels at 1000 Hz, plus two BI-Vital ECG recorders) are
+exported with `export_heidelberg_by_task(...)` ([src/export.py](../src/export.py)). The output
+folder layout, the `signals` DataArray, the attributes and the two chunks (`passive_movies`,
+`talk`) are the same as for Warsaw, so downstream pipelines read both sites alike; site code `H`,
+dyad ids such as `H_032`.
+
+```python
+from src.export import export_heidelberg_by_task
+
+export_heidelberg_by_task(
+    dyad_id_list=["H032"],
+    data_dir="/path/to/heidelberg_raw",       # H032.eeg/.vhdr/.vmrk, H032-adult.csv, H032-child.csv
+    export_path="/path/to/HEIDELBERG_EEG_exported_BY_TASKS",
+    lowcut=1.0, highcut=64, eeg_filter_type="iir",
+    target_fs_hz=128, time_margin=20,
+    EEG_bad_channels=None,                    # e.g. ['Fz_ch', 'T7_cg']
+)
+```
+
+Batch driver: [scripts/export_heidelberg_by_task_batch.py](../scripts/export_heidelberg_by_task_batch.py).
+The batch driver reads the full raw data from the EEG and EKG `RAW` folders, matches the files by dyad
+number (`synccin_LAKA36_46.vhdr/.eeg/.vmrk` + `LAKA36_46-child.csv` + `LAKA36_46-adult.csv` -> dyad 46, exported
+as `H_046`; `heidelberg_loader.discover_heidelberg_dyads`), exports every dyad with a complete file set,
+lists incomplete or ambiguous ones, continues after a failing dyad and writes `export_report.csv`.
+Methodology: [methodology_export_pipeline.md](methodology_export_pipeline.md#5-heidelberg-variant).
+
+What differs from Warsaw:
+
+| Item | Heidelberg |
+|---|---|
+| Import | `heidelberg_loader.create_multimodal_data_heidelberg` (returns a `MultimodalData`; `export_chunk_to_xarray` is reused) |
+| Sampling rate | EEG filtered at 1000 Hz, then `resample_poly(16/125)` to **128 Hz** (= Warsaw 1024/8) |
+| Events | from `Stimulus` markers: `S1/S10` Incredibles, `S2/S20` Brave, `S3/S30` Peppa, `S4/S40` Talk_1, `S5/S50` Talk_2 (start/end); a missing end marker falls back to the nominal 60 s / 180 s, a missing start marker skips the event |
+| EEG channels | 31 scalp channels + `VEOG` per member (32 in total; TP9, the recording reference, is not in the data) |
+| `common_channels_csv` / `common_channels_json` | the 19 channels shared with Warsaw (`Fp1 Fp2 F7 F3 Fz F4 F8 T7 C3 Cz C4 T8 P7 P3 Pz P4 P8 O1 O2`); **cross-site analyses must select these**, which also leaves out `VEOG` and the extra channels |
+| Reference | recorded vs TP9; at export re-referenced to the **common average of the 19 common channels** (`VEOG` excluded), so the reference equals Warsaw's. Bad channels are interpolated first. Stated in `metadata_json.references` |
+| `ECG` | BI-Vital ECG filtered like Warsaw (high-pass 0.5 Hz, notch 50 Hz) and low-passed at 51 Hz; **units are ADC counts** (attribute `units`), not μV |
+| `IBI`, `RMSSD` (ms) | from R-peaks detected on the native 200 Hz ECG (NeuroKit2, sub-sample refinement), NaN-aware (see below) |
+| Extra attributes | `site`, `sync_info_json` (clock fit per device), `hrv_info_json` (beats, rejected IBI, mean HR), `common_channels_*` (EEG) |
+
+IBI/RMSSD rules (`src/hrv_sync.py`): IBI is stamped at the later R-peak and cubic-spline interpolated
+(as in Warsaw) but never across a dropout longer than 3 s; IBI outside 300-1200 ms (child) /
+400-1500 ms (adult) is rejected; RMSSD uses a 30 s window aligned to the window start, needs at
+least 10 successive IBI differences and a first beat within 3 s of the window start. Dropouts stay NaN.
+
+BI-Vital CSVs of different firmware versions are read by column name (`load.read_bivital`): the 9-column
+format (`Heartrate`, `R-Peak`, `ECG-Quality`, accelerometer) and the older 12-column format (`RR-interval`, `ECG`,
+accelerometer, angular velocity, magnetic field) give the same table; columns absent in a file are NaN and only
+time, ECG and accelerometer are used.
+
+By-product of the import: `<export_path>/sync_QC/<dyad>/<dyad>_synced_signals.csv` (ECG and
+accelerometer of both devices on the EEG time grid at 200 Hz, including times before EEG start) plus
+`_sync_summary.csv`, `_<device>_channel_ranking.csv` and `_<device>_offset_tracks.csv`.
+QC drivers for the synchronisation: [scripts/heidelberg_sync.py](../scripts/heidelberg_sync.py).
+
+Reading the files: `EEG_ch_*`/`EEG_cg_*` loaders see `VEOG` as an extra channel; `mne_bridge`
+types it `eog` (excluded from AutoReject/ICA picks) and drops it in `load_eeg_signals`.
+
+---
+
+## Older per-event export (`write_dyad_to_uniwaw_imported` / `export_to_xarray`)
+
+The rest of this document describes the older, per-event export path. It is still
+used for the small local demo dataset under `data/UNIWAW_imported/` (see the
+project [README](../README.md)) but is not the current production pipeline.
 
 ## Output folder structure
 
@@ -160,7 +308,7 @@ Use `get_export_metadata(...)` to decode and access this payload safely.
 #### Example: reading `event_order`
 
 ```python
-from src.export import load_xarray_from_netcdf, get_export_metadata
+from src.netcdf_io import load_xarray_from_netcdf, get_export_metadata
 
 da = load_xarray_from_netcdf("data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc")
 meta = get_export_metadata(da)
@@ -170,7 +318,6 @@ print(event_order or "event order not available")
 # e.g. ['Peppa', 'Brave', 'Incredibles']
 ```
 
-## Export a full dyad to NCDF
 ## Metadata serialization format
 
 Exported DataArrays include:
@@ -181,7 +328,7 @@ Exported DataArrays include:
 Use helper API to access structured metadata safely:
 
 ```python
-from src.export import get_export_metadata
+from src.netcdf_io import get_export_metadata
 
 metadata = get_export_metadata(data_xr)
 print(metadata.keys())
@@ -253,7 +400,7 @@ data_xr = export_to_xarray(
 
 ```python
 from pathlib import Path
-from src.export import load_xarray_from_netcdf
+from src.netcdf_io import load_xarray_from_netcdf
 
 dyad_id = "W_030"
 selected_modality = "EEG"
@@ -275,7 +422,7 @@ print(data_xr)
 ### Minimal round-trip example
 
 ```python
-from src.export import load_xarray_from_netcdf, get_export_metadata
+from src.netcdf_io import load_xarray_from_netcdf, get_export_metadata
 
 path = "data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc"
 da = load_xarray_from_netcdf(path)
@@ -289,7 +436,8 @@ print("child_info" in meta)       # True for newly exported files
 
 ## EEG quality checking
 
-Three functions in [src/export.py](../src/export.py) implement an AutoReject-based quality pipeline for exported EEG NCDF files.
+The AutoReject-based quality pipeline for exported EEG NCDF files lives in
+[src/mne_bridge.py](../src/mne_bridge.py) (not `src/export.py`).
 
 ### Functions
 
@@ -298,19 +446,18 @@ Three functions in [src/export.py](../src/export.py) implement an AutoReject-bas
 Loads an EEG NCDF file and returns an `mne.io.RawArray` object.
 
 - Reads the `signals` DataArray and transposes it to `[channel, time]`.
-- Infers sampling frequency from `sampling_freq` attr; falls back to median time-delta when the attr is missing.
+- Infers sampling frequency from the `sampling_freq` attr; raises `ValueError` if it is missing.
 - Applies `scale_to_volts` (default `1e-6`, i.e. µV → V).
 - Attaches `montage` (default `"standard_1020"`); unknown channels are silently ignored.
 - `data_xr`: optional pre-loaded `xarray.DataArray`; when provided the file is not read from disk again (avoids duplicate I/O when the caller already holds the DataArray).
 
-#### `plot_eeg_with_rejected_segments(raw, rejected_windows, ..., time_offset, event_duration, time_margin_s)`
+This function is also used by `src/ica_preprocessing.py`'s `ICAPreprocessor` (see the
+project [README](../README.md#current-data-pipeline)) to load `passive_movies` NCDF
+files as MNE `Raw` objects for ICA fitting/classification/application.
 
-Renders stacked EEG traces with rejection and margin overlays.
-
-- Time axis is shifted by `time_offset` so that **0 s = event start**.
-- Light-gray shading marks pre-event and post-event margin regions.
-- Dashed vertical lines are drawn at t = 0 and t = `event_duration`.
-- Red semi-transparent bands mark rejected windows (passed in as a DataFrame with `start_s`/`end_s` columns).
+> **Note:** `plot_eeg_with_rejected_segments`, described in earlier versions of this
+> guide, is currently commented out in `src/plot_utils.py` and not callable. Use
+> `plot_xarray_signals` (`src/plot_utils.py`) for plotting exported signals instead.
 
 #### `run_eeg_autoreject_quality_report(ncdf_path, epoch_duration_s, n_interpolate, cv, random_state, n_jobs, montage, scale_to_volts, verbose)`
 
@@ -345,6 +492,16 @@ Returns a `dict` with keys:
 **Note on `in_margin`:** An epoch is flagged `in_margin=True` when it lies entirely before t = 0 or entirely after t = `event_duration`. Rejected windows shown in the plot and saved to the CSV report **exclude** margin epochs.
 
 **Dependency:** requires `mne` and `autoreject` (both listed in `requirements.txt`).
+
+#### `check_exported_data_quality(dyad, modality, member, task, export_folder)`
+
+Thin wrapper used by the by-task export pipeline (see
+[Preferred export: by-task NCDF export](#preferred-export-by-task-ncdf-export)) to gate
+each export: for `modality='EEG'` it loads `<export_folder>/EEG/<dyad>/<child|caregiver>/<dyad>_EEG_<member>_<task>.nc`,
+runs `run_eeg_autoreject_quality_report` on it, and saves the resulting figure to
+`<export_folder>/EEG/Quality_reports/<dyad>_EEG_<member>_<task>_quality_report.png`.
+Called once per member right after `export_passive_and_talk_data(...)` in
+[scripts/export_dyade_to_ncdf_by_task_batch.py](../scripts/export_dyade_to_ncdf_by_task_batch.py).
 
 ### Single-file interactive demo
 
@@ -395,15 +552,14 @@ Summary columns: `dyad`, `ncdf_file`, `status`, `rejected_epochs`, `top_bad_chan
 
 ## MVAR / DTF analysis helpers
 
-Three functions support loading exported EEG NCDF files directly into the MVAR
-pipeline, without going through MNE.  They live in `src/export.py` (loaders)
-and `src/mtmvar.py` (pipeline) and are designed to be reused across analysis
-notebooks.
+`load_eeg_signals` supports loading exported EEG NCDF files directly for the MVAR
+pipeline, without going through MNE. It lives in `src/mne_bridge.py`; the MVAR/DTF
+computation itself lives in `src/mtmvar.py`.
 
 ### `load_eeg_signals`
 
 ```python
-from src.export import load_eeg_signals
+from src.mne_bridge import load_eeg_signals
 
 signals, ch_names, fs, time_s, event_duration_s = load_eeg_signals(
     ncdf_path="data/UNIWAW_imported/EEG/W_030/child/W_030_EEG_ch_Peppa.nc",
@@ -432,26 +588,17 @@ Behaviour:
 | `time_s` | `np.ndarray (n_samp,)` | time axis (0 = event start) |
 | `event_duration_s` | `float` | event window length (s) |
 
-### `plot_loaded_eeg_signals`
-
-```python
-from src.export import load_eeg_signals, plot_loaded_eeg_signals
-
-signals, ch_names, fs, time_s, event_duration_s = load_eeg_signals(ncdf_path)
-fig, ax = plot_loaded_eeg_signals(
-    time_s=time_s,
-    signals=signals,
-    channel_names=ch_names,
-    event_duration_s=event_duration_s,
-    title="EEG preview — W_030 child Peppa",
-)
-```
-
-Produces a stacked-channel plot analogous to `plot_eeg_with_rejected_segments`:
-
-- Traces are normalised to unit variance before stacking.
-- Dashed vertical lines mark t = 0 (event start) and t = `event_duration_s`.
-- No rejection overlays (use `plot_eeg_with_rejected_segments` for those).
+> **Known issue:** `compute_and_plot_mvar` below (`src/mtmvar.py`) internally does
+> `from .multimodal_io import load_eeg_signals, plot_loaded_eeg_signals`, but
+> `src/multimodal_io.py` only defines `save_to_file`/`load_output_data` — neither
+> `load_eeg_signals` nor `plot_loaded_eeg_signals` exists there (`load_eeg_signals`
+> is in `src/mne_bridge.py`, as used above; `plot_loaded_eeg_signals` is not
+> currently implemented anywhere — see the note under
+> [EEG quality checking](#eeg-quality-checking)). As a result, calling
+> `compute_and_plot_mvar(...)` currently raises `ImportError`. Use `src.mtmvar`'s
+> lower-level functions (`mvar_criterion`, `full_freq_dtf`, `multivariate_spectra`,
+> `mvar_plot`) directly on a signal array loaded via `src.mne_bridge.load_eeg_signals`
+> until this is fixed.
 
 ### `compute_and_plot_mvar` (`src/mtmvar.py`)
 
