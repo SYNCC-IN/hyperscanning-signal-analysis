@@ -10,7 +10,7 @@ import xarray as xr
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from scipy.signal import butter, sosfiltfilt, hilbert, resample_poly
+from scipy.signal import butter, sosfiltfilt, hilbert, resample_poly, detrend
 from scipy.fft import next_fast_len
 
 from src.mtmvar import (
@@ -700,6 +700,7 @@ class EEG_IBI_FFDTF_Pipeline:
 
 
     def run_pipeline(self):
+        tab_p = []
         if not self.dyads_to_process:
             raise RuntimeError("No loaded dyads. Check the files.")
 
@@ -756,7 +757,7 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 # Standardization of multivariate signals (channel-wise z-score normalization)
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
-                # and preventing scale dominance between EEG-derived FAA and physiological IBI signals
+                # and preventing scale dominance between EEG-derived FAA and IBI signals
                 signals_to_ffDTF = (signals_to_ffDTF - np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
             
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
@@ -768,8 +769,18 @@ class EEG_IBI_FFDTF_Pipeline:
                     _, _, suggested_p = mvar_criterion(signals_to_ffDTF, 20, "AIC", plot=False)
                     print(f" [INFO] AIC suggested p={suggested_p} for global signal. Forcing fixed p={self.ar_p}.")
 
+                tab_p.append(suggested_p)
+
                 # Windowed ffDTF (dynamic connectivity)
                 windowed_signals = self._create_windows(signals_to_ffDTF, self.n_windows, self.window_size)
+
+                processed_windows = []
+                eps = 1e-8
+                for w in windowed_signals:
+                    # z-score normalization per channel within the window
+                    w_norm = (w - np.mean(w, axis=1, keepdims=True)) / (np.std(w, axis=1, keepdims=True) + eps)
+                    processed_windows.append(w_norm)
+                windowed_signals = processed_windows
 
                 ffdtf_results_windowed = []
                 spectra_windowed = []
@@ -852,3 +863,4 @@ class EEG_IBI_FFDTF_Pipeline:
                 del signals_to_ffDTF
                 del ffdtf_results_windowed
                 del spectra_windowed
+        return tab_p

@@ -21,7 +21,6 @@ Thumbs.db
 # Data files (if they are large or sensitive)
 # DATA/
 RESULTS/
-RESULTS_group_analysis
 DATA_film_cleaned/
 DATA_film_raw/
 
@@ -36,3 +35,7 @@ hyperscanning-signal-analysis.code-workspace
 
 # Local helper scripts
 scripts/parse_event_order.py
+
+*.pdf
+images_to_pdf.py
+change_IBI_files_dir.ps1
