@@ -1,4 +1,4 @@
-"""Side-by-side comparison of the dDTF and GPDC runs of S01-S11, for the manuscript.
+"""Side-by-side comparison of the dDTF and GPDC runs of S01-S12, for the manuscript.
 
 Both estimators analyse the same simulated studies (same seeds), so every row is a paired comparison.
 Reads Results/<estimator>/S_xx/ and writes Results/comparison/:
@@ -37,6 +37,7 @@ TABLES = {
     "S_10": [("summary.csv", ["option", "truth", "strength"], ["forward_rate", "reverse_rate", "dyad_rate"])],
     "S_11": [("summary_partA.csv", ["scenario", "role", "method"], ["study_rate", "dyad_rate", "direction_accuracy"]),
              ("summary_partB.csv", ["truth", "gap", "method"], ["study_rate", "dyad_rate"])],
+    "S_12": [("summary.csv", ["pair", "g_fwd", "g_rev"], ["forward_rate", "reverse_rate", "mutual_rate", "forward_dominant", "asymmetry_rate"])],
 }
 
 

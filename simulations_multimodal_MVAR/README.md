@@ -53,6 +53,7 @@ of both runs line up. The readouts shown per table are listed in `TABLES` at the
 | S09 | `S09_cardiac_carrier_mismatch.py` | Cardiac carrier-frequency gap, coupling-band width (RSA oscillators, option A) | 2 | `summary.csv`, `fig_gap_effect.png` |
 | S10 | `S10_coupling_type_visibility.py` | Which coupling types are visible with raw IBI (A) vs RSA amplitude (A′, B) | 2 | `summary.csv`, `fig_coupling_type_visibility.png` |
 | S11 | `S11_comparison.py` | dDTF vs pairwise Granger, lagged cross-correlation, coherence, PLV | 1–2 | `summary_partA/B.csv`, `fig_partA/B_methods.png` |
+| S12 | `S12_mutual_coupling.py` | Mutual (bidirectional) coupling: detection of both directions, false 'mutual' from one-way links, dominant direction and a sign-flip asymmetry test | 1 | `summary.csv`, `fig_mutual_coupling.png` |
 
 Every folder also has `raw_results*.csv` (one row per replicate × condition × edge) and `summary.json` (settings and
 the pass/fail status of the proposed acceptance criteria).
