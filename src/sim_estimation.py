@@ -14,12 +14,12 @@ import numpy as np
 
 try:
     from .design import detrend_windows, window_stack
-    from .mtmvar import ar_coeff, box_cox_transform, mvar_criterion
+    from .mtmvar import ar_coeff, box_cox_transform, mvar_criterion, ols_coeff
     from .mvar_diag import ar_root_stability
     from .surrogate import band_average_cube
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.design import detrend_windows, window_stack
-    from src.mtmvar import ar_coeff, box_cox_transform, mvar_criterion
+    from src.mtmvar import ar_coeff, box_cox_transform, mvar_criterion, ols_coeff
     from src.mvar_diag import ar_root_stability
     from src.surrogate import band_average_cube
 
@@ -54,7 +54,7 @@ def connectivity_cube(ar_coeffs, variance, freqs, fs, estimator):
     fs : float
     estimator : {'DTF', 'ffDTF', 'dDTF', 'GPDC'}
         'DTF' is normalized per frequency (Eq. 6 of the paper); 'ffDTF' and 'dDTF' follow
-        `src.mtmvar.full_freq_dtf` / `direct_dtf`; 'GPDC' follows `gen_partial_directed_coherence`.
+        `src.mtmvar.full_freq_dtf` / `direct_dtf` (dDTF = ffDTF * |partial coherence|^2); 'GPDC' follows `gen_partial_directed_coherence`.
 
     Returns
     -------
@@ -74,13 +74,14 @@ def connectivity_cube(ar_coeffs, variance, freqs, fs, estimator):
         if estimator == "dDTF":
             s_inv = np.conj(a_mat.transpose(0, 2, 1)) @ np.linalg.inv(variance) @ a_mat
             diag = np.real(np.einsum("fii->fi", s_inv))
-            cube = cube * (np.abs(s_inv) / np.sqrt(diag[:, :, None] * diag[:, None, :]))
+            # chi^2 = F^2 * |kappa|^2 (Korzeniewska et al., 2003; squared DTF convention)
+            cube = cube * (np.abs(s_inv) ** 2 / (diag[:, :, None] * diag[:, None, :]))
         elif estimator != "ffDTF":
             raise ValueError(f"Unknown estimator: {estimator}")
     return cube.transpose(1, 2, 0)
 
 
-def fit_mvar(design, p, win_len, step, detrend_type="linear"):
+def fit_mvar(design, p, win_len, step, detrend_type="linear", method="ols"):
     """Fit one MVAR model, from window-averaged autocovariance or from the whole segment.
 
     Parameters
@@ -93,6 +94,10 @@ def fit_mvar(design, p, win_len, step, detrend_type="linear"):
         Window length / step in samples. ``win_len=None`` fits the whole segment as one
         un-detrended window (the global fit).
     detrend_type : {'linear', 'constant'}, optional
+    method : {'ols', 'yw'}, optional
+        'ols' (default): least squares on the stacked windows (`src.mtmvar.ols_coeff`), no
+        edge-truncation bias. 'yw': Yule-Walker on the window-averaged biased autocovariance
+        (`src.mtmvar.ar_coeff`), the original choice; its coefficients are shrunk in short windows.
 
     Returns
     -------
@@ -102,10 +107,15 @@ def fit_mvar(design, p, win_len, step, detrend_type="linear"):
         Largest companion-matrix eigenvalue modulus (< 1 = stable).
     """
     if win_len is None:
-        coeffs, variance = ar_coeff(design, p)
+        stack = design
     else:
         stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
+    if method == "ols":
+        coeffs, variance = ols_coeff(stack, p)
+    elif method == "yw":
         coeffs, variance = ar_coeff(stack, p)
+    else:
+        raise ValueError(f"Unknown fitting method: {method}")
     _, max_abs_root, _ = ar_root_stability(coeffs)
     return coeffs, variance, max_abs_root
 
@@ -127,7 +137,7 @@ def select_order(design, p_max, crit_type):
 
 
 def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
-                box_cox_lambda=-1, detrend_type="linear", p_max=8, crit_type="SC"):
+                box_cox_lambda=-1, detrend_type="linear", p_max=8, crit_type="SC", method="ols"):
     """Band-averaged connectivity matrix ``[target, source]`` of one design.
 
     Parameters
@@ -149,6 +159,8 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
     p_max : int, optional
         Largest order considered when `p` is None.
     crit_type : {'AIC', 'HQ', 'SC'}, optional
+    method : {'ols', 'yw'}, optional
+        MVAR fitting method, see `fit_mvar`.
 
     Returns
     -------
@@ -159,6 +171,6 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
     if callable(estimator):               # competitor statistic (S11): estimator(design) -> matrix[target, source]
         return np.asarray(estimator(design), dtype=float), 0.0, 0
     p_used = p if p is not None else select_order(design, p_max, crit_type)
-    coeffs, variance, max_abs_root = fit_mvar(design, p_used, win_len, step, detrend_type)
+    coeffs, variance, max_abs_root = fit_mvar(design, p_used, win_len, step, detrend_type, method)
     cube = box_cox_transform(connectivity_cube(coeffs, variance, freqs, fs, estimator), box_cox_lambda)
     return band_average_cube(cube, freqs, band_hz), max_abs_root, p_used

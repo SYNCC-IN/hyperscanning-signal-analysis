@@ -128,6 +128,47 @@ def ar_coeff(data, model_order=5):
     return ar_coeffs, variance
 
 
+def ols_coeff(data, model_order=5):
+    """
+    Estimate MVAR coefficients by least squares on stacked windows (covariance method).
+
+    Each window (trial) contributes the regression rows x(t) ~ x(t-1), ..., x(t-p) for
+    t = p, ..., n-1 of that window only; lags never cross a window boundary. The rows of
+    all windows are stacked and solved as one least-squares problem. Unlike the
+    Yule-Walker solution of `ar_coeff`, which uses the biased (1/n) autocovariance and is
+    therefore shrunk towards zero in short windows, this estimate has no edge-truncation
+    bias; it is not guaranteed to be stable, so check the companion roots.
+
+    Parameters:
+    data : np.ndarray
+        Input time series with shape (channels, samples) or (channels, samples, trials).
+    model_order : int
+        Model order.
+
+    Returns:
+    ar_coeffs : np.ndarray
+        AR coefficients with shape (channels, channels, model_order), [target, source, lag-1]
+        (same convention as `ar_coeff`).
+    variance : np.ndarray
+        Residual covariance matrix with shape (channels, channels).
+    """
+    if data.ndim < 3:
+        data = data[:, :, None]
+    n_channels, n_samples, n_trials = data.shape
+    p = model_order
+    rows_x, rows_y = [], []
+    for trial in range(n_trials):
+        x = data[:, :, trial]
+        rows_y.append(x[:, p:].T)
+        rows_x.append(np.hstack([x[:, p - lag:n_samples - lag].T for lag in range(1, p + 1)]))
+    design_x, target_y = np.vstack(rows_x), np.vstack(rows_y)
+    coef, *_ = np.linalg.lstsq(design_x, target_y, rcond=None)          # (channels * p, channels)
+    residuals = target_y - design_x @ coef
+    variance = residuals.T @ residuals / residuals.shape[0]
+    ar_coeffs = np.stack([coef[lag * n_channels:(lag + 1) * n_channels].T for lag in range(p)], axis=2)
+    return ar_coeffs, variance
+
+
 def mvar_transfer_function(ar_coeffs, freqs, fs):
     """
     Calculate the transfer function H from multivariate autoregressive coefficients AR
@@ -413,8 +454,11 @@ def direct_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None,
     connections, filtering out spurious connections that may arise from common inputs
     or indirect pathways.
     
-    Mathematical formula:
-    dDTF_ij(f) = DTF_ij(f) × |partial_coherence_ij(f)|
+    Mathematical formula (Korzeniewska et al., 2003, in the squared convention used for
+    DTF throughout this module):
+    chi^2_ij(f) = F^2_ij(f) * |kappa_ij(f)|^2,
+    where F^2_ij(f) = |H_ij(f)|^2 / sum_f sum_m |H_im(f)|^2 is the full-frequency DTF
+    (`full_freq_dtf`) and kappa_ij(f) is the partial coherence.
     
     Reference:
     Korzeniewska, A., Mańczak, M., Kamiński, M., Blinowska, K. J., & Kasicki, S. (2003).
@@ -446,8 +490,8 @@ def direct_dtf(signals, freqs, fs, max_model_order=20, optimal_model_order=None,
     kappa = partial_coherence(spectra)
     # compute the ffDTF
     ff_dtf = full_freq_dtf(signals, freqs, fs, max_model_order, optimal_model_order, crit_type)
-    # Compute dDTF using the formula: dDTF = ff_DTF * |kappa|
-    d_dtf = ff_dtf * np.abs(kappa)
+    # Compute dDTF (squared convention): chi^2 = F^2 * |kappa|^2
+    d_dtf = ff_dtf * np.abs(kappa) ** 2
 
     return d_dtf
 

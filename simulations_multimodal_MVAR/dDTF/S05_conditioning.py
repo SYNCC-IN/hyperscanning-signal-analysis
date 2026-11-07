@@ -1,13 +1,22 @@
-"""S05 - Conditioning on the other channels: indirect paths and common drivers (Table 2, S5).
+"""S05 - Conditioning on the other channels: indirect paths and common drivers (Table S1, S5).
 
-Nodes: 0 child:ROI, 1 cg:ROI, 2 child:HRV, 3 cg:HRV.
-Scenario 'cascade': planted cg:ROI -> child:ROI -> child:HRV. The edge cg:ROI -> child:HRV is absent
-  (indirect only).
-Scenario 'common_driver': planted child:ROI -> cg:ROI and child:ROI -> cg:HRV. The edge cg:ROI -> cg:HRV is absent
-  (shared source only).
-Analyses compared: 4-node dDTF, 4-node ffDTF (no partial-coherence factor), 4-node DTF (normalized per frequency),
-and bivariate dDTF on the pair that contains the absent edge (the other channels are ignored).
-Readouts: study-level detection (pairing permutation test) of the absent edge (false positive) and of the planted edges (power).
+Nodes: 0 child:ROI, 1 cg:ROI, 2 child:HRV, 3 cg:HRV (and 4 = Z, an extra dyad-level driver, in 'omitted_driver').
+Scenario 'cascade': planted cg:ROI -> child:ROI (lag 1) -> child:HRV (lag 1). The cross-person edge cg:ROI -> child:HRV
+  is absent (indirect only).
+Scenario 'common_driver' (cross-person, observed driver): planted cg:ROI -> cg:HRV (lag 1) and cg:ROI -> child:ROI (lag 2).
+  The cross-person edge cg:HRV -> child:ROI is absent; both ends share the parent cg:ROI, and the heart receives the drive
+  earlier, so a bivariate analysis sees a false cg:HRV -> child:ROI edge. In pseudo-dyads the cg:ROI -> child:ROI link is
+  broken, so the artefact exists only in real dyads: the scenario tests conditioning under the pseudo-dyad null.
+Scenario 'omitted_driver': a dyad-level process Z (node 4; smooth, breathing-like, not stimulus-locked) drives cg:HRV (lag 1)
+  and child:HRV (lag 2). There is no edge between the partners. Analysed (a) without Z (4-node model: Z omitted) and
+  (b) with Z as a fifth node. In pseudo-dyads Z goes with the caregiver role. Expected: (a) a dyad-level heart-heart edge
+  is detected (a limitation, quantified), (b) it is removed by conditioning on Z.
+(The former 'common_driver' scenario with a within-person absent edge was removed: such edges cannot be tested against
+pseudo-dyads, so it said nothing about conditioning.)
+Analyses compared: 4-node <estimator>, 4-node ffDTF (no partial-coherence factor), 4-node DTF (normalized per frequency),
+bivariate <estimator> on the pair that contains the absent edge, and in 'omitted_driver' the 5-node <estimator> with Z.
+Readouts: study-level detection (pairing permutation test) of the absent edge(s) and of the planted cross-person edges.
+Criteria (fixed before the run of 2026-11-07): see `criteria` in main().
 
 Usage: python S05_conditioning.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_05/
 """
@@ -49,24 +58,35 @@ MODEL_ORDER = 4
 BAND_HZ = (0.15, 0.5)                 # [TBD: confirm]
 BOX_COX = 0.25
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
-POLE_RADIUS_RANGES = np.array([[0.45, 0.65], [0.45, 0.65], [0.80, 0.92], [0.80, 0.92]])
-F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
+POLE_RADIUS_RANGES = np.array([[0.45, 0.65], [0.45, 0.65], [0.80, 0.92], [0.80, 0.92], [0.80, 0.92]])   # node 4 = Z
+F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45], [0.25, 0.45]])
 N_LAGS = 3
-CHILD_NODES = [0, 2]
+CHILD_NODES = [0, 2]                  # node 4 (Z) is not a child node, so pseudo-dyads take it from the caregiver's dyad
 STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
 N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_MAX = 0.10                        # accepted false-positive rate of an absent edge [proposed]
 POWER_MIN = 0.80                      # [proposed]
+OMITTED_MIN = 0.50                    # omitted driver: the dyad-level edge is expected in >= 50% of studies [expected limitation]
 
-# scenario -> (planted edges as (source, target) , absent edge (source, target), bivariate node pair)
+# planted: (source, target, lag); absent: name -> (source, target); pair: nodes of the bivariate analysis;
+# power: planted cross-person edges whose detection is reported; k: number of simulated nodes
 SCENARIOS = {
-    "cascade": {"planted": [(1, 0), (0, 2)], "absent": (1, 2), "pair": [1, 2]},
-    "common_driver": {"planted": [(0, 1), (0, 3)], "absent": (1, 3), "pair": [1, 3]},
+    "cascade": {"k": 4, "planted": [(1, 0, 1), (0, 2, 1)], "absent": {"absent": (1, 2)}, "pair": [1, 2], "power": [(1, 0)]},
+    "common_driver": {"k": 4, "planted": [(1, 3, 1), (1, 0, 2)], "absent": {"absent": (3, 0)}, "pair": [3, 0], "power": [(1, 0)]},
+    "omitted_driver": {"k": 5, "planted": [(4, 3, 1), (4, 2, 2)], "absent": {"absent": (3, 2), "absent reverse": (2, 3)},
+                       "pair": [3, 2], "power": []},
 }
-NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
-ANALYSES = {f"4-node {ESTIMATOR}": (ESTIMATOR, None), "4-node ffDTF": ("ffDTF", None), "4-node DTF": ("DTF", None),
-            f"bivariate {ESTIMATOR}": (ESTIMATOR, "pair")}
+NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV", "Z"]
+
+
+def analyses(scenario):
+    """Analysis label -> (estimator, nodes) for a scenario."""
+    out = {f"4-node {ESTIMATOR}": (ESTIMATOR, [0, 1, 2, 3]), "4-node ffDTF": ("ffDTF", [0, 1, 2, 3]),
+           "4-node DTF": ("DTF", [0, 1, 2, 3]), f"bivariate {ESTIMATOR}": (ESTIMATOR, SCENARIOS[scenario]["pair"])}
+    if scenario == "omitted_driver":
+        out[f"5-node {ESTIMATOR} (Z included)"] = (ESTIMATOR, [0, 1, 2, 3, 4])
+    return out
 
 
 def edge_name(edge):
@@ -78,18 +98,19 @@ def run_task(task):
     """One replicated study for (scenario, gain): all analyses on the same simulated dyads."""
     rng = np.random.default_rng(task["seed"])
     sc = SCENARIOS[task["scenario"]]
+    k = sc["k"]
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    edges = [(s, t, 1, task["gain"]) for s, t in sc["planted"]]
-    designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], int(SETTINGS["seg_s"] * FS), FS, POLE_RADIUS_RANGES, F0_RANGES, edges, N_LAGS))
+    edges = [(s, t, lag, task["gain"]) for s, t, lag in sc["planted"]]
+    designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], int(SETTINGS["seg_s"] * FS), FS,
+                                            POLE_RADIUS_RANGES[:k], F0_RANGES[:k], edges, N_LAGS))
+    wanted = dict(sc["absent"]) | {f"planted {i}": e for i, e in enumerate(sc["power"])}
     out = []
-    for label, (estimator, subset) in ANALYSES.items():
+    for label, (estimator, nodes) in analyses(task["scenario"]).items():
         est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=estimator, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
-        nodes = [0, 1, 2, 3] if subset is None else sc["pair"]
         pos = {n: i for i, n in enumerate(nodes)}
-        wanted = {"absent": sc["absent"]} | {f"planted {i}": e for i, e in enumerate(sc["planted"])}
-        edge_dict = {k: (pos[s], pos[t]) for k, (s, t) in wanted.items() if s in pos and t in pos}
+        edge_dict = {name: (pos[s], pos[t]) for name, (s, t) in wanted.items() if s in pos and t in pos}
         for r in run_study(designs, nodes, CHILD_NODES, est, edge_dict, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
-            role = "absent" if r["edge"] == "absent" else "planted"
+            role = "planted" if r["edge"].startswith("planted") else r["edge"]
             out.append(dict(r, analysis=label, role=role, edge_label=edge_name(wanted[r["edge"]]),
                             scenario=task["scenario"], gain=task["gain"], rep=task["rep"]))
     return out
@@ -123,15 +144,24 @@ def main():
 
     ref_gain = 0.4 if 0.4 in SETTINGS["gains"] else SETTINGS["gains"][0]
     at = summary[summary.gain == ref_gain]
-    absent4 = at[(at.role == "absent") & (at.analysis == f"4-node {ESTIMATOR}")].study_rate
-    absent_biv = at[(at.role == "absent") & (at.analysis == f"bivariate {ESTIMATOR}")].study_rate
-    planted4 = at[(at.role == "planted") & (at.analysis == f"4-node {ESTIMATOR}")].study_rate
+
+    def rate(scenario, analysis, role):
+        sel = at[(at.scenario == scenario) & (at.analysis == analysis) & (at.role == role)].study_rate
+        return float(sel.iloc[0]) if len(sel) else float("nan")
+
+    four, biv, five = f"4-node {ESTIMATOR}", f"bivariate {ESTIMATOR}", f"5-node {ESTIMATOR} (Z included)"
     criteria = {
-        f"4-node {ESTIMATOR}: absent-edge false-positive rate <= {FPR_MAX} (gain {ref_gain})": bool((absent4 <= FPR_MAX).all()),
-        f"4-node {ESTIMATOR}: planted-edge power >= {POWER_MIN} (gain {ref_gain})": bool((planted4 >= POWER_MIN).all()),
-        f"bivariate {ESTIMATOR} produces more false positives than 4-node {ESTIMATOR} in every scenario":
-            bool((absent_biv.values > absent4.values).all()),
+        f"cascade: 4-node {ESTIMATOR} absent indirect edge <= {FPR_MAX} (gain {ref_gain})": rate("cascade", four, "absent") <= FPR_MAX,
+        f"cascade: 4-node {ESTIMATOR} planted cross-person edge power >= {POWER_MIN} (gain {ref_gain})": rate("cascade", four, "planted") >= POWER_MIN,
+        "cascade: bivariate has more false positives than the 4-node model": rate("cascade", biv, "absent") > rate("cascade", four, "absent"),
+        f"common driver: 4-node {ESTIMATOR} absent cross-person edge <= {FPR_MAX} (gain {ref_gain})": rate("common_driver", four, "absent") <= FPR_MAX,
+        "common driver: bivariate has more false positives than the 4-node model": rate("common_driver", biv, "absent") > rate("common_driver", four, "absent"),
+        f"omitted driver: 5-node {ESTIMATOR} with Z, both heart-heart edges <= {FPR_MAX} (gain {ref_gain})":
+            max(rate("omitted_driver", five, "absent"), rate("omitted_driver", five, "absent reverse")) <= FPR_MAX,
+        f"omitted driver: 4-node {ESTIMATOR} without Z detects the dyad-level edge >= {OMITTED_MIN} (expected limitation)":
+            rate("omitted_driver", four, "absent") >= OMITTED_MIN,
     }
+    criteria = {k_: bool(v) for k_, v in criteria.items()}
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)

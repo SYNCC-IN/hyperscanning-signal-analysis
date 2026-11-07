@@ -42,7 +42,7 @@ if os.environ.get("SIM_NREP"):
 
 FS = 2.5
 BASE = {"p": 4, "win_s": 10.0, "overlap": 0.5, "estimator": ESTIMATOR, "detrend_type": "linear", "box_cox_lambda": 0.25,
-        "band_hz": (0.15, 0.5), "p_max": 8, "crit_type": "SC"}
+        "band_hz": (0.15, 0.5), "p_max": 8, "crit_type": "SC", "method": "ols"}
 VARIANTS = {"baseline": {},
             **{f"estimator={e}": {"estimator": e} for e in ("DTF", "ffDTF", "dDTF", "GPDC") if e != ESTIMATOR},
             "order=2": {"p": 2}, "order=3": {"p": 3}, "order=6": {"p": 6}, "order=8": {"p": 8},
@@ -50,7 +50,8 @@ VARIANTS = {"baseline": {},
             "window=6s": {"win_s": 6.0}, "window=15s": {"win_s": 15.0}, "window=20s": {"win_s": 20.0},
             "overlap=0.25": {"overlap": 0.25}, "overlap=0.75": {"overlap": 0.75}, "window=whole segment": {"win_s": None},
             "detrend=constant": {"detrend_type": "constant"}, "box-cox=none": {"box_cox_lambda": -1.0},
-            "band=0.05-0.15": {"band_hz": (0.05, 0.15)}, "band=0.1-0.3": {"band_hz": (0.1, 0.3)}, "band=0.3-0.5": {"band_hz": (0.3, 0.5)}}
+            "band=0.05-0.15": {"band_hz": (0.05, 0.15)}, "band=0.1-0.3": {"band_hz": (0.1, 0.3)}, "band=0.3-0.5": {"band_hz": (0.3, 0.5)},
+            "fit=Yule-Walker": {"method": "yw"}, "fit=Yule-Walker, window=20s": {"method": "yw", "win_s": 20.0}}
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
 POLE_RADIUS_RANGES = np.array([[0.45, 0.65], [0.45, 0.65], [0.80, 0.92], [0.80, 0.92]])
 F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
@@ -75,7 +76,8 @@ def variant_est(overrides):
     else:
         win_len, step = window_geometry(cfg["win_s"], cfg["overlap"], FS)
     return dict(p=cfg["p"], win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=cfg["estimator"], band_hz=cfg["band_hz"],
-                box_cox_lambda=cfg["box_cox_lambda"], detrend_type=cfg["detrend_type"], p_max=cfg["p_max"], crit_type=cfg["crit_type"])
+                box_cox_lambda=cfg["box_cox_lambda"], detrend_type=cfg["detrend_type"], p_max=cfg["p_max"], crit_type=cfg["crit_type"],
+                method=cfg["method"])
 
 
 def active_variants():

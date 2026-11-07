@@ -32,4 +32,4 @@ def test_partial_coherence_matches_spectral_matrix_inverse():
     kappa = np.abs(s_inv) / np.sqrt(diag[:, :, None] * diag[:, None, :])
     ddtf = connectivity_cube(coupling, variance, FREQS, FS, "dDTF")
     ffdtf = connectivity_cube(coupling, variance, FREQS, FS, "ffDTF")
-    assert np.allclose(ddtf, ffdtf * kappa.transpose(1, 2, 0), atol=1e-12)
+    assert np.allclose(ddtf, ffdtf * (kappa ** 2).transpose(1, 2, 0), atol=1e-12)   # chi^2 = F^2 kappa^2

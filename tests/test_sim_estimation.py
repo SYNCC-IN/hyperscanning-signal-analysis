@@ -5,7 +5,9 @@ import pytest
 
 from src.connectivity import Granger_estimator
 from src.design import window_geometry
+from src.mtmvar import ols_coeff
 from src.sim_estimation import connectivity_cube, fit_mvar
+from src.sim_generators import build_coupling, simulate_var
 from src.surrogate import delta_and_z
 
 
@@ -20,7 +22,7 @@ def test_fast_cube_matches_granger_estimator(estimator):
     win_len, step = window_geometry(10.0, 0.5, fs)
     freqs = np.linspace(0.02, fs / 2 - 0.02, 100)
     reference, _ = Granger_estimator(design, freqs, fs, p, win_len, step, "linear", ESTIMATOR=estimator)
-    coeffs, variance, _ = fit_mvar(design, p, win_len, step)
+    coeffs, variance, _ = fit_mvar(design, p, win_len, step, method="yw")   # Granger_estimator fits Yule-Walker
     fast = connectivity_cube(coeffs, variance, freqs, fs, estimator)
     np.testing.assert_allclose(fast, reference, rtol=1e-8, atol=1e-12)
 
@@ -50,3 +52,37 @@ def test_delta_and_z_vectorized_matches_repository():
     reference = delta_and_z(1.0, off[:, 0, 1])
     assert np.isclose(med[0, 1], reference["null_median"])
     assert np.isclose(mad[0, 1], reference["null_std"])
+
+
+def test_ols_recovers_coefficients_on_long_data():
+    """On a long recording, the stacked-window OLS fit recovers the generating coefficients and orientation."""
+    rng = np.random.default_rng(4)
+    coupling = build_coupling([0.55, 0.86], [0.35, 0.35], 2.5, [(1, 0, 1, 0.4)], 3)
+    x = simulate_var(coupling, 40000, rng)
+    coeffs, variance = ols_coeff(x, 3)
+    np.testing.assert_allclose(coeffs, coupling, atol=0.03)
+    np.testing.assert_allclose(variance, np.eye(2), atol=0.05)
+
+
+def test_ols_does_not_use_lags_across_windows():
+    """Windows are separate realizations: swapping the order of windows leaves the OLS fit unchanged."""
+    rng = np.random.default_rng(5)
+    stack = rng.normal(size=(3, 25, 6))
+    a1, v1 = ols_coeff(stack, 2)
+    a2, v2 = ols_coeff(stack[:, :, ::-1], 2)
+    np.testing.assert_allclose(a1, a2, atol=1e-12)
+    np.testing.assert_allclose(v1, v2, atol=1e-12)
+
+
+def test_ols_less_shrunk_than_yule_walker_in_short_windows():
+    """In 25-sample windows, the Yule-Walker self-term of a smooth node is shrunk; OLS is not."""
+    rng = np.random.default_rng(6)
+    coupling = build_coupling([0.9], [0.3], 2.5, [], 2)
+    x = simulate_var(coupling, 25 * 400, rng)
+    windows = x.reshape(1, 400, 25).transpose(0, 2, 1)
+    windows = windows - windows.mean(axis=1, keepdims=True)
+    a_ols, _ = ols_coeff(windows, 2)
+    from src.mtmvar import ar_coeff
+    a_yw, _ = ar_coeff(windows, 2)
+    true = coupling[0, 0, 0]
+    assert abs(a_ols[0, 0, 0] - true) < abs(a_yw[0, 0, 0] - true)

@@ -62,7 +62,8 @@ F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
 N_LAGS = 3
 NODES, CHILD_NODES = [0, 1, 2, 3], [0, 2]
 EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1), "cg:HRV->child:HRV": (3, 2),
-         "child:HRV->cg:HRV": (2, 3), "cg:HRV->child:ROI": (3, 0), "child:HRV->cg:ROI": (2, 1)}
+         "child:HRV->cg:HRV": (2, 3), "cg:HRV->child:ROI": (3, 0), "child:HRV->cg:ROI": (2, 1),
+         "cg:ROI->child:HRV": (1, 2), "child:ROI->cg:HRV": (0, 3)}   # all 8 cross-person edges
 STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
 N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests

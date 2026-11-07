@@ -46,7 +46,7 @@ of both runs line up. The readouts shown per table are listed in `TABLES` at the
 | S02 | `S02_envelope_vs_phase.py` | Envelope vs phase estimators under amplitude and phase truths, centre-frequency gap | 2 | `summary.csv`, `fig_edge_values_by_truth.png`, `fig_direction_index.png` |
 | S03 | `S03_null_calibration.py` | Is the surrogate test calibrated under zero coupling (N, segment length, pooled vs exclude null)? | 1 | `summary.csv`, `fig_fpr_by_cell.png`, `fig_z_distribution.png` |
 | S04 | `S04_power.py` | Power and direction accuracy vs gain, N, segment length; one group and group contrast | 1 | `summary.csv`, `fig_power_curves.png` |
-| S05 | `S05_conditioning.py` | Indirect paths (cascade) and common drivers: 4-node dDTF/ffDTF/DTF vs bivariate | 1 | `summary.csv`, `fig_absent_edge_false_positives.png` |
+| S05 | `S05_conditioning.py` | Indirect paths (cascade), cross-person common driver, omitted dyad-level driver (with/without it as a 5th node): 4-node estimator/ffDTF/DTF vs bivariate | 1 | `summary.csv`, `fig_absent_edge_false_positives.png` |
 | S06 | `S06_smoothness.py` | Smooth channel as spurious source; effect of the surrogate correction and of z-scoring | 1 | `summary.csv`, `fig_smoothness_artefact.png` |
 | S07 | `S07_shared_stimulus.py` | Common stimulus, group-dependent gain, pooled vs within-group null, wrong-film null | 1 | `summary.csv`, `fig_stimulus_false_positives.png` |
 | S08 | `S08_sensitivity.py` | Estimator, order, window, overlap, detrending, Box-Cox, band (one factor at a time, paired) | 1 | `summary.csv`, `fig_variants.png` |
