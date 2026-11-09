@@ -4,6 +4,8 @@ fig_level1_signals.png  : one simulated Level-1 dyad (S1 setting): time courses 
 fig_level2_signals.png  : Level-2 signals: EEG-like oscillations and their PSD, envelopes and their PSD,
                           cardiac (RSA-type) series and its PSD.
 fig3_S1_recovery.png    : S1 Part B, planted structure and detection rates of dDTF and GPDC side by side.
+fig_gain_conversion.png/.svg : Supplementary figure: prediction improvement (and Granger causality F) vs. gain per
+                          edge type, and the median delta at 60 s vs. gain (from Results/comparison/gain_conversion.csv).
 
 Usage: python figures_manuscript.py OUT_DIR
 """
@@ -155,5 +157,34 @@ def fig3():
     fig.savefig(OUT / "fig3_S1_recovery.png", dpi=200, bbox_inches="tight"); plt.close(fig)
 
 
+def fig_gain_conversion():
+    table = pd.read_csv(RES / "comparison" / "gain_conversion.csv")
+    sweep = table[table.simulation == "single-edge sweep"]
+    s4 = table[table.simulation == "S4"].sort_values("gain")
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), gridspec_kw={"wspace": 0.45})
+    ax = axes[0]
+    for edge_type, col, ls in [("brain->brain", COL[0], "-"), ("heart->heart", COL[2], "-"), ("heart->brain", "#7a5195", "--")]:
+        sub = pd.concat([pd.DataFrame([dict(gain=0.0, PI_mean=0.0, PI_q05=0.0, PI_q95=0.0)]), sweep[sweep.edge_type == edge_type]])
+        ax.fill_between(sub.gain, 100 * sub.PI_q05, 100 * sub.PI_q95, color=col, alpha=0.2, lw=0)
+        ax.plot(sub.gain, 100 * sub.PI_mean, color=col, lw=1.5, ls=ls, label=edge_type.replace("->", " → "))
+    ax.set_xlabel("coupling gain"); ax.set_ylabel("prediction improvement PI (%)")
+    ax.set_title("A  Prediction improvement and Granger causality F", fontsize=9, loc="left")
+    ax.legend(fontsize=7, frameon=False)
+    sec = ax.secondary_yaxis("right", functions=(lambda pi: -np.log(1.0 - np.clip(pi, 0, 99.9) / 100.0),
+                                                 lambda f: 100.0 * (1.0 - np.exp(-f))))
+    sec.set_ylabel("Granger causality F")
+    ax = axes[1]
+    for est, col in [("dDTF", "0.3"), ("GPDC", "#b2182b")]:
+        ax.fill_between(s4.gain, s4[f"delta_{est}_q25"], s4[f"delta_{est}_q75"], color=col, alpha=0.2, lw=0)
+        ax.plot(s4.gain, s4[f"delta_{est}_med"], color=col, lw=1.5, marker="o", ms=3, label=est)
+    ax.axhline(0, color="k", lw=0.6)
+    ax.set_xlabel("coupling gain"); ax.set_ylabel("Δ (Box–Cox units)")
+    ax.set_title("B  Median Δ at 60 s (brain → brain, N = 25)", fontsize=9, loc="left")
+    ax.legend(fontsize=7, frameon=False)
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"fig_gain_conversion.{ext}", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
-    level1(); level2(); fig3(); print("ok")
+    level1(); level2(); fig3(); fig_gain_conversion(); print("ok")

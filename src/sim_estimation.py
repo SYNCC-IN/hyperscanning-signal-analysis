@@ -11,6 +11,7 @@ repository does not expose, is added for the estimator comparisons.
 """
 
 import numpy as np
+from scipy.linalg import solve_discrete_lyapunov
 
 try:
     from .design import detrend_windows, window_stack
@@ -174,3 +175,88 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
     coeffs, variance, max_abs_root = fit_mvar(design, p_used, win_len, step, detrend_type, method)
     cube = box_cox_transform(connectivity_cube(coeffs, variance, freqs, fs, estimator), box_cox_lambda)
     return band_average_cube(cube, freqs, band_hz), max_abs_root, p_used
+
+
+def var_autocovariance(coupling, noise_cov, n_lags):
+    """Exact autocovariances Gamma(0..n_lags) of a stable VAR process.
+
+    Parameters
+    ----------
+    coupling : np.ndarray, shape (k, k, p)
+        ``coupling[target, source, lag - 1]`` (the convention of `src.sim_generators.simulate_var`).
+    noise_cov : np.ndarray, shape (k, k)
+        Innovation covariance.
+    n_lags : int
+        Largest lag returned.
+
+    Returns
+    -------
+    np.ndarray, shape (n_lags + 1, k, k)
+        ``gamma[h] = E[x_t x_{t-h}^T]``.
+    """
+    assert ar_root_stability(coupling)[2], "coupling is unstable: the process has no stationary autocovariance"
+    k, _, p = coupling.shape
+    companion = np.zeros((k * p, k * p))
+    companion[:k] = np.concatenate([coupling[:, :, lag] for lag in range(p)], axis=1)
+    companion[k:, :-k] = np.eye(k * (p - 1))
+    q = np.zeros((k * p, k * p))
+    q[:k, :k] = noise_cov
+    state_cov = solve_discrete_lyapunov(companion, q)
+    gamma = np.zeros((max(n_lags, p - 1) + 1, k, k))
+    for h in range(p):
+        gamma[h] = state_cov[:k, h * k:(h + 1) * k]
+    for h in range(p, n_lags + 1):
+        gamma[h] = sum(coupling[:, :, r - 1] @ (gamma[h - r] if h >= r else gamma[r - h].T) for r in range(1, p + 1))
+    return gamma[:n_lags + 1]
+
+
+def prediction_error_cov(gamma, order):
+    """Innovation covariance of the order-`order` linear predictor of a process with autocovariances `gamma`.
+
+    Solves the multivariate Yule-Walker equations on exact autocovariances, so the result has no sampling error.
+
+    Parameters
+    ----------
+    gamma : np.ndarray, shape (>= order + 1, m, m)
+        ``gamma[h] = E[x_t x_{t-h}^T]``.
+    order : int
+
+    Returns
+    -------
+    np.ndarray, shape (m, m)
+    """
+    m = gamma.shape[1]
+    toeplitz = np.block([[gamma[j - i] if j >= i else gamma[i - j].T for j in range(order)] for i in range(order)])
+    rhs = np.concatenate([gamma[h] for h in range(1, order + 1)], axis=1)
+    coeffs = np.linalg.solve(toeplitz.T, rhs.T).T                    # [A_1 ... A_order], from A R = rhs
+    return gamma[0] - coeffs @ rhs.T
+
+
+def true_conditional_gc(coupling, source, target, noise_var=1.0, order=60):
+    """Population conditional Granger causality F of `source` -> `target` and the prediction improvement 1 - exp(-F).
+
+    F = ln(sigma2_restricted / sigma2_full) (Geweke, 1984): sigma2_full is the target's innovation variance in the
+    true model, sigma2_restricted its one-step prediction-error variance when the past of `source` is removed and
+    the past of all other nodes is kept. The restricted predictor is a VAR(`order`) on the exact autocovariances of
+    the remaining nodes (the restricted process is not a finite VAR; `order` controls the truncation).
+
+    Parameters
+    ----------
+    coupling : np.ndarray, shape (k, k, p)
+        True coefficient tensor ``coupling[target, source, lag - 1]``.
+    source, target : int
+    noise_var : float, optional
+        Innovation variance of every node (independent innovations).
+    order : int, optional
+
+    Returns
+    -------
+    gc : float
+    prediction_improvement : float
+    """
+    k = coupling.shape[0]
+    gamma = var_autocovariance(coupling, noise_var * np.eye(k), order)
+    keep = [node for node in range(k) if node != source]
+    restricted = prediction_error_cov(gamma[:, keep][:, :, keep], order)[keep.index(target), keep.index(target)]
+    gc = float(np.log(restricted / noise_var))
+    return gc, float(1.0 - np.exp(-gc))

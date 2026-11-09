@@ -6,7 +6,7 @@ import pytest
 from src.connectivity import Granger_estimator
 from src.design import window_geometry
 from src.mtmvar import ols_coeff
-from src.sim_estimation import connectivity_cube, fit_mvar
+from src.sim_estimation import connectivity_cube, fit_mvar, true_conditional_gc
 from src.sim_generators import build_coupling, simulate_var
 from src.surrogate import delta_and_z
 
@@ -86,3 +86,13 @@ def test_ols_less_shrunk_than_yule_walker_in_short_windows():
     a_yw, _ = ar_coeff(windows, 2)
     true = coupling[0, 0, 0]
     assert abs(a_ols[0, 0, 0] - true) < abs(a_yw[0, 0, 0] - true)
+
+
+def test_true_conditional_gc_of_a_white_source():
+    """x0_t = g x1_{t-1} + e0_t with white x1: without x1 the prediction-error variance is 1 + g^2, so F = ln(1 + g^2)."""
+    coupling = np.zeros((2, 2, 1))
+    coupling[0, 1, 0] = 0.5
+    gc, improvement = true_conditional_gc(coupling, 1, 0)
+    assert np.isclose(gc, np.log(1.25), atol=1e-10)
+    assert np.isclose(improvement, 0.2, atol=1e-10)
+    assert abs(true_conditional_gc(coupling, 0, 1)[0]) < 1e-10
