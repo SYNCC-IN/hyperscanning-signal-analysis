@@ -107,6 +107,38 @@ def surrogate_values(designs, nodes, child_nodes, est, stability_max_root, rng, 
     return values, len(pairs), n_unstable
 
 
+def cross_film_values(designs, other_designs, nodes, child_nodes, est, stability_max_root):
+    """Connectivity of mismatched-film pairings: child rows from one film's dyads, caregiver rows from another film's.
+
+    Laid out like `surrogate_values` (diagonal left as NaN), so it can replace the same-film table in
+    `score_study` to test what happens when the null comes from the wrong stimulus.
+
+    Parameters
+    ----------
+    designs : np.ndarray, shape (n_dyads, k_total, n_samples)
+        Dyads of the scored film (child rows are taken from these).
+    other_designs : np.ndarray, shape (n_dyads, k_total, n_samples)
+        Dyads of another film (caregiver rows are taken from these).
+    nodes, child_nodes : sequence of int
+    est : dict
+        Keyword arguments of `edge_matrix` (except `design`).
+    stability_max_root : float
+
+    Returns
+    -------
+    values : np.ndarray, shape (n_dyads, n_dyads, k, k)
+        ``values[b, c]`` = matrix of child b (scored film) with caregiver c (other film), b != c; unstable fits NaN.
+    """
+    n_dyads = designs.shape[0]
+    both = np.concatenate([designs, other_designs])
+    values = np.full((n_dyads, n_dyads, len(nodes), len(nodes)), np.nan)
+    for child_dyad, cg_dyad in surrogate_pairs(list(range(n_dyads))):
+        matrix, root, _ = edge_matrix(surrogate_design(both, child_dyad, n_dyads + cg_dyad, nodes, child_nodes), **est)
+        if root < stability_max_root:
+            values[child_dyad, cg_dyad] = matrix
+    return values
+
+
 def null_mask(pair_values, dyad, mode, groups=None):
     """Which surrogate pairs form the null of one real dyad.
 

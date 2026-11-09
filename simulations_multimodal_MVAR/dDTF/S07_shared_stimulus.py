@@ -7,7 +7,9 @@ Questions:
      induces synchrony in real and surrogate dyads alike? (modes: pooled, exclude)
  (b) group contrast: if the groups differ only in stimulus gain, does the pooled null produce a spurious group
      difference, and does the within-group null remove it? (modes: pooled, within_group)
- (c) film matching: what happens when the null is built from dyads that watched a different film?
+ (c) film matching: what happens when the null is built from the wrong film? Pseudo-dyads pair a child of the scored
+     film with a caregiver who watched another film (independent stimulus), so they lack the stimulus-locked synchrony
+     that real dyads share.
 Readouts: study-level and group-contrast false-positive rates of the cross-person edges.
 
 Usage: python S07_shared_stimulus.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_07/
@@ -30,7 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import make_stimulus, sample_stimulus_gain, simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
-from src.sim_inference import (real_matrices, run_study, score_study, surrogate_values, wilson_interval)
+from src.sim_inference import cross_film_values, real_matrices, run_study, score_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
 ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
@@ -85,15 +87,13 @@ def run_task(task):
     for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled", "exclude", "within_group"], groups, rng,
                        STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
         out.append(dict(r, null_source="same film", gain=gain, sd_log=sd_log, ratio=ratio, rep=task["rep"]))
-    # (c) null from another film (different stimulus, same gains structure)
+    # (c) null from the wrong film: child of this film x caregiver of another film (independent stimulus, same gain structure)
     other_stimulus = make_stimulus(rng, n_samples, FS, STIM_RADIUS, STIM_F0)
     other_designs, _ = simulate_study(rng, gain, sd_log, ratio, other_stimulus)
     real, roots, _ = real_matrices(designs, NODES, est)
-    other_real, other_roots, _ = real_matrices(other_designs, NODES, est)
-    values, _, _ = surrogate_values(other_designs, NODES, CHILD_NODES, est, STABILITY_MAX_ROOT, rng, None)
-    stable = (roots < STABILITY_MAX_ROOT) & (other_roots < STABILITY_MAX_ROOT)
-    # the other film's real dyads fill the diagonal of the pairing table (they are other-film pairs too)
-    summaries = score_study(real[stable], values[stable][:, stable], other_real[stable], "pooled", groups[stable], EDGES,
+    values = cross_film_values(designs, other_designs, NODES, CHILD_NODES, est, STABILITY_MAX_ROOT)
+    stable = roots < STABILITY_MAX_ROOT
+    summaries = score_study(real[stable], values[stable][:, stable], real[stable], "pooled", groups[stable], EDGES,
                             DYAD_ALPHA, ALPHA, rng, N_PERM)
     for name, s in summaries.items():
         out.append(dict(s, mode="pooled", edge=name, null_source="other film", gain=gain, sd_log=sd_log, ratio=ratio, rep=task["rep"]))
@@ -131,12 +131,12 @@ def main():
     top_ratio = max(SETTINGS["ratios"])
     pooled_c = same[(same["mode"] == "pooled") & (same.ratio == top_ratio) & (same.gain > 0)].group_fpr
     within_c = same[(same["mode"] == "within_group") & (same.ratio == top_ratio) & (same.gain > 0)].group_fpr
-    other = summary[(summary.null_source == "other film") & (summary.gain >= 1.0)].study_fpr
+    other = summary[(summary.null_source == "other film") & (summary.ratio == 1.0) & (summary.gain >= 1.0)].study_fpr
     criteria = {
         f"one group, same-film pooled null: study-level FPR <= {FPR_MAX} in every cell": bool((same[(same["mode"] == "pooled") & (same.ratio == 1.0)].study_fpr <= FPR_MAX).all()),
         f"group contrast, within-group null: FPR <= {FPR_MAX} in every cell": bool((same[same["mode"] == "within_group"].group_fpr <= FPR_MAX).all()),
         "group contrast: pooled-null FPR exceeds within-group FPR when gains differ": bool(pooled_c.mean() > within_c.mean()),
-        f"other-film null inflates the FPR above {FPR_MAX} when the stimulus matters": bool((other > FPR_MAX).any()),
+        f"one group, other-film null: study-level FPR above {FPR_MAX} when the stimulus matters (gain >= 1)": bool((other > FPR_MAX).any()),
     }
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
