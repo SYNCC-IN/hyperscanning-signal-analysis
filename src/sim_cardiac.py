@@ -15,7 +15,7 @@ All series are generated at `FS_HI` and brought to the 2.5 Hz analysis rate by `
 import numpy as np
 
 from src.envelopes import bandpass_filter, downsample, hrv_hf_envelope
-from src.sim_generators import add_observation_noise, lagged, ou_process, simulate_phase_oscillators
+from src.sim_generators import add_observation_noise, ar2_process, lagged, ou_process, simulate_phase_oscillators
 
 FS_HI = 10.0
 FS_ANALYSIS = 2.5
@@ -64,10 +64,14 @@ def simulate_cardiac_dyad(rng, f_child, f_cg, duration_s, link="none", strength=
     return add_observation_noise(clean, obs_snr, rng), clean[1], log_amp[1]
 
 
-def simulate_eeg_envelope(rng, n, source_oscillation, source_log_amp, link="none", strength=0.0, link_lag_s=0.4,
-                          fast_sd=0.5, fast_tau_s=1.0, slow_sd=0.5, slow_tau_s=15.0):
-    """Child's EEG envelope at `FS_HI`: exp of a fast + slow log-amplitude process, optionally driven by the caregiver's cardiac signal."""
-    log_env = ou_process(rng, n, FS_HI, fast_sd, fast_tau_s) + ou_process(rng, n, FS_HI, slow_sd, slow_tau_s)
+def simulate_eeg_envelope(rng, n, source_oscillation, source_log_amp, fast_radius, fast_f0_hz, link="none", strength=0.0,
+                          link_lag_s=0.4, fast_sd=0.5, slow_sd=0.5, slow_tau_s=15.0):
+    """Child's EEG envelope at `FS_HI`: exp of a log-amplitude process, optionally driven by the caregiver's cardiac signal.
+
+    The log-amplitude is a fast resonant AR(2) component (pole radius `fast_radius` and frequency `fast_f0_hz` at
+    `FS_HI`, standard deviation `fast_sd`) plus a slow Ornstein-Uhlenbeck component (`slow_sd`, `slow_tau_s`).
+    """
+    log_env = ar2_process(rng, n, FS_HI, fast_sd, fast_radius, fast_f0_hz) + ou_process(rng, n, FS_HI, slow_sd, slow_tau_s)
     lag = int(round(link_lag_s * FS_HI))
     if link == "linear":
         log_env = log_env + strength * lagged(standardize(source_oscillation), lag)

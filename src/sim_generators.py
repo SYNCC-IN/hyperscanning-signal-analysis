@@ -287,6 +287,32 @@ def ou_process(rng, n_samples, fs, sd, tau_s):
     return lfilter([1.0], [1.0, -decay], eps)[n_burn:]
 
 
+def ar2_process(rng, n_samples, fs, sd, pole_radius, f0_hz):
+    """Stationary resonant AR(2) process with a spectral peak near `f0_hz` and given standard deviation.
+
+    Parameters
+    ----------
+    rng : numpy.random.Generator
+    n_samples : int
+    fs : float
+    sd : float
+        Stationary standard deviation.
+    pole_radius : float
+        Pole modulus in (0, 1); closer to 1 = sharper peak.
+    f0_hz : float
+        Pole frequency (Hz).
+
+    Returns
+    -------
+    np.ndarray, shape (n_samples,)
+    """
+    a1, a2 = 2.0 * pole_radius * np.cos(2.0 * np.pi * f0_hz / fs), -pole_radius ** 2
+    variance = (1.0 - a2) / ((1.0 + a2) * ((1.0 - a2) ** 2 - a1 ** 2))       # of the process driven by unit-variance noise
+    n_burn = int(np.ceil(10.0 / (1.0 - pole_radius)))
+    eps = rng.normal(size=n_samples + n_burn) * sd / np.sqrt(variance)
+    return lfilter([1.0], [1.0, -a1, -a2], eps)[n_burn:]
+
+
 def simulate_phase_oscillators(rng, freq_hz, coupling_k, fs, n_samples, phase_noise_sd,
                                drift_sd_hz=0.0, drift_tau_s=20.0, amp_sd=0.0, amp_tau_s=10.0,
                                burn_in_s=20.0):

@@ -49,6 +49,8 @@ OPTIONS = {"A": {"seg_s": 60, "win_s": 10.0, "band": (0.15, 0.5)},
            "Aprime": {"seg_s": None, "win_s": 30.0, "band": (0.03, 0.15)},
            "B": {"seg_s": None, "win_s": 30.0, "band": (0.03, 0.15)}}          # seg None = long segment
 TRUTHS = ["none", "linear", "amp_to_eeg"]
+EEG_RADIUS_RANGE = (0.70 ** 0.2, 0.85 ** 0.2)     # fast EEG log-envelope AR(2) pole radius at 10 Hz (same decay as 0.70-0.85 at 2 Hz in S02/S11)
+EEG_F0_RANGE = (0.20, 0.40)                       # its pole frequency (Hz), drawn per child
 MODEL_ORDER = 4
 OVERLAP = 0.5
 BOX_COX = 0.25
@@ -69,7 +71,8 @@ def run_task(task):
     for _ in range(SETTINGS["n_dyads"]):
         f_cg = rng.uniform(0.20, 0.30)
         cardiac, clean_cg, log_amp_cg = simulate_cardiac_dyad(rng, f_cg + 0.15, f_cg, SETTINGS["seg_long_s"], "none", 0.0)
-        eeg = simulate_eeg_envelope(rng, cardiac.shape[1], clean_cg, log_amp_cg, truth, strength)
+        eeg = simulate_eeg_envelope(rng, cardiac.shape[1], clean_cg, log_amp_cg, rng.uniform(*EEG_RADIUS_RANGE),
+                                    rng.uniform(*EEG_F0_RANGE), truth, strength)
         raw.append((eeg, cardiac[1]))
     out = []
     for option, cfg in OPTIONS.items():

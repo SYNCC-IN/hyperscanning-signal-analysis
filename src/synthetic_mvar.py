@@ -15,8 +15,10 @@ from scipy.signal import resample_poly
 
 try:
     from .envelopes import filter_individual_band, hilbert_envelope
+    from .mvar_diag import ar_root_stability
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.envelopes import filter_individual_band, hilbert_envelope
+    from src.mvar_diag import ar_root_stability
 
 
 def edges_to_coupling(edges, n_nodes, max_lag=None):
@@ -84,10 +86,8 @@ def generate_var_process(coupling, snr, n_samples, burn_in=200, seed=None):
     around 0.3-0.6 with `snr` in the 2-10 range give a clearly recoverable
     but not trivially noiseless ground truth).
 
-    This function does not check `coupling` for stability before simulating;
-    an unstable spec (gains/eigenvalues too large) will surface as
-    non-finite output, caught by the assertion below rather than silently
-    propagated.
+    `coupling` must be stable: every eigenvalue of its companion matrix must
+    have modulus < 1 (asserted before simulating).
 
     Parameters
     ----------
@@ -112,6 +112,8 @@ def generate_var_process(coupling, snr, n_samples, burn_in=200, seed=None):
     """
     k, k2, max_lag = coupling.shape
     assert k == k2, "coupling must be square in its first two axes (k, k, max_lag)"
+    _, max_root, is_stable = ar_root_stability(coupling)
+    assert is_stable, f"coupling spec is unstable (largest companion root {max_root:.3f})"
 
     rng = np.random.default_rng(seed)
     noise_std = 1.0 / snr
@@ -250,6 +252,30 @@ def self_ar2_coeffs(pole_radius, f0_hz, fs):
     a1 = 2.0 * pole_radius * np.cos(2.0 * np.pi * f0_hz / fs)
     a2 = -pole_radius * pole_radius
     return a1, a2
+
+
+def resonant_self_edges(pole_radii, f0s_hz, fs):
+    """Edge list of AR(2) self-resonators, one per node, for `edges_to_coupling`.
+
+    Parameters
+    ----------
+    pole_radii : sequence of float
+        Pole modulus of each node, in (0, 1).
+    f0s_hz : sequence of float
+        Resonance centre frequency of each node (Hz).
+    fs : float
+        Sampling frequency (Hz) of the process the coefficients are used at.
+
+    Returns
+    -------
+    list of tuple
+        ``(i, i, 1, a1), (i, i, 2, a2)`` for every node `i`, from `self_ar2_coeffs`.
+    """
+    edges = []
+    for node, (pole_radius, f0_hz) in enumerate(zip(pole_radii, f0s_hz)):
+        a1, a2 = self_ar2_coeffs(pole_radius, f0_hz, fs)
+        edges += [(node, node, 1, a1), (node, node, 2, a2)]
+    return edges
 
 
 def two_channel_ar2_coupling(r_rough, r_smooth, f0_hz, fs, injected_gain=0.0):

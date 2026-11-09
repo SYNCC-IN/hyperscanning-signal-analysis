@@ -37,7 +37,7 @@ from src.envelopes import downsample, filter_individual_band, hilbert_envelope
 from src.sim_generators import make_stimulus, sample_stimulus_gain, simulate_dyads, simulate_phase_oscillators, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import run_study, wilson_interval
-from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators
+from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators, resonant_self_edges
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
 ESTIMATOR = sys.argv[2] if len(sys.argv) > 2 else "dDTF"          # connectivity estimator: "dDTF" or "GPDC"
@@ -72,7 +72,8 @@ A_SCENARIOS = {
 }
 # --- Part B (Level 2)
 CHILD_CF_HZ, BANDWIDTH_HZ, CARRIER_ORDER, FS_CARRIER = 8.0, 1.5, 4, 128.0
-OBS_SNR, SELF_GAIN, EDGE_GAIN = 4.0, 0.3, 0.5
+OBS_SNR, EDGE_GAIN, ENV_FS = 4.0, 0.5, 2.0
+ENV_RADIUS_RANGE, ENV_F0_RANGE = (0.70, 0.85), (0.20, 0.40)     # log-amplitude AR(2) self-resonance per person (radius at ENV_FS, Hz)
 PHASE_K_HZ, PHASE_NOISE_SD, DRIFT_SD_HZ, DRIFT_TAU_S, AMP_SD, AMP_TAU_S = 1.0, 1.0, 0.2, 10.0, 0.2, 10.0
 FS_RAW = 32.0
 B_EDGE = {"cg->child": (1, 0), "child->cg": (0, 1)}
@@ -176,9 +177,11 @@ def generate_b(truth, gap, n_samples, seed):
     """Two oscillators (child proxy, caregiver proxy) under the chosen ground truth (as S2)."""
     cg_cf = CHILD_CF_HZ + gap
     if truth in ("none", "amplitude"):
-        edges = [(0, 0, 1, SELF_GAIN), (1, 1, 1, SELF_GAIN)] + ([(1, 0, 1, EDGE_GAIN)] if truth == "amplitude" else [])
+        draw = np.random.default_rng([seed, 1])          # person-specific envelope resonance, separate stream from the signals
+        edges = resonant_self_edges(draw.uniform(*ENV_RADIUS_RANGE, 2), draw.uniform(*ENV_F0_RANGE, 2), ENV_FS)
+        edges += [(1, 0, 1, EDGE_GAIN)] if truth == "amplitude" else []
         return generate_coupled_oscillators([CHILD_CF_HZ, cg_cf], edges_to_coupling(edges, 2), OBS_SNR, FS_CARRIER, n_samples, BANDWIDTH_HZ,
-                                            envelope_fs=2.0, carrier_order=CARRIER_ORDER, seed=seed)
+                                            envelope_fs=ENV_FS, carrier_order=CARRIER_ORDER, seed=seed)
     rng = np.random.default_rng(seed)
     k_matrix = np.zeros((2, 2)); k_matrix[0, 1] = 2 * np.pi * PHASE_K_HZ
     signal, _, _ = simulate_phase_oscillators(rng, [CHILD_CF_HZ, cg_cf], k_matrix, FS_CARRIER, n_samples, PHASE_NOISE_SD, DRIFT_SD_HZ, DRIFT_TAU_S, AMP_SD, AMP_TAU_S)

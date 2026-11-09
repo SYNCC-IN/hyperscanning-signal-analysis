@@ -2,7 +2,8 @@
 
 Question: how does a centre-frequency (CF) gap between child and caregiver affect envelope-based and
 phase-based dDTF, under two different ground truths?
-  - 'amplitude': the coupling acts on the log-amplitude of the oscillators (the Stage 0 Part B generator).
+  - 'amplitude': the coupling acts on the log-amplitude of the oscillators (each person's log-amplitude is a resonant
+                 AR(2) process, pole radius 0.70-0.85 at 2 Hz and pole frequency 0.20-0.40 Hz drawn per person).
   - 'phase': directed phase coupling between noisy oscillators (Kuramoto-type), amplitudes independent.
   - 'none': no coupling (reference level of the edge value).
 Both estimators are applied to all truths. NOTE: with the amplitude truth the envelope estimator is aligned
@@ -40,7 +41,7 @@ from src.envelopes import downsample, filter_individual_band, hilbert_envelope
 from src.sim_estimation import edge_matrix
 from src.sim_generators import simulate_phase_oscillators
 from src.sim_harness import results_dir, run_parallel
-from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators
+from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators, resonant_self_edges
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -65,7 +66,9 @@ CARRIER_ORDER = 4
 FS_CARRIER = 128.0
 ENV_FS = 2.0
 OBS_SNR = 4.0
-SELF_GAIN, EDGE_GAIN = 0.3, 0.5    # amplitude truth (log-amplitude VAR), as in Stage 0
+EDGE_GAIN = 0.5                   # amplitude truth: caregiver -> child gain in the log-amplitude VAR
+ENV_RADIUS_RANGE = (0.70, 0.85)   # log-amplitude AR(2) self-resonance per person: pole radius at ENV_FS ...
+ENV_F0_RANGE = (0.20, 0.40)       # ... and pole frequency (Hz), drawn uniformly (truths 'none' and 'amplitude')
 PHASE_K_HZ = 1.0                   # phase truth: coupling strength K = 2*pi*PHASE_K_HZ (locks if |gap| < PHASE_K_HZ)
 PHASE_NOISE_SD = 1.0               # rad / sqrt(s)
 DRIFT_SD_HZ, DRIFT_TAU_S = 0.2, 10.0
@@ -80,7 +83,9 @@ ENVELOPE_PASS_FRACTION = 0.5       # amplitude truth: envelope estimate stays >=
 def generate(truth, cg_cf, n_samples, seed):
     """Two oscillators (child proxy, caregiver proxy) under the chosen ground truth."""
     if truth in ("none", "amplitude"):
-        edges = [(0, 0, 1, SELF_GAIN), (1, 1, 1, SELF_GAIN)] + ([(1, 0, 1, EDGE_GAIN)] if truth == "amplitude" else [])
+        draw = np.random.default_rng([seed, 1])          # person-specific envelope resonance, separate stream from the signals
+        edges = resonant_self_edges(draw.uniform(*ENV_RADIUS_RANGE, 2), draw.uniform(*ENV_F0_RANGE, 2), ENV_FS)
+        edges += [(1, 0, 1, EDGE_GAIN)] if truth == "amplitude" else []
         return generate_coupled_oscillators([CHILD_CF_HZ, cg_cf], edges_to_coupling(edges, 2), OBS_SNR, FS_CARRIER,
                                             n_samples, BANDWIDTH_HZ, envelope_fs=ENV_FS, carrier_order=CARRIER_ORDER, seed=seed)
     rng = np.random.default_rng(seed)
