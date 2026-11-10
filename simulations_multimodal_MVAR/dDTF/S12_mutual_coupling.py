@@ -67,6 +67,7 @@ STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05
 N_PERM = 1000
 FPR_MAX, POWER_MIN, DIRECTION_MIN = 0.10, 0.80, 0.95     # [proposed]
+CROSS_PERSON = [(1, 0), (0, 1), (3, 2), (2, 3), (3, 0), (2, 1), (1, 2), (0, 3)]   # max-T family: 8 cross-person edges
 
 
 def sign_flip_pvalue(d, rng, n_perm):
@@ -91,11 +92,15 @@ def run_task(task):
     keep = roots < STABILITY_MAX_ROOT
     real, values = real[keep], values[keep][:, keep]
     edge_dict = {"forward": (cg, child), "reverse": (child, cg)}
-    summaries = score_study(real, values, real, "pooled", None, edge_dict, DYAD_ALPHA, ALPHA, rng, N_PERM)
+    family = {name: e for e in CROSS_PERSON for name in [next((n for n, v in edge_dict.items() if v == e), str(e))]}
+    summaries = score_study(real, values, real, "pooled", None, edge_dict, DYAD_ALPHA, ALPHA, rng, N_PERM, family=family,
+                            multiplicity="maxT", multiplicity_rng=np.random.default_rng([task["seed"], 1]))
     delta, _ = delta_and_z_all(real, values, "pooled", None)
     d = delta[:, child, cg] - delta[:, cg, child]                  # [target, source]: forward minus reverse
     return {"pair": task["pair"], "g_fwd": task["g_fwd"], "g_rev": task["g_rev"], "rep": task["rep"],
             "fwd_reject": summaries["forward"]["study_reject"], "rev_reject": summaries["reverse"]["study_reject"],
+            "fwd_reject_maxT": summaries["forward"]["study_reject_adj_maxT"], "rev_reject_maxT": summaries["reverse"]["study_reject_adj_maxT"],
+            "other_reject_maxT": any(summaries[n]["study_reject_adj_maxT"] for n in family if n not in edge_dict),
             "fwd_dyad_rate": summaries["forward"]["dyad_rate"], "rev_dyad_rate": summaries["reverse"]["dyad_rate"],
             "dir_positive": float(np.nanmedian(d) > 0), "asym_p": sign_flip_pvalue(d, rng, N_PERM),
             "mean_d": float(np.nanmean(d)), "n_real_unstable": int((~keep).sum()), "n_pairs_unstable": n_unstable}
@@ -110,13 +115,16 @@ def main():
              for i, (pair, gf, gr) in enumerate(cells) for r in range(SETTINGS["n_rep"])]
     df = pd.DataFrame(run_parallel(run_task, tasks, N_JOBS))
     df["mutual"] = df.fwd_reject & df.rev_reject
+    df["mutual_maxT"] = df.fwd_reject_maxT & df.rev_reject_maxT
     df["asym_reject"] = df.asym_p < ALPHA
     df.to_csv(out_dir / "raw_results.csv", index=False)
 
     summary = df.groupby(["pair", "g_fwd", "g_rev"]).agg(
         forward_rate=("fwd_reject", "mean"), reverse_rate=("rev_reject", "mean"), mutual_rate=("mutual", "mean"),
         forward_dominant=("dir_positive", "mean"), asymmetry_rate=("asym_reject", "mean"), mean_d=("mean_d", "mean"),
-        fwd_dyad_rate=("fwd_dyad_rate", "mean"), rev_dyad_rate=("rev_dyad_rate", "mean"), n_rep=("rep", "size")).reset_index()
+        fwd_dyad_rate=("fwd_dyad_rate", "mean"), rev_dyad_rate=("rev_dyad_rate", "mean"), n_rep=("rep", "size"),
+        forward_rate_maxT=("fwd_reject_maxT", "mean"), reverse_rate_maxT=("rev_reject_maxT", "mean"),
+        mutual_rate_maxT=("mutual_maxT", "mean"), other_edges_any_maxT=("other_reject_maxT", "mean")).reset_index()
     ci = summary.apply(lambda r: wilson_interval(int(round(r.reverse_rate * r.n_rep)), int(r.n_rep)), axis=1)
     summary["reverse_ci_low"], summary["reverse_ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
     summary.to_csv(out_dir / "summary.csv", index=False)

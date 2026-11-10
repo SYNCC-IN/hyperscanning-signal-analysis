@@ -89,6 +89,8 @@ PLANTED = {"cg:ROI->child:ROI": (1, 0, 1, 0.4), "cg:HRV->child:HRV": (3, 2, 1, 0
 STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
 N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
+CROSS_PERSON = ["cg:ROI->child:ROI", "child:ROI->cg:ROI", "cg:HRV->child:HRV", "child:HRV->cg:HRV",
+                "cg:HRV->child:ROI", "child:HRV->cg:ROI", "cg:ROI->child:HRV", "child:ROI->cg:HRV"]   # multiplicity family (max-T)
 CRITERION_MIN_RATE = 0.95            # planted edge must beat its reverse and the absent edges in >= 95% of studies [proposed]
 
 
@@ -145,7 +147,8 @@ def run_replication(seed):
     est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
     designs = zscore_designs(simulate_dyads(rng, SETTINGS["n_dyads"], N_SAMPLES, FS, POLE_RADIUS_RANGES, F0_RANGES, list(PLANTED.values()), N_LAGS))
     records = run_study(designs, [0, 1, 2, 3], CHILD_NODES, est, all_edges(), ["pooled"], None, rng,
-                        STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM)
+                        STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, family=CROSS_PERSON, multiplicity="maxT",
+                        multiplicity_rng=np.random.default_rng([seed, 1]))
     raw_est = dict(est, box_cox_lambda=-1)
     raw, roots, _ = real_matrices(designs, [0, 1, 2, 3], raw_est)
     return records, raw[roots < STABILITY_MAX_ROOT].mean(axis=0)
@@ -184,11 +187,18 @@ def main():
                      "detect_ci_high": wilson_interval(int(fwd.study_reject.sum()), n_rep)[1],
                      "beats_reverse_rate": beats_rev / n_rep, "beats_absent_rate": beats_absent,
                      "reverse_detect_rate": reverse.study_reject.mean(),
+                     "detect_rate_maxT": fwd.study_reject_adj_maxT.astype(bool).mean(),
+                     "reverse_detect_rate_maxT": reverse.study_reject_adj_maxT.astype(bool).mean(),
                      "median_z": fwd.median_z.median(), "dir_study_rate": fwd.dir_study.mean()})
     summary = pd.DataFrame(rows)
     summary.to_csv(out_dir / "partB_summary.csv", index=False)
     detect = records.groupby("edge").study_reject.mean()
     detect.to_csv(out_dir / "partB_detection_rate_by_edge.csv")
+    cross = records[records.edge.isin(CROSS_PERSON)]
+    detect_maxT = cross.groupby("edge").agg(rate_uncorrected=("study_reject", "mean"),
+                                            rate_maxT=("study_reject_adj_maxT", lambda x: x.astype(bool).mean())).reset_index()
+    detect_maxT["planted"] = detect_maxT.edge.isin(list(PLANTED))
+    detect_maxT.to_csv(out_dir / "partB_detection_rate_maxT.csv", index=False)
 
     # Figures
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))

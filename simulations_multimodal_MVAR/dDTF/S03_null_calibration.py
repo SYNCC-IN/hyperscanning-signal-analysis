@@ -5,10 +5,14 @@ is z centred near 0?
 Design: heterogeneous dyads (pole radius, resonance frequency vary between persons), four nodes
 (child/caregiver envelope-like ROI nodes, child/caregiver IBI-like resonant nodes), NO coupling. Factors: number
 of dyads N, segment length, and the null pool: 'pooled' (all foreign pairs, which include the real dyad's
-members) vs 'exclude' (foreign pairs involving neither member of the scored dyad).
+members) vs 'exclude' (foreign pairs involving neither member of the scored dyad) vs 'within_group' (pairs formed within the scored dyad's group).
 Readouts per edge: dyad-level false-positive rate (empirical p < .05 among the surrogates), study-level (one-sided
 pairing permutation test, alpha = .05), group-level (permutation test of a difference between two groups of N/2 dyads that
 differ in nothing), and the distribution of z.
+Multiplicity: the 8 cross-person edges form one family. Family-wise false-positive rate (any edge rejected) and the
+per-edge rate after correction, for uncorrected tests, Bonferroni, max-T single-step, max-T step-down and min-p
+(one shared set of permutations for the whole family; `src.sim_inference.pairing_permutation_maxT` and
+`group_permutation_maxT`).
 
 Usage: python S03_null_calibration.py [quick|full] [dDTF|GPDC]
 Results: Results/<estimator>/S_03/
@@ -49,7 +53,7 @@ if os.environ.get("SIM_NREP"):            # optional override for diagnostics
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
     SETTINGS["n_dyads"] = [int(x) for x in os.environ.get("SIM_NDYADS", "25").split(",")]
     SETTINGS["seg_s"] = [int(x) for x in os.environ.get("SIM_SEG", "60").split(",")]
-NULL_MODES = ["pooled", "exclude"]
+NULL_MODES = ["pooled", "exclude", "within_group"]
 
 FS = 2.5
 WIN_LEN_S, OVERLAP = 10.0, 0.5
@@ -68,6 +72,10 @@ STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
 N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
 FPR_BAND = (0.03, 0.07)               # accepted false-positive rate around nominal 0.05 [proposed]
+FWER_BAND = (0.03, 0.07)              # accepted family-wise FPR of max-T (step-down) in every cell [proposed]
+MULTIPLICITY = ["unadjusted", "bonferroni", "maxT_single_step", "maxT", "minP"]   # family tests (shared permutations)
+METHOD_LABELS = {"none": "uncorrected", "bonferroni": "Bonferroni", "maxT_single_step": "max-T single-step",
+                 "maxT": "max-T step-down", "minP": "min-p step-down"}
 MEDIAN_Z_MAX = 0.2                    # |median z| must not exceed this [proposed]
 
 
@@ -86,13 +94,67 @@ def run_task(task):
     _, z = delta_and_z_all(real, values, "pooled", groups)
     z_store = np.stack([z[:, t, s] for s, t in EDGES.values()], axis=1)
     records = []
+    family_rng = np.random.default_rng([task["seed"], 1])     # separate stream: per-edge tests stay as without the family test
     for mode in NULL_MODES:
-        summaries = score_study(real, values, real, mode, groups, EDGES, DYAD_ALPHA, ALPHA, rng, N_PERM)
+        summaries = score_study(real, values, real, mode, groups, EDGES, DYAD_ALPHA, ALPHA, rng, N_PERM,
+                                family=list(EDGES), multiplicity=MULTIPLICITY, multiplicity_rng=family_rng)
         for name, summary in summaries.items():
             summary.update({"n_dyads": n_dyads, "seg_s": seg_s, "mode": mode, "edge": name, "rep": task["rep"],
                             "n_real_unstable": int((~stable).sum()), "n_pairs_unstable": n_unstable, "n_pairs": n_attempted})
             records.append(summary)
     return records, z_store, n_dyads, seg_s
+
+
+def fwer_table(df):
+    """Family-wise and per-edge false-positive rates per cell, null mode, level and correction method.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Raw records (one row per replicate x mode x edge, all edges in the family).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns n_dyads, seg_s, mode, level ('study' or 'group'), method, fwer (share of studies with at least one
+        rejection), fwer_ci_low/high (Wilson 95%), per_edge_rate (mean rejection rate over the family edges), n_rep.
+    """
+    rows = []
+    for (n, s, mode), sub in df.groupby(["n_dyads", "seg_s", "mode"]):
+        per_study = sub.groupby("rep").first()
+        for level in ("study", "group"):
+            for method in ["none"] + [m for m in MULTIPLICITY if m != "unadjusted"]:
+                reject = sub[f"{level}_reject"] if method == "none" else sub[f"{level}_reject_adj_{method}"]
+                hits = int(per_study[f"any_reject_{level}_{method}"].astype(bool).sum())
+                low, high = wilson_interval(hits, len(per_study))
+                rows.append({"n_dyads": n, "seg_s": s, "mode": mode, "level": level, "method": method,
+                             "fwer": hits / len(per_study), "fwer_ci_low": low, "fwer_ci_high": high,
+                             "per_edge_rate": float(reject.astype(float).mean()), "n_rep": len(per_study)})
+    return pd.DataFrame(rows)
+
+
+def plot_fwer(fwer, out_dir):
+    """Family-wise FPR per cell: rows = level, columns = null mode, one line per correction method (linear axes)."""
+    levels = ["study", "group"]
+    fig, axes = plt.subplots(len(levels), len(NULL_MODES), figsize=(4.5 * len(NULL_MODES), 7), sharey=True, squeeze=False)
+    for i, level in enumerate(levels):
+        for j, mode in enumerate(NULL_MODES):
+            ax = axes[i, j]
+            sub = fwer[(fwer.level == level) & (fwer["mode"] == mode)]
+            for method, s2 in sub.groupby("method", sort=False):
+                s2 = s2.sort_values(["n_dyads", "seg_s"])
+                x = np.arange(len(s2))
+                ax.errorbar(x, s2.fwer, yerr=[s2.fwer - s2.fwer_ci_low, s2.fwer_ci_high - s2.fwer], marker="o", ms=3,
+                            capsize=2, lw=1, label=METHOD_LABELS[method])
+            ax.set_xticks(x); ax.set_xticklabels([f"N{n}\n{s}s" for n, s in zip(s2.n_dyads, s2.seg_s)], fontsize=7)
+            ax.axhline(ALPHA, color="k", lw=0.8); ax.axhspan(*FWER_BAND, color="g", alpha=0.1)
+            ax.set_title(f"{level} level, {mode} null", fontsize=9)
+        axes[i, 0].set_ylabel("family-wise FPR (any of 8 edges)")
+    axes[0, 0].legend(fontsize=7)
+    fig.tight_layout()
+    for ext in ("png", "svg"):
+        fig.savefig(out_dir / f"fig_fwer_by_cell.{ext}", dpi=150)
+    plt.close(fig)
 
 
 def main():
@@ -113,6 +175,8 @@ def main():
     ci = summary.apply(lambda r: wilson_interval(int(round(r.study_fpr * r.n_rep)), int(r.n_rep)), axis=1)
     summary["study_fpr_ci_low"], summary["study_fpr_ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
     summary.to_csv(out_dir / "summary.csv", index=False)
+    fwer = fwer_table(df)
+    fwer.to_csv(out_dir / "summary_fwer.csv", index=False)
 
     z_all = {}
     for recs, z_store, n, s in results:
@@ -138,15 +202,25 @@ def main():
     ax.set_title(f"z under zero coupling (N={ref[0]}, {ref[1]} s, all edges)"); ax.set_xlabel("z")
     fig.tight_layout(); fig.savefig(out_dir / "fig_z_distribution.png", dpi=150); plt.close(fig)
 
+    plot_fwer(fwer, out_dir)
     in_band = lambda x: (x >= FPR_BAND[0]) & (x <= FPR_BAND[1])
+    max_t = fwer[fwer.method == "maxT"]
+    fwer_in_band = (max_t.fwer >= FWER_BAND[0]) & (max_t.fwer <= FWER_BAND[1])
+    ci_overlaps = (max_t.fwer_ci_high >= FWER_BAND[0]) & (max_t.fwer_ci_low <= FWER_BAND[1])
     cell_means = summary.groupby(keys[:3])[["study_fpr", "group_fpr", "median_z"]].mean()
     criteria = {
         "study-level FPR within band in every cell (mean over edges)": bool(in_band(cell_means.study_fpr).all()),
         "group-level FPR within band in every cell (mean over edges)": bool(in_band(cell_means.group_fpr).all()),
         "|median z| <= limit in every cell": bool((cell_means.median_z.abs() <= MEDIAN_Z_MAX).all()),
+        "max-T family-wise FPR within band in every cell (study level, 8 cross-person edges)": bool(fwer_in_band[max_t.level == "study"].all()),
+        "max-T family-wise FPR within band in every cell (group contrast, 8 cross-person edges)": bool(fwer_in_band[max_t.level == "group"].all()),
     }
+    diagnostics = {"max-T FWER: Wilson 95% CI overlaps the band in every cell (study level)": bool(ci_overlaps[max_t.level == "study"].all()),
+                   "max-T FWER: Wilson 95% CI overlaps the band in every cell (group contrast)": bool(ci_overlaps[max_t.level == "group"].all()),
+                   "max-T cells outside the band": max_t[~fwer_in_band][["level", "mode", "n_dyads", "seg_s", "fwer"]].round(3).to_dict(orient="records")}
     with open(out_dir / "summary.json", "w") as f:
-        json.dump({"mode": MODE, "settings": SETTINGS, "fpr_band": FPR_BAND, "criteria": criteria,
+        json.dump({"mode": MODE, "settings": SETTINGS, "fpr_band": FPR_BAND, "fwer_band": FWER_BAND, "criteria": criteria,
+                   "fwer_diagnostics": diagnostics,
                    "cells_outside_band_study": cell_means[~in_band(cell_means.study_fpr)].round(3).reset_index().to_dict(orient="records")}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
 

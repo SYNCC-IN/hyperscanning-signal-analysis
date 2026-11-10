@@ -5,6 +5,9 @@ Design B (group contrast): half of the dyads have gain g, the other half gain 0;
 test on the group difference of delta, using the within-group null.
 Readouts: dyad-level detection rate (empirical p < .05), study-level power (pairing permutation, alpha = .05), group-contrast power,
 direction accuracy (planted edge beats its reverse, dir_study), with Wilson intervals.
+Multiplicity: all 8 cross-person edges form one family, tested on one shared set of permutations (max-T and min-p
+step-down, Bonferroni). Readouts: planted-edge power before/after correction and the rejection rate of every non-planted
+edge after max-T. The per-edge (uncorrected) tests are run for the planted edge and its reverse only, as before.
 
 Usage: python S04_power.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_04/
 """
@@ -52,7 +55,12 @@ N_LAGS = 3
 NODES, CHILD_NODES = [0, 1, 2, 3], [0, 2]
 NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV"]
 TARGET_EDGE = "cg:ROI->child:ROI"
-EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1)}
+EDGES = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1)}       # per-edge (uncorrected) tests
+FAMILY = {"cg:ROI->child:ROI": (1, 0), "child:ROI->cg:ROI": (0, 1), "cg:HRV->child:HRV": (3, 2),
+          "child:HRV->cg:HRV": (2, 3), "cg:HRV->child:ROI": (3, 0), "child:HRV->cg:ROI": (2, 1),
+          "cg:ROI->child:HRV": (1, 2), "child:ROI->cg:HRV": (0, 3)}       # multiplicity family: all 8 cross-person edges
+MULTIPLICITY = ["bonferroni", "maxT", "minP"]                         # step-down max-T / min-p
+POWER_COLUMNS = {"none": "uncorrected", "maxT": "max-T", "minP": "min-p", "bonferroni": "Bonferroni"}
 STABILITY_MAX_ROOT = 1.0
 DYAD_ALPHA, ALPHA = 0.05, 0.05         # one-sided dyad level (empirical p); study and group level
 N_PERM = 1000                         # permutations of the study-level (pairing) and group-level tests
@@ -67,10 +75,12 @@ def run_task(task):
     n_samples = int(seg_s * FS)
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
     est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
+    family_rng = np.random.default_rng([task["seed"], 1])     # separate stream: data and per-edge tests as without the family test
+    mult = dict(family=FAMILY, multiplicity=MULTIPLICITY, multiplicity_rng=family_rng)
     out = []
     # Design A: all dyads coupled
     designs = zscore_designs(simulate_dyads(rng, n, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS))
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
+    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, **mult):
         out.append(dict(r, design="A", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
     # Design B: first half uncoupled, second half coupled
     half = n // 2
@@ -78,9 +88,79 @@ def run_task(task):
     d1 = simulate_dyads(rng, n - half, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS)
     designs = zscore_designs(np.concatenate([d0, d1]))
     groups = np.r_[np.zeros(half, int), np.ones(n - half, int)]
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["within_group"], groups, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
+    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["within_group"], groups, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, **mult):
         out.append(dict(r, design="B", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
     return out
+
+
+def min_gain(sub, column):
+    """Smallest planted gain whose power in `column` reaches POWER_TARGET (None if never)."""
+    hit = sub[sub[column] >= POWER_TARGET]
+    return float(hit.gain.min()) if len(hit) else None
+
+
+def nonplanted_table(df):
+    """Rejection rate of every non-planted family edge after max-T (and min-p, Bonferroni), per design and cell.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Raw records (design A: study level; design B: group contrast).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns design, n_dyads, seg_s, gain, edge, rate_<method> (with Wilson CI for max-T), rate_uncorrected
+        (per-edge test, reverse edge only; NaN for edges without a per-edge test), n_rep.
+    """
+    rows = []
+    for (design, n, s, g, edge), sub in df[df.edge != TARGET_EDGE].groupby(["design", "n_dyads", "seg_s", "gain", "edge"]):
+        level = "group" if design == "B" else "study"
+        row = {"design": design, "n_dyads": n, "seg_s": s, "gain": g, "edge": edge, "n_rep": len(sub),
+               "rate_uncorrected": float(sub[f"{level}_reject"].astype(float).mean()) if sub[f"{level}_reject"].notna().all() else np.nan}
+        for m in MULTIPLICITY:
+            row[f"rate_{m}"] = float(sub[f"{level}_reject_adj_{m}"].astype(bool).mean())
+        row["rate_maxT_ci_low"], row["rate_maxT_ci_high"] = wilson_interval(int(sub[f"{level}_reject_adj_maxT"].astype(bool).sum()), len(sub))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def plot_maxT(summary, nonplanted, out_dir):
+    """Planted-edge power before (solid) and after max-T (dashed); non-planted edges after max-T at the middle N (linear axes)."""
+    segs, ns = SETTINGS["seg_s"], SETTINGS["n_dyads"]
+    fig, axes = plt.subplots(2, len(segs), figsize=(4.5 * len(segs), 7), sharey=True, squeeze=False)
+    for row, design in enumerate(["A", "B"]):
+        for col, s in enumerate(segs):
+            ax = axes[row, col]
+            for i, (n, sub) in enumerate(summary[(summary.design == design) & (summary.seg_s == s)].groupby("n_dyads")):
+                ax.plot(sub.gain, sub.power, marker="o", color=f"C{i}", label=f"N={n} uncorrected")
+                ax.plot(sub.gain, sub.power_maxT, marker="s", ls="--", color=f"C{i}", label=f"N={n} max-T")
+            ax.axhline(POWER_TARGET, color="k", lw=0.6, ls=":"); ax.axhline(ALPHA, color="grey", lw=0.6)
+            ax.set_title(f"design {design}: {'one group' if design == 'A' else 'group contrast'}, {s} s", fontsize=9)
+            ax.set_xlabel("planted gain")
+        axes[row, 0].set_ylabel("power, planted edge")
+    axes[0, 0].legend(fontsize=6)
+    fig.tight_layout()
+    for ext in ("png", "svg"):
+        fig.savefig(out_dir / f"fig_power_maxT.{ext}", dpi=150)
+    plt.close(fig)
+
+    n_mid = ns[len(ns) // 2]
+    fig, axes = plt.subplots(2, len(segs), figsize=(4.5 * len(segs), 7), sharey=True, squeeze=False)
+    for row, design in enumerate(["A", "B"]):
+        for col, s in enumerate(segs):
+            ax = axes[row, col]
+            for edge, sub in nonplanted[(nonplanted.design == design) & (nonplanted.seg_s == s) & (nonplanted.n_dyads == n_mid)].groupby("edge"):
+                ax.plot(sub.gain, sub.rate_maxT, marker="o", lw=2.5 if edge == "child:ROI->cg:ROI" else 1, label=edge)
+            ax.axhline(ALPHA, color="grey", lw=0.6)
+            ax.set_title(f"design {design}, N={n_mid}, {s} s: non-planted edges after max-T", fontsize=9)
+            ax.set_xlabel("planted gain (cg:ROI->child:ROI)")
+        axes[row, 0].set_ylabel("rejection rate after max-T")
+    axes[0, 0].legend(fontsize=6)
+    fig.tight_layout()
+    for ext in ("png", "svg"):
+        fig.savefig(out_dir / f"fig_nonplanted_maxT.{ext}", dpi=150)
+    plt.close(fig)
 
 
 def main():
@@ -96,13 +176,22 @@ def main():
     tgt = df[df.edge == TARGET_EDGE]
     rows = []
     for (design, n, s, g), sub in tgt.groupby(["design", "n_dyads", "seg_s", "gain"]):
-        k = int(sub.group_reject.sum() if design == "B" else sub.study_reject.sum())
+        level = "group" if design == "B" else "study"
+        k = int(sub[f"{level}_reject"].sum())
         lo, hi = wilson_interval(k, len(sub))
-        rows.append({"design": design, "n_dyads": n, "seg_s": s, "gain": g, "power": k / len(sub), "power_ci_low": lo, "power_ci_high": hi,
-                     "dyad_detection": sub.dyad_rate.mean(), "direction_accuracy": sub.dir_study.mean() if design == "A" else np.nan,
-                     "median_z": sub.median_z.median(), "n_rep": len(sub)})
+        row = {"design": design, "n_dyads": n, "seg_s": s, "gain": g, "power": k / len(sub), "power_ci_low": lo, "power_ci_high": hi,
+               "dyad_detection": sub.dyad_rate.mean(), "direction_accuracy": sub.dir_study.mean() if design == "A" else np.nan,
+               "median_z": sub.median_z.median(), "n_rep": len(sub)}
+        for m in MULTIPLICITY:
+            k_m = int(sub[f"{level}_reject_adj_{m}"].astype(bool).sum())
+            row[f"power_{m}"] = k_m / len(sub)
+            row[f"power_{m}_ci_low"], row[f"power_{m}_ci_high"] = wilson_interval(k_m, len(sub))
+        rows.append(row)
     summary = pd.DataFrame(rows)
     summary.to_csv(out_dir / "summary.csv", index=False)
+    nonplanted = nonplanted_table(df)
+    nonplanted.to_csv(out_dir / "summary_nonplanted_maxT.csv", index=False)
+    plot_maxT(summary, nonplanted, out_dir)
 
     fig, axes = plt.subplots(2, len(SETTINGS["seg_s"]), figsize=(4.5 * len(SETTINGS["seg_s"]), 7), sharey=True, squeeze=False)
     for row, design in enumerate(["A", "B"]):
@@ -125,10 +214,12 @@ def main():
         "power increases with gain at the largest N (design A)":
             bool(a[(a.n_dyads == max(SETTINGS["n_dyads"])) & (a.seg_s == max(SETTINGS["seg_s"]))].sort_values("gain").power.is_monotonic_increasing),
     }
-    thresholds = {f"{d}|N={n}|{s}s": (float(sub[sub.power >= POWER_TARGET].gain.min()) if (sub.power >= POWER_TARGET).any() else None)
-                  for (d, n, s), sub in summary.groupby(["design", "n_dyads", "seg_s"])}
+    thresholds = {f"{d}|N={n}|{s}s": min_gain(sub, "power") for (d, n, s), sub in summary.groupby(["design", "n_dyads", "seg_s"])}
+    thresholds_adj = {m: {f"{d}|N={n}|{s}s": min_gain(sub, f"power_{m}") for (d, n, s), sub in summary.groupby(["design", "n_dyads", "seg_s"])}
+                      for m in MULTIPLICITY}
     with open(out_dir / "summary.json", "w") as f:
-        json.dump({"mode": MODE, "settings": SETTINGS, "min_gain_for_80pct_power": thresholds, "criteria": criteria}, f, indent=2)
+        json.dump({"mode": MODE, "settings": SETTINGS, "family": list(FAMILY), "min_gain_for_80pct_power": thresholds,
+                   "min_gain_for_80pct_power_adjusted": thresholds_adj, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
 
 

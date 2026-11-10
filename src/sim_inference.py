@@ -12,6 +12,10 @@ Tests (none assumes a symmetric or normal null):
   given the film) the real pairing of children and caregivers is exchangeable with any
   re-pairing, so the mean real value is compared with the means of randomly re-paired studies;
 - group contrast: permutation of the group labels, difference of group means of delta.
+
+Multiplicity across edges: `pairing_permutation_maxT` and `group_permutation_maxT` score all edges
+of a family on one shared set of permutations and return max-T (Westfall & Young, 1993), min-p and
+Bonferroni adjusted p-values (`family_pvalues`); `score_study`/`run_study` add them on request.
 """
 
 import numpy as np
@@ -263,12 +267,246 @@ def pairing_permutation_pvalue(table, rng, n_perm, groups=None):
     """
     n_dyads = table.shape[0]
     observed = np.mean(np.diag(table))
+    perms = caregiver_permutations(n_dyads, rng, n_perm, groups)
+    permuted = np.nanmean(table[np.arange(n_dyads), perms], axis=1)
+    return float((1 + np.sum(permuted >= observed)) / (1 + n_perm))
+
+
+def caregiver_permutations(n_dyads, rng, n_perm, groups=None):
+    """Random re-pairings of caregivers with children, optionally only within groups.
+
+    Parameters
+    ----------
+    n_dyads : int
+    rng : numpy.random.Generator
+    n_perm : int
+    groups : np.ndarray, shape (n_dyads,), optional
+        If given, caregivers are permuted only among dyads of the same group.
+
+    Returns
+    -------
+    np.ndarray of int, shape (n_perm, n_dyads)
+        ``perms[b, i]`` = dyad whose caregiver is paired with child `i` in permutation `b`.
+    """
     perms = np.tile(np.arange(n_dyads), (n_perm, 1))
     for label in (np.unique(groups) if groups is not None else [None]):
         members = np.arange(n_dyads) if label is None else np.flatnonzero(groups == label)
         perms[:, members] = rng.permuted(perms[:, members], axis=1)
-    permuted = np.nanmean(table[np.arange(n_dyads), perms], axis=1)
-    return float((1 + np.sum(permuted >= observed)) / (1 + n_perm))
+    return perms
+
+
+def maxT_adjust(observed, null, stepdown=True):
+    """Family-wise adjusted p-values from a permutation null shared by all tests (max-T).
+
+    Each test is standardized by its own permutation distribution,
+    ``u = (T - mean_perm) / sd_perm``; the adjusted p-value of test e is the share of
+    permutations whose maximum u over the family reaches ``u_obs[e]``:
+    ``p = (1 + #{max_e u_b,e >= u_obs}) / (1 + n_perm)`` (Westfall & Young, 1993). With
+    `stepdown`, the maximum runs only over the tests not yet rejected (tests ordered by
+    decreasing ``u_obs``), and the p-values are made monotone in that order.
+
+    Parameters
+    ----------
+    observed : np.ndarray, shape (n_tests,)
+        Observed statistics; larger is more extreme.
+    null : np.ndarray, shape (n_perm, n_tests)
+        Statistics of the same permutations for every test.
+    stepdown : bool, optional
+
+    Returns
+    -------
+    np.ndarray, shape (n_tests,)
+    """
+    mean, sd = null.mean(axis=0), null.std(axis=0, ddof=1)
+    u_obs, u_null = (observed - mean) / sd, (null - mean) / sd
+    order = np.argsort(-u_obs)
+    if stepdown:
+        maxima = np.maximum.accumulate(u_null[:, order][:, ::-1], axis=1)[:, ::-1]   # max over tests j.. of the order
+    else:
+        maxima = np.repeat(u_null.max(axis=1, keepdims=True), observed.size, axis=1)
+    p_sorted = (1 + np.sum(maxima >= u_obs[order], axis=0)) / (1 + null.shape[0])
+    p = np.empty_like(p_sorted)
+    p[order] = np.maximum.accumulate(p_sorted)
+    return p
+
+
+def minP_adjust(observed, null, stepdown=True):
+    """Family-wise adjusted p-values from a shared permutation null (min-p, rank based).
+
+    Every permutation statistic is turned into a per-test p-value by its rank among the
+    observed and permuted values of that test, ``p_b,e = #{T >= T_b,e} / (1 + n_perm)``; the
+    adjusted p-value of test e is ``(1 + #{min_e p_b,e <= p_obs[e]}) / (1 + n_perm)``. No
+    assumption on the shape of the null (unlike the standardization of `maxT_adjust`).
+    `stepdown` works as in `maxT_adjust`, with tests ordered by increasing ``p_obs``.
+
+    Parameters
+    ----------
+    observed : np.ndarray, shape (n_tests,)
+        Observed statistics; larger is more extreme.
+    null : np.ndarray, shape (n_perm, n_tests)
+    stepdown : bool, optional
+
+    Returns
+    -------
+    np.ndarray, shape (n_tests,)
+    """
+    n_perm, n_tests = null.shape
+    reference = np.sort(np.vstack([observed, null]), axis=0)
+    rank_p = lambda values, e: (n_perm + 1 - np.searchsorted(reference[:, e], values, side="left")) / (n_perm + 1)
+    p_obs = np.array([rank_p(observed[e], e) for e in range(n_tests)])
+    p_null = np.stack([rank_p(null[:, e], e) for e in range(n_tests)], axis=1)
+    order = np.argsort(p_obs, kind="stable")
+    if stepdown:
+        minima = np.minimum.accumulate(p_null[:, order][:, ::-1], axis=1)[:, ::-1]
+    else:
+        minima = np.repeat(p_null.min(axis=1, keepdims=True), n_tests, axis=1)
+    p_sorted = (1 + np.sum(minima <= p_obs[order], axis=0)) / (1 + n_perm)
+    p = np.empty_like(p_sorted)
+    p[order] = np.maximum.accumulate(p_sorted)
+    return p
+
+
+def family_pvalues(observed, null, stepdown=True):
+    """Unadjusted and family-wise adjusted p-values of tests that share one permutation null.
+
+    Parameters
+    ----------
+    observed : np.ndarray, shape (n_tests,)
+        Observed statistics; larger is more extreme.
+    null : np.ndarray, shape (n_perm, n_tests)
+    stepdown : bool, optional
+        Step-down variant for 'maxT' and 'minP' (the single-step values are always returned too).
+
+    Returns
+    -------
+    dict of {str: np.ndarray}
+        'unadjusted' (``(1 + #{T_b >= T_obs}) / (1 + n_perm)`` per test), 'bonferroni'
+        (unadjusted times the family size, capped at 1), 'maxT', 'maxT_single_step', 'minP',
+        'minP_single_step'.
+    """
+    unadjusted = (1 + np.sum(null >= observed, axis=0)) / (1 + null.shape[0])
+    return {
+        "unadjusted": unadjusted,
+        "bonferroni": np.minimum(1.0, unadjusted * observed.size),
+        "maxT": maxT_adjust(observed, null, stepdown),
+        "maxT_single_step": maxT_adjust(observed, null, False),
+        "minP": minP_adjust(observed, null, stepdown),
+        "minP_single_step": minP_adjust(observed, null, False),
+    }
+
+
+def pairing_permutation_maxT(tables, rng, n_perm, groups=None, stepdown=True):
+    """Study-level pairing permutation test of several edges on the same re-pairings, with FWER control.
+
+    One set of caregiver re-pairings is drawn and applied to every edge, so the joint
+    null of the family is preserved; the statistic of an edge is the mean of its paired
+    values (NaN pairs, i.e. unstable surrogate fits, left out of the mean).
+
+    Parameters
+    ----------
+    tables : np.ndarray, shape (n_dyads, n_dyads, n_edges)
+        ``tables[b, c, e]`` = value of edge e for child b with caregiver c; the diagonal holds the
+        real dyads.
+    rng : numpy.random.Generator
+    n_perm : int
+    groups : np.ndarray, shape (n_dyads,), optional
+        Re-pair only within groups (within-group null).
+    stepdown : bool, optional
+
+    Returns
+    -------
+    dict of {str: np.ndarray}
+        `family_pvalues` output (one value per edge).
+    """
+    n_dyads = tables.shape[0]
+    index = np.arange(n_dyads)
+    observed = np.nanmean(tables[index, index], axis=0)
+    perms = caregiver_permutations(n_dyads, rng, n_perm, groups)
+    null = np.nanmean(tables[index[None, :], perms], axis=1)
+    return family_pvalues(observed, null, stepdown)
+
+
+def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True):
+    """Two-sided group contrast of several edges on the same label permutations, with FWER control.
+
+    The statistic of an edge is ``|mean_1 - mean_0|`` of its delta (NaN values left out).
+
+    Parameters
+    ----------
+    delta : np.ndarray, shape (n_dyads, n_edges)
+    groups : np.ndarray of int, shape (n_dyads,)
+        Labels 0/1.
+    rng : numpy.random.Generator
+    n_perm : int
+    stepdown : bool, optional
+
+    Returns
+    -------
+    dict of {str: np.ndarray}
+        `family_pvalues` output (one value per edge).
+    """
+    valid = np.isfinite(delta)
+    values = np.where(valid, delta, 0.0)
+
+    def statistic(in_one):
+        in_one = in_one.astype(float)
+        mean_one = (in_one @ values) / (in_one @ valid)
+        mean_zero = ((1 - in_one) @ values) / ((1 - in_one) @ valid)
+        return np.abs(mean_one - mean_zero)
+
+    labels = rng.permuted(np.tile(groups == 1, (n_perm, 1)), axis=1)
+    return family_pvalues(statistic(groups[None, :] == 1)[0], statistic(labels), stepdown)
+
+
+MULTIPLICITY_METHODS = ("unadjusted", "bonferroni", "maxT", "maxT_single_step", "minP", "minP_single_step")
+
+
+def multiplicity_records(table, delta, z, groups, within_group, family, alpha, rng, n_perm, methods):
+    """Family-wise adjusted study-level and group-level decisions for one study and one null.
+
+    Parameters
+    ----------
+    table : np.ndarray, shape (n_dyads, n_dyads, k, k)
+        Pairing table (diagonal = real dyads).
+    delta, z : np.ndarray, shape (n_dyads, k, k)
+        From `delta_and_z_all`; dyads with non-finite z are left out of the group contrast,
+        as in `edge_summary`.
+    groups : np.ndarray or None
+        Group labels 0/1; None skips the group contrast.
+    within_group : bool
+        Re-pair only within groups in the study-level test.
+    family : dict of {str: (int, int)}
+        Edges of the family, ``name -> (source, target)``.
+    alpha : float
+    rng : numpy.random.Generator
+    n_perm : int
+    methods : sequence of str
+        Subset of `MULTIPLICITY_METHODS`.
+
+    Returns
+    -------
+    dict of {str: dict}
+        Per edge name: ``study_p_adj_<m>``, ``study_reject_adj_<m>``, ``group_p_adj_<m>``,
+        ``group_reject_adj_<m>`` for every method m.
+    """
+    sources = [s for s, _ in family.values()]
+    targets = [t for _, t in family.values()]
+    study = pairing_permutation_maxT(table[:, :, targets, sources], rng, n_perm,
+                                     groups if within_group else None)
+    group = None
+    if groups is not None:
+        group = group_permutation_maxT(np.where(np.isfinite(z[:, targets, sources]), delta[:, targets, sources], np.nan),
+                                       groups, rng, n_perm)
+    out = {}
+    for i, name in enumerate(family):
+        row = {}
+        for m in methods:
+            row[f"study_p_adj_{m}"] = float(study[m][i])
+            row[f"study_reject_adj_{m}"] = bool(study[m][i] < alpha)
+            row[f"group_p_adj_{m}"] = float(group[m][i]) if group is not None else np.nan
+            row[f"group_reject_adj_{m}"] = bool(group[m][i] < alpha) if group is not None else np.nan
+        out[name] = row
+    return out
 
 
 def permutation_pvalue(values_a, values_b, rng, n_perm):
@@ -342,7 +580,28 @@ def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha
     }
 
 
-def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, alpha, rng, n_perm):
+def family_dict(edges, family):
+    """The multiplicity family as ``name -> (source, target)``.
+
+    Parameters
+    ----------
+    edges : dict of {str: (int, int)}
+    family : None, list of str or dict of {str: (int, int)}
+        None = all `edges`; a list names edges of `edges`; a dict is returned as is.
+
+    Returns
+    -------
+    dict of {str: (int, int)}
+    """
+    if family is None:
+        return dict(edges)
+    if isinstance(family, dict):
+        return dict(family)
+    return {name: edges[name] for name in family}
+
+
+def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, alpha, rng, n_perm,
+                family=None, multiplicity="none", multiplicity_rng=None):
     """Readouts of every edge of one study against one surrogate null.
 
     Parameters
@@ -361,23 +620,57 @@ def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, al
     dyad_alpha, alpha : float
     rng : numpy.random.Generator
     n_perm : int
+    family : list of str or dict of {str: (int, int)}, optional
+        The multiplicity family: names of `edges` (default: all `edges`), or ``name -> (source,
+        target)``, which may contain edges outside `edges` (those get only the family readouts).
+    multiplicity : str or sequence of str, optional
+        'none' (default: per-edge tests only) or one or more of `MULTIPLICITY_METHODS` ('maxT' and
+        'minP' are step-down). The family is tested on one shared set of permutations
+        (`pairing_permutation_maxT`, `group_permutation_maxT`).
+    multiplicity_rng : numpy.random.Generator, optional
+        Generator of the family permutations (default `rng`, drawn after the per-edge tests). A
+        separate generator leaves every draw from `rng`, and so the per-edge results, unchanged.
 
     Returns
     -------
     dict of {str: dict}
-        `edge_summary` per edge name.
+        `edge_summary` per edge name. With multiplicity, each family edge also has
+        ``study_p_adj_<m>``, ``study_reject_adj_<m>``, ``group_p_adj_<m>``, ``group_reject_adj_<m>``
+        (NaN for edges outside the family), and every edge has ``any_reject_study_<m>`` and
+        ``any_reject_group_<m>`` (at least one rejection in the family) for each method m and for
+        'none' (the per-edge tests, uncorrected; NaN if the family has edges outside `edges`).
     """
     delta, z = delta_and_z_all(real, pair_values, mode, groups)
     p_dyad = dyad_pvalues(real, pair_values, mode, groups)
     table = pair_values.copy()
     index = np.arange(real.shape[0])
     table[index, index] = diagonal
-    return {name: edge_summary(table, delta, z, p_dyad, edge, groups, mode == "within_group", dyad_alpha, alpha, rng, n_perm)
-            for name, edge in edges.items()}
+    out = {name: edge_summary(table, delta, z, p_dyad, edge, groups, mode == "within_group", dyad_alpha, alpha, rng, n_perm)
+           for name, edge in edges.items()}
+    methods = [multiplicity] if isinstance(multiplicity, str) else list(multiplicity)
+    if methods == ["none"]:
+        return out
+    family_edges = family_dict(edges, family)
+    adjusted = multiplicity_records(table, delta, z, groups, mode == "within_group", family_edges, alpha,
+                                    rng if multiplicity_rng is None else multiplicity_rng, n_perm, methods)
+    flags = {"any_reject_study_none": np.nan, "any_reject_group_none": np.nan}
+    if set(family_edges) <= set(edges):
+        flags["any_reject_study_none"] = any(out[n]["study_reject"] for n in family_edges)
+        if groups is not None:
+            flags["any_reject_group_none"] = any(out[n]["group_reject"] for n in family_edges)
+    for name in family_edges:
+        out.setdefault(name, {})
+    for m in methods:
+        flags[f"any_reject_study_{m}"] = any(adjusted[n][f"study_reject_adj_{m}"] for n in family_edges)
+        flags[f"any_reject_group_{m}"] = any(adjusted[n][f"group_reject_adj_{m}"] for n in family_edges) if groups is not None else np.nan
+    empty = {key: np.nan for key in next(iter(adjusted.values()))}
+    for name in out:
+        out[name].update(adjusted.get(name, empty), **flags)
+    return out
 
 
 def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stability_max_root,
-              dyad_alpha, alpha, n_perm, max_pairs=None):
+              dyad_alpha, alpha, n_perm, max_pairs=None, family=None, multiplicity="none", multiplicity_rng=None):
     """Analyse one simulated study end to end and return one record per (mode, edge).
 
     Dyads whose real fit is unstable are dropped together with their surrogate pairs.
@@ -404,11 +697,17 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     n_perm : int
         Permutations of the study-level and group-level tests.
     max_pairs : int, optional
+    family : list of str, optional
+        Multiplicity family (edge names; default all `edges`), see `score_study`.
+    multiplicity : str or sequence of str, optional
+        See `score_study` (default 'none').
+    multiplicity_rng : numpy.random.Generator, optional
+        See `score_study`.
 
     Returns
     -------
     list of dict
-        Each record has `mode`, `edge`, the `edge_summary` fields, `real_mean` (mean real value),
+        Each record has `mode`, `edge`, the `score_study` fields, `real_mean` (mean real value),
         `null_median_mean` (mean null median) and bookkeeping (`n_real_unstable`,
         `n_pairs_attempted`, `n_pairs_unstable`).
     """
@@ -420,8 +719,9 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     records = []
     for mode in modes:
         delta, _ = delta_and_z_all(real, values, mode, kept_groups)
-        summaries = score_study(real, values, real, mode, kept_groups, edges, dyad_alpha, alpha, rng, n_perm)
-        for name, (source, target) in edges.items():
+        summaries = score_study(real, values, real, mode, kept_groups, edges, dyad_alpha, alpha, rng, n_perm,
+                                family, multiplicity, multiplicity_rng)
+        for name, (source, target) in (edges | family_dict(edges, family)).items():
             records.append(dict(summaries[name], mode=mode, edge=name,
                                 real_mean=float(real[:, target, source].mean()),
                                 null_median_mean=float(np.mean(real[:, target, source] - delta[:, target, source])),

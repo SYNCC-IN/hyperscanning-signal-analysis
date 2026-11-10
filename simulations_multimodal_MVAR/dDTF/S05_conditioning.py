@@ -78,6 +78,7 @@ SCENARIOS = {
                        "pair": [3, 2], "power": []},
 }
 NODE_NAMES = ["child:ROI", "cg:ROI", "child:HRV", "cg:HRV", "Z"]
+CROSS_PERSON = [(1, 0), (0, 1), (3, 2), (2, 3), (3, 0), (2, 1), (1, 2), (0, 3)]   # max-T family of the 4-node analysis
 
 
 def analyses(scenario):
@@ -109,7 +110,15 @@ def run_task(task):
         est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=estimator, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
         pos = {n: i for i, n in enumerate(nodes)}
         edge_dict = {name: (pos[s], pos[t]) for name, (s, t) in wanted.items() if s in pos and t in pos}
-        for r in run_study(designs, nodes, CHILD_NODES, est, edge_dict, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM):
+        mult = {}
+        if label == f"4-node {ESTIMATOR}":           # max-T over the 8 cross-person edges (separate random stream)
+            named = {e: n for n, e in wanted.items()}
+            mult = dict(family={named.get(e, edge_name(e)): e for e in CROSS_PERSON}, multiplicity="maxT",
+                        multiplicity_rng=np.random.default_rng([task["seed"], 1]))
+        for r in run_study(designs, nodes, CHILD_NODES, est, edge_dict, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, **mult):
+            if r["edge"] not in wanted:
+                out.append(dict(r, analysis=label, role="other", edge_label=r["edge"], scenario=task["scenario"], gain=task["gain"], rep=task["rep"]))
+                continue
             role = "planted" if r["edge"].startswith("planted") else r["edge"]
             out.append(dict(r, analysis=label, role=role, edge_label=edge_name(wanted[r["edge"]]),
                             scenario=task["scenario"], gain=task["gain"], rep=task["rep"]))
@@ -127,11 +136,18 @@ def main():
     df.to_csv(out_dir / "raw_results.csv", index=False)
 
     keys = ["scenario", "gain", "analysis", "role", "edge_label"]
-    summary = df.groupby(keys).agg(study_rate=("study_reject", "mean"), dyad_rate=("dyad_rate", "mean"),
-                                   median_z=("median_z", "median"), n_rep=("rep", "size")).reset_index()
+    scored = df[df.role != "other"].copy()
+    scored["reject_maxT"] = scored.study_reject_adj_maxT.map({True: 1.0, False: 0.0})
+    summary = scored.groupby(keys).agg(study_rate=("study_reject", "mean"), dyad_rate=("dyad_rate", "mean"),
+                                       median_z=("median_z", "median"), n_rep=("rep", "size"),
+                                       study_rate_maxT=("reject_maxT", "mean")).reset_index()
     ci = summary.apply(lambda r: wilson_interval(int(round(r.study_rate * r.n_rep)), int(r.n_rep)), axis=1)
     summary["ci_low"], summary["ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
     summary.to_csv(out_dir / "summary.csv", index=False)
+    four_node = df[df.analysis == f"4-node {ESTIMATOR}"].copy()
+    four_node["reject_maxT"] = four_node.study_reject_adj_maxT.astype(bool)
+    four_node.groupby(["scenario", "gain", "role", "edge_label"]).reject_maxT.mean().reset_index().rename(
+        columns={"reject_maxT": "study_rate_maxT"}).to_csv(out_dir / "summary_maxT_all_cross_edges.csv", index=False)
 
     fig, axes = plt.subplots(1, len(SCENARIOS), figsize=(6 * len(SCENARIOS), 4), sharey=True)
     for ax, (scenario, sub) in zip(np.atleast_1d(axes), summary[summary.role == "absent"].groupby("scenario")):
