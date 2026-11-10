@@ -1,4 +1,0 @@
-edge,gain,detect_rate,detect_ci_low,detect_ci_high,beats_reverse_rate,beats_absent_rate,reverse_detect_rate,median_z,dir_study_rate
-cg:ROI->child:ROI,0.4,1.0,0.9811539940816791,1.0,1.0,1.0,0.005,2.628634880536456,1.0
-cg:HRV->child:HRV,0.3,1.0,0.9811539940816791,1.0,1.0,1.0,0.135,2.7887149754111675,1.0
-cg:HRV->child:ROI,0.3,1.0,0.9811539940816791,1.0,1.0,1.0,0.05,2.536358518541913,1.0

@@ -44,3 +44,6 @@ scripts/parse_event_order.py
 
 # Generated sync outputs (regenerable, large)
 scripts/outputs/
+
+# Simulation outputs (regenerable: run simulations_multimodal_MVAR/dDTF/run_all.py)
+simulations_multimodal_MVAR/dDTF/Results/

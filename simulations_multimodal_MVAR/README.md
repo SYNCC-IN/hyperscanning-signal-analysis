@@ -2,7 +2,7 @@
 
 Every script follows the numbering of Table 2 of `docs/draft_v02_ddtf_multimodal_hyperscanning_simulations.md`
 and is run once per connectivity estimator, dDTF (the proposed method) or GPDC. Results go to
-`simulations_multimodal_MVAR/dDTF/Results/<estimator>/S_xx/` (`xx` = simulation number).
+`simulations_multimodal_MVAR/dDTF/Results/<estimator>/S_xx/` (`xx` = simulation number). The `Results/` folder is not versioned (`.gitignore`); regenerate it with `run_all.py`.
 
 ```bash
 python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py quick          # smoke test (seconds), dDTF
