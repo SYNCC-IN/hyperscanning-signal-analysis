@@ -16,7 +16,18 @@ Tests (none assumes a symmetric or normal null):
 Multiplicity across edges: `pairing_permutation_maxT` and `group_permutation_maxT` score all edges
 of a family on one shared set of permutations and return max-T (Westfall & Young, 1993), min-p and
 Bonferroni adjusted p-values (`family_pvalues`); `score_study`/`run_study` add them on request.
+
+Exact enumeration: when a test has no more distinct rearrangements than `n_perm` (group relabellings
+C(n, n_1), within-group re-pairings, sign vectors 2^n), all of them are used instead of random draws
+(`label_permutations`, `caregiver_permutations`, `sign_flips`). The observed arrangement is left out of
+the enumerated set, so the usual ``(1 + #{T_b >= T_obs}) / (1 + B)`` with B = (number of arrangements - 1)
+equals the exact p-value ``#{arrangements with T >= T_obs} / (number of arrangements)``. The random draws
+are still made (and discarded) in that case, so the generator's stream, and every later test drawn from
+it, is unchanged.
 """
+
+import itertools
+import math
 
 import numpy as np
 from scipy.stats import median_abs_deviation
@@ -269,11 +280,14 @@ def pairing_permutation_pvalue(table, rng, n_perm, groups=None):
     observed = np.mean(np.diag(table))
     perms = caregiver_permutations(n_dyads, rng, n_perm, groups)
     permuted = np.nanmean(table[np.arange(n_dyads), perms], axis=1)
-    return float((1 + np.sum(permuted >= observed)) / (1 + n_perm))
+    return float((1 + np.sum(permuted >= observed)) / (1 + len(perms)))
 
 
 def caregiver_permutations(n_dyads, rng, n_perm, groups=None):
-    """Random re-pairings of caregivers with children, optionally only within groups.
+    """Re-pairings of caregivers with children, optionally only within groups.
+
+    Random re-pairings, or all of them except the identity when there are at most `n_perm`
+    (exact enumeration, see the module docstring).
 
     Parameters
     ----------
@@ -285,14 +299,68 @@ def caregiver_permutations(n_dyads, rng, n_perm, groups=None):
 
     Returns
     -------
-    np.ndarray of int, shape (n_perm, n_dyads)
+    np.ndarray of int, shape (n_perm, n_dyads), or (n_arrangements - 1, n_dyads) when enumerated
         ``perms[b, i]`` = dyad whose caregiver is paired with child `i` in permutation `b`.
     """
     perms = np.tile(np.arange(n_dyads), (n_perm, 1))
-    for label in (np.unique(groups) if groups is not None else [None]):
-        members = np.arange(n_dyads) if label is None else np.flatnonzero(groups == label)
+    blocks = [np.arange(n_dyads)] if groups is None else [np.flatnonzero(groups == label) for label in np.unique(groups)]
+    for members in blocks:
         perms[:, members] = rng.permuted(perms[:, members], axis=1)
-    return perms
+    if math.prod(math.factorial(len(m)) for m in blocks) > n_perm:
+        return perms
+    exact = []
+    for orders in itertools.product(*[itertools.permutations(m) for m in blocks]):
+        row = np.arange(n_dyads)
+        for members, order in zip(blocks, orders):
+            row[members] = order
+        exact.append(row)
+    exact = np.array(exact)
+    return exact[~(exact == np.arange(n_dyads)).all(axis=1)]
+
+
+def label_permutations(in_one, rng, n_perm):
+    """Relabellings of a two-group design: random ones, or all except the observed one when there are at most `n_perm`.
+
+    Parameters
+    ----------
+    in_one : np.ndarray of bool, shape (n,)
+        Observed membership of group 1.
+    rng : numpy.random.Generator
+    n_perm : int
+
+    Returns
+    -------
+    np.ndarray of bool, shape (n_perm, n), or (C(n, n_1) - 1, n) when enumerated (see the module docstring)
+    """
+    random = rng.permuted(np.tile(in_one, (n_perm, 1)), axis=1)
+    n, n_one = in_one.size, int(in_one.sum())
+    if math.comb(n, n_one) > n_perm:
+        return random
+    exact = np.zeros((math.comb(n, n_one), n), dtype=bool)
+    for b, members in enumerate(itertools.combinations(range(n), n_one)):
+        exact[b, list(members)] = True
+    return exact[~(exact == in_one).all(axis=1)]
+
+
+def sign_flips(n, rng, n_perm):
+    """Sign vectors for a sign-flip test: random ones, or all except all-plus when 2**n <= `n_perm`.
+
+    Parameters
+    ----------
+    n : int
+        Number of units (dyads).
+    rng : numpy.random.Generator
+    n_perm : int
+
+    Returns
+    -------
+    np.ndarray of float (+1/-1), shape (n_perm, n), or (2**n - 1, n) when enumerated (see the module docstring)
+    """
+    random = rng.choice([-1.0, 1.0], size=(n_perm, n))
+    if 2 ** n > n_perm:
+        return random
+    exact = 1.0 - 2.0 * ((np.arange(2 ** n)[:, None] >> np.arange(n)) & 1)
+    return exact[1:]
 
 
 def maxT_adjust(observed, null, stepdown=True):
@@ -454,7 +522,7 @@ def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True):
         mean_zero = ((1 - in_one) @ values) / ((1 - in_one) @ valid)
         return np.abs(mean_one - mean_zero)
 
-    labels = rng.permuted(np.tile(groups == 1, (n_perm, 1)), axis=1)
+    labels = label_permutations(groups == 1, rng, n_perm)
     return family_pvalues(statistic(groups[None, :] == 1)[0], statistic(labels), stepdown)
 
 
@@ -522,11 +590,11 @@ def permutation_pvalue(values_a, values_b, rng, n_perm):
     -------
     float
     """
-    observed = abs(np.mean(values_a) - np.mean(values_b))
     pooled = np.concatenate([values_a, values_b])
-    in_a = rng.permuted(np.tile(np.arange(pooled.size) < values_a.size, (n_perm, 1)), axis=1)
-    diffs = np.abs((in_a * pooled).sum(1) / values_a.size - (~in_a * pooled).sum(1) / values_b.size)
-    return float((1 + np.sum(diffs >= observed)) / (1 + n_perm))
+    observed_labels = np.arange(pooled.size) < values_a.size
+    in_a = label_permutations(observed_labels, rng, n_perm)
+    statistic = lambda labels: np.abs((labels * pooled).sum(-1) / values_a.size - (~labels * pooled).sum(-1) / values_b.size)
+    return float((1 + np.sum(statistic(in_a) >= statistic(observed_labels))) / (1 + len(in_a)))
 
 
 def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha, alpha, rng, n_perm):

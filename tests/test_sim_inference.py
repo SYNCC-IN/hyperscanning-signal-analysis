@@ -175,3 +175,55 @@ def test_family_outside_scored_edges_and_separate_rng():
     assert main.random() == reference.random()
     assert set(out) == {"a", "b", "c"} and "study_p" not in out["c"] and np.isfinite(out["c"]["study_p_adj_maxT"])
     assert np.isnan(out["a"]["any_reject_study_none"])
+
+
+# ---------------------------------------------------------------------------
+# Exact enumeration of small permutation sets
+# ---------------------------------------------------------------------------
+import itertools
+
+from src.sim_inference import caregiver_permutations, label_permutations, sign_flips
+
+
+def test_exact_relabelling_uses_all_252_once_and_gives_the_exact_p():
+    """5 vs 5 dyads: the 251 relabellings other than the observed one are each used once; p is the exact p."""
+    rng = np.random.default_rng(30)
+    in_one = np.repeat([False, True], 5)
+    labels = label_permutations(in_one, rng, 1000)
+    assert labels.shape == (251, 10)
+    assert len({row.tobytes() for row in labels}) == 251
+    assert not (labels == in_one).all(axis=1).any()
+    a, b = rng.normal(size=5), rng.normal(size=5) + 0.8
+    pooled = np.concatenate([a, b])
+    stat = lambda members: abs(pooled[list(members)].mean() - np.delete(pooled, list(members)).mean())
+    observed = stat(range(5))
+    exact = np.mean([stat(m) >= observed - 1e-12 for m in itertools.combinations(range(10), 5)])
+    assert np.isclose(permutation_pvalue(a, b, rng, 1000), exact)
+    groups = in_one.astype(int)
+    p_group = group_permutation_maxT(pooled[:, None], groups[::-1], rng, 1000)["unadjusted"][0]
+    assert np.isclose(p_group, exact)
+
+
+def test_random_relabelling_when_there_are_more_arrangements_than_permutations():
+    """C(20, 10) > 1000: the usual random draws."""
+    assert label_permutations(np.repeat([False, True], 10), np.random.default_rng(0), 1000).shape == (1000, 20)
+
+
+def test_enumeration_keeps_the_random_stream():
+    """The random draws are made in both branches, so later draws from the generator are unchanged."""
+    rng_a, rng_b = np.random.default_rng(31), np.random.default_rng(31)
+    label_permutations(np.repeat([False, True], 5), rng_a, 1000)            # enumerated
+    rng_b.permuted(np.tile(np.repeat([False, True], 5), (1000, 1)), axis=1)  # what the random branch draws
+    assert rng_a.random() == rng_b.random()
+
+
+def test_exact_repairings_and_sign_flips():
+    """4 dyads: 23 non-identity re-pairings; 2 groups of 2: 3; 5 dyads: 31 non-trivial sign vectors."""
+    rng = np.random.default_rng(32)
+    perms = caregiver_permutations(4, rng, 1000)
+    assert perms.shape == (23, 4) and len({p.tobytes() for p in perms}) == 23
+    within = caregiver_permutations(4, rng, 1000, groups=np.array([0, 0, 1, 1]))
+    assert within.shape == (3, 4) and set(within[:, :2].ravel()) <= {0, 1}
+    flips = sign_flips(5, rng, 1000)
+    assert flips.shape == (31, 5) and len({f.tobytes() for f in flips}) == 31 and not (flips == 1).all(axis=1).any()
+    assert sign_flips(12, rng, 1000).shape == (1000, 12)
