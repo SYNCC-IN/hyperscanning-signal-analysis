@@ -227,3 +227,66 @@ def test_exact_repairings_and_sign_flips():
     flips = sign_flips(5, rng, 1000)
     assert flips.shape == (31, 5) and len({f.tobytes() for f in flips}) == 31 and not (flips == 1).all(axis=1).any()
     assert sign_flips(12, rng, 1000).shape == (1000, 12)
+
+
+# ---------------------------------------------------------------------------
+# Sign-flip test of film contrasts; interaction test
+# ---------------------------------------------------------------------------
+from src.sim_inference import signflip_maxT
+
+
+def correlated_edges(rng, n_dyads, n_edges=8, rho=0.5):
+    """Symmetric (zero-mean) contrasts with equicorrelated edges."""
+    shared = rng.standard_t(5, size=(n_dyads, 1))
+    return np.sqrt(rho) * shared + np.sqrt(1 - rho) * rng.standard_t(5, size=(n_dyads, n_edges))
+
+
+def test_signflip_one_edge_adjusted_equals_unadjusted():
+    """With a single edge every adjustment returns the unadjusted p-value."""
+    rng = np.random.default_rng(40)
+    out = signflip_maxT(rng.normal(size=(20, 1)) + 0.3, rng, 500)
+    for m in ADJUSTED:
+        np.testing.assert_allclose(out[m], out["unadjusted"])
+
+
+def test_signflip_exact_matches_sampling():
+    """9 dyads (511 sign vectors <= 1000): exact p within Monte Carlo error of the p from 20000 random sign vectors."""
+    rng = np.random.default_rng(41)
+    contrast = rng.normal(size=(9, 3)) + [0.0, 0.5, 1.0]
+    exact = signflip_maxT(contrast, rng, 1000)
+    sampled = signflip_maxT(contrast, rng, 20000)
+    np.testing.assert_allclose(exact["unadjusted"], sampled["unadjusted"], atol=0.01)
+    np.testing.assert_allclose(exact["maxT"], sampled["maxT"], atol=0.01)
+
+
+def test_signflip_maxT_controls_fwer_on_correlated_symmetric_null():
+    """500 null studies, 8 correlated edges, two groups: max-T FWER within the Wilson interval of 0.05."""
+    rng = np.random.default_rng(42)
+    groups = np.repeat([0, 1], 15)
+    hits = sum(bool(np.any(signflip_maxT(correlated_edges(rng, 30), rng, 400, groups)["maxT"] < 0.05)) for _ in range(500))
+    low, high = wilson_interval(25, 500)
+    assert low <= hits / 500 <= high
+
+
+def test_signflip_detects_a_planted_shift_and_keeps_fwer_on_the_others():
+    """A shift on edge 0 is rejected in most studies; any rejection among the other 7 stays <= 0.05 (+ MC error)."""
+    rng = np.random.default_rng(43)
+    planted, others = 0, 0
+    for _ in range(300):
+        contrast = correlated_edges(rng, 30)
+        contrast[:, 0] += 1.0
+        p = signflip_maxT(contrast, rng, 400)["maxT"]
+        planted += p[0] < 0.05
+        others += bool(np.any(p[1:] < 0.05))
+    assert planted / 300 > 0.8
+    assert others / 300 <= wilson_interval(15, 300)[1]
+
+
+def test_interaction_is_calibrated_when_groups_share_the_film_effect():
+    """Both groups have the same film effect (+0.8): the label-permutation interaction test keeps FWER at 0.05."""
+    rng = np.random.default_rng(44)
+    groups = np.repeat([0, 1], 15)
+    hits = sum(bool(np.any(group_permutation_maxT(correlated_edges(rng, 30) + 0.8, groups, rng, 400)["maxT"] < 0.05))
+               for _ in range(500))
+    low, high = wilson_interval(25, 500)
+    assert low <= hits / 500 <= high

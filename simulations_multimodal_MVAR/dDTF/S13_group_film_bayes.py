@@ -5,13 +5,17 @@ detecting group and film effects, and do partial-pooling models move an effect f
 Design: 2 groups x 15 dyads, 3 films x 60 s. Per-person node parameters are drawn once and kept across films; every
 film has new innovations. 4-node Level-1 model; the family is the 8 cross-person edges. Scenarios (VAR gain, brain->brain
 unless stated): a none; b cg brain->child brain 0.3 in all cells; c as b, ASD 0.1; d c + cg heart->child heart 0.3 TD /
-0.1 ASD; e group difference (0.3 TD vs 0.1 ASD) only in film 1 (films 2, 3: 0.3 in both groups).
+0.1 ASD; e group difference (0.3 TD vs 0.1 ASD) only in film 1 (films 2, 3: 0.3 in both groups); f film effect without a
+group effect (0.1 in film 1, 0.3 in films 2 and 3, both groups).
 Dependent variable: delta against the within-group null of each film (surrogates built from dyads of the same group and
 film), standardized within edge for the Bayesian models (`src.group_model.standardize_within_edge`); the robust z
 (delta / scaled MAD of the null) is a sensitivity DV for the permutation tests.
 Analyses per study:
   1. permutation: group contrast per edge and film, max-T over the 8 edges within each film; max-T over the 24
-     edge x film tests; max-T over the 8 edges on the film-averaged delta;
+     edge x film tests; max-T over the 8 edges on the film-averaged delta; film contrast
+     c = delta(F1) - mean(delta(F2), delta(F3)) per dyad: sign-flip test of the film effect (max-T over 8,
+     `src.sim_inference.signflip_maxT`) and group-label permutation of the interaction (mean_ASD c - mean_TD c, max-T
+     over 8, `group_permutation_maxT`);
   2. Bayesian per edge:            dv ~ film * group + (1|dyad)
   3. Bayesian, pooled intercepts:  dv ~ film * group + (1|edge) + (1|dyad)
   4. Bayesian, pooled effects:     dv ~ film * group + (film * group | edge) + (1|dyad); if a fit fails the convergence
@@ -22,8 +26,8 @@ Convergence gate (`src.group_model.convergence_row`): R-hat < 1.01, bulk/tail ES
 
 Usage: python S13_group_film_bayes.py [quick|full] [dDTF|GPDC] [summarize]
   SIM_NREP=<n>        replicates per scenario (default: SETTINGS)
-  SIM_REPS=<a>-<b>    run only replicates a..b (inclusive) and write raw_results_reps_<a>-<b>.csv; the summary is built
-                      from every raw_results_reps_*.csv in the folder ('summarize' rebuilds it without simulating)
+  SIM_REPS=<a>-<b>    run only replicates a..b (inclusive) and write raw_results_<mode>_reps_<a>-<b>.csv; the summary is
+                      built from every raw_results_<mode>_reps_*.csv in the folder ('summarize' rebuilds it without simulating)
   SIM_NJOBS=<n>       parallel processes (default 8)
 Results: Results/<estimator>/S_13/
 """
@@ -55,7 +59,8 @@ from src.group_model import convergence_row, fit_model_with_priors, standardize_
 from src.sim_generators import sample_node_params, simulate_dyads_fixed_params, zscore_designs
 from src.sim_group_bayes import edge_effects, excludes_zero, population_effects
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
-from src.sim_inference import delta_and_z_all, group_permutation_maxT, real_matrices, surrogate_values, wilson_interval
+from src.sim_inference import (delta_and_z_all, group_permutation_maxT, real_matrices, signflip_maxT, surrogate_values,
+                               wilson_interval)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -69,9 +74,9 @@ BASE_SEED = 20260113
 N_REP_MAX = 1000                      # seeds are indexed (scenario, replicate) up to this many replicates
 MCMC_FULL = {"draws": 1000, "tune": 1000, "chains": 4, "target_accept": 0.95, "cores": 1, "sd_prior_edge": "halfstudentt"}
 SETTINGS = {
-    "quick": {"n_rep": 1, "n_per_group": 6, "scenarios": ["a", "d"],
+    "quick": {"n_rep": 1, "n_per_group": 6, "scenarios": ["a", "d", "f"],
               "mcmc": dict(MCMC_FULL, draws=150, tune=150, chains=2)},
-    "full": {"n_rep": 100, "n_per_group": 15, "scenarios": ["a", "b", "c", "d", "e"], "mcmc": MCMC_FULL},
+    "full": {"n_rep": 100, "n_per_group": 15, "scenarios": ["a", "b", "c", "d", "e", "f"], "mcmc": MCMC_FULL},
 }[MODE]
 if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
@@ -104,6 +109,7 @@ SCENARIOS = {
     "c": {"cg:ROI->child:ROI": [[0.3, 0.3, 0.3], [0.1, 0.1, 0.1]]},
     "d": {"cg:ROI->child:ROI": [[0.3, 0.3, 0.3], [0.1, 0.1, 0.1]], "cg:HRV->child:HRV": [[0.3, 0.3, 0.3], [0.1, 0.1, 0.1]]},
     "e": {"cg:ROI->child:ROI": [[0.3, 0.3, 0.3], [0.1, 0.3, 0.3]]},
+    "f": {"cg:ROI->child:ROI": [[0.1, 0.3, 0.3], [0.1, 0.3, 0.3]]},
 }
 ALPHA = 0.05
 N_PERM = 1000
@@ -125,9 +131,13 @@ MODELS = {   # label -> (formula, required group-specific prior keys)
 }
 METHOD_LABELS = {"perm_film_unadj": "permutation, per film, uncorrected", "perm_film_maxT": "permutation, max-T within film",
                  "perm_24_maxT": "permutation, max-T over 24", "perm_mean_maxT": "permutation, max-T on film mean",
+                 "perm_contrast_unadj": "sign-flip, film contrast, uncorrected", "perm_contrast_maxT": "sign-flip, film contrast, max-T",
+                 "perm_interaction_unadj": "permutation, interaction, uncorrected", "perm_interaction_maxT": "permutation, interaction, max-T",
                  "bayes_edge": "Bayes per edge (M2)", "bayes_pooled_int": "Bayes (1|edge) (M3)",
                  "bayes_pooled_eff": "Bayes (film*group|edge) (M4)", "bayes_pooled_eff_fallback": "Bayes (group|edge) fallback"}
 PLOT_METHODS = ["perm_film_maxT", "perm_24_maxT", "perm_mean_maxT", "bayes_edge", "bayes_pooled_int", "bayes_pooled_eff"]
+PLOT_METHODS_CONTRAST = {"film": ["perm_contrast_maxT", "bayes_edge", "bayes_pooled_int", "bayes_pooled_eff"],
+                         "interaction": ["perm_interaction_maxT", "bayes_edge", "bayes_pooled_int", "bayes_pooled_eff"]}
 FWER_BAND = (0.03, 0.07)              # scenario a, max-T within film [proposed]
 POWER_TARGET = 0.80                   # scenario c, max-T within film [proposed]
 LEAKAGE_MAX = 0.10                    # scenario c, model 4, any null edge [proposed]
@@ -204,6 +214,27 @@ def permutation_records(df, groups, rng, dv):
     return out
 
 
+def contrast_records(df, groups, rng, dv):
+    """Film effect (sign-flip, max-T over 8) and film x group interaction (label permutation, max-T over 8) of one DV.
+
+    The contrast per dyad and edge is c = dv(F1) - mean(dv(F2), dv(F3)); a dyad missing a film is NaN for that edge.
+    """
+    n = len(groups)
+    wide = {film: np.full((n, len(EDGES)), np.nan) for film in FILMS}
+    for (film, edge), sub in df.groupby(["film", "edge"]):
+        wide[film][sub.dyad.to_numpy(), list(EDGES).index(edge)] = sub[dv].to_numpy()
+    contrast = wide["F1"] - (wide["F2"] + wide["F3"]) / 2
+    out = []
+    for effect, label, res in (("film", "perm_contrast", signflip_maxT(contrast, rng, N_PERM, groups)),
+                               ("interaction", "perm_interaction", group_permutation_maxT(contrast, groups, rng, N_PERM))):
+        for e, edge in enumerate(EDGES):
+            for kind, key in (("unadj", "unadjusted"), ("maxT", "maxT")):
+                p = float(res[key][e])
+                out.append({"method": f"{label}_{kind}", "dv": dv, "film": "all", "edge": edge, "effect": effect,
+                            "p": p, "detected": bool(p < ALPHA)})
+    return out
+
+
 def bayes_fit(label, data, mcmc, seed):
     """Fit one model; return (model, idata, gate row, seconds)."""
     formula, required = MODELS[label]
@@ -277,6 +308,7 @@ def run_task(task):
     perm_rng = np.random.default_rng([task["seed"], 1])
     start = time.time()
     records = permutation_records(df, groups, perm_rng, "delta") + permutation_records(df, groups, perm_rng, "z")
+    records += contrast_records(df, groups, perm_rng, "delta") + contrast_records(df, groups, perm_rng, "z")   # drawn after the group tests
     runtime = {"simulation_and_delta": t_sim, "permutation": time.time() - start}
     bayes, gates, bayes_time = bayes_records(df, SETTINGS["mcmc"], int(task["seed"] % 2**31))
     runtime.update(bayes_time)
@@ -345,7 +377,7 @@ def shrinkage_table(df):
 
 def plot_summary(detection, familywise, shrinkage, out_dir):
     """fig_group_film_bayes: A detection on planted edges, B family-wise rate on null edges, C estimated vs true group effect."""
-    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(22, 5))
     width = 0.8 / len(PLOT_METHODS)
     det = detection[(detection.dv.isin(["delta", "delta_std"])) & detection.planted & (detection.effect == "group")]
     scen_a = sorted(det.scenario.unique())
@@ -376,6 +408,18 @@ def plot_summary(detection, familywise, shrinkage, out_dir):
     axes[2].plot(lim, lim, "k", lw=0.6); axes[2].axhline(0, color="grey", lw=0.4); axes[2].axvline(0, color="grey", lw=0.4)
     axes[2].set_xlabel("true group effect (standardized, Monte Carlo reference)"); axes[2].set_ylabel("mean estimate (+/- SD over studies)")
     axes[2].set_title("C  shrinkage on planted edges (scenarios c, d, e)", fontsize=10); axes[2].legend(fontsize=7)
+
+    cells = [(effect, scenario) for effect in PLOT_METHODS_CONTRAST
+             for scenario in sorted(detection[detection.planted & (detection.effect == effect)].scenario.unique())]
+    for i in range(len(PLOT_METHODS_CONTRAST["film"])):
+        vals = [detection[(detection.scenario == sc) & (detection.effect == eff) & detection.planted & detection.dv.isin(["delta", "delta_std"])
+                          & (detection.method == PLOT_METHODS_CONTRAST[eff][i])].rate.mean() for eff, sc in cells]
+        axes[3].bar(np.arange(len(cells)) + i * width * 1.5, vals, width * 1.5, color=f"C{i + 6}" if i == 0 else f"C{i + 2}",
+                    label="permutation, max-T (sign-flip / label)" if i == 0 else METHOD_LABELS[PLOT_METHODS_CONTRAST["film"][i]])
+    axes[3].set_xticks(np.arange(len(cells)) + 0.45); axes[3].set_xticklabels([f"{eff}\n{sc}" for eff, sc in cells], fontsize=8)
+    axes[3].axhline(POWER_TARGET, color="k", lw=0.6, ls=":"); axes[3].set_ylim(0, 1)
+    axes[3].set_title("D  film effect and interaction detected on planted edges", fontsize=10); axes[3].set_ylabel("detection rate")
+    axes[3].legend(fontsize=7)
     fig.tight_layout()
     for ext in ("png", "svg"):
         fig.savefig(out_dir / f"fig_group_film_bayes.{ext}", dpi=150)
@@ -383,10 +427,10 @@ def plot_summary(detection, familywise, shrinkage, out_dir):
 
 
 def summarize(out_dir):
-    """Build every summary table, the figure and summary.json from all raw_results_reps_*.csv in `out_dir`."""
-    df = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob("raw_results_reps_*.csv"))], ignore_index=True)
-    gates = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob("gates_reps_*.csv"))], ignore_index=True)
-    runtime = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob("runtime_reps_*.csv"))], ignore_index=True)
+    """Build every summary table, the figure and summary.json from all raw_results_<MODE>_reps_*.csv in `out_dir`."""
+    df = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob(f"raw_results_{MODE}_reps_*.csv"))], ignore_index=True)
+    gates = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob(f"gates_{MODE}_reps_*.csv"))], ignore_index=True)
+    runtime = pd.concat([pd.read_csv(p) for p in sorted(out_dir.glob(f"runtime_{MODE}_reps_*.csv"))], ignore_index=True)
     df = df[df.scenario.isin(SETTINGS["scenarios"])]
     df["detected"] = df.detected.astype("boolean")
     edge_df = edge_level(df[df.detected.notna() & (df.edge != "population")])
@@ -425,6 +469,19 @@ def summarize(out_dir):
         values["c_model4_leakage"] = leak.drop(columns=["scenario", "method", "dv", "effect"]).to_dict(orient="records")
         criteria[f"[proposed] scenario c: model-4 leakage into any null edge <= {LEAKAGE_MAX}"] = \
             bool(leak[leak.scope == "all null edges"].rate.iloc[0] <= LEAKAGE_MAX)
+    for effect, method in (("film", "perm_contrast_maxT"), ("interaction", "perm_interaction_maxT")):
+        if "a" in SETTINGS["scenarios"]:
+            row = familywise[(familywise.scenario == "a") & (familywise.method == method) & (familywise.dv == "delta")
+                             & (familywise.scope == "all null edges")].iloc[0]
+            values[f"a_{method}_fwer"] = rate_row(edge_df[(edge_df.scenario == "a") & (edge_df.method == method) & (edge_df.dv == "delta")].groupby("rep").detected.any())
+            criteria[f"[proposed] scenario a: max-T family-wise {effect} rate (8 edges) within {FWER_BAND}"] = bool(FWER_BAND[0] <= row.rate <= FWER_BAND[1])
+    if "f" in SETTINGS["scenarios"]:
+        f_det = edge_df[(edge_df.scenario == "f") & (edge_df.method == "perm_contrast_maxT") & (edge_df.dv == "delta") & (edge_df.edge == "cg:ROI->child:ROI")]
+        values["f_signflip_maxT_power"] = rate_row(f_det.detected)
+        criteria[f"[proposed] scenario f: sign-flip max-T detects the planted film effect in >= {POWER_TARGET:.0%}"] = bool(f_det.detected.mean() >= POWER_TARGET)
+        f_int = edge_df[(edge_df.scenario == "f") & (edge_df.method == "perm_interaction_maxT") & (edge_df.dv == "delta")].groupby("rep").detected.any()
+        values["f_interaction_maxT_fwer"] = rate_row(f_int)
+        criteria[f"[proposed] scenario f (no interaction): max-T family-wise interaction rate <= {FWER_BAND[1]}"] = bool(f_int.mean() <= FWER_BAND[1])
     settings = dict(SETTINGS, n_rep=int(df.groupby("scenario").rep.nunique().min()), mcmc={k: v for k, v in SETTINGS["mcmc"].items()})
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": settings, "criteria": criteria, "criterion_values": values,
@@ -446,7 +503,7 @@ def main():
         results = run_parallel(run_task, tasks, N_JOBS)
         tag = f"{REPS.start}-{REPS.stop - 1}"
         for i, name in enumerate(["raw_results", "gates", "runtime", "rows"]):
-            pd.DataFrame([r for res in results for r in res[i]]).to_csv(out_dir / f"{name}_reps_{tag}.csv", index=False)
+            pd.DataFrame([r for res in results for r in res[i]]).to_csv(out_dir / f"{name}_{MODE}_reps_{tag}.csv", index=False)
         print(f"{len(tasks)} studies in {time.time() - start:.0f} s with {N_JOBS} processes")
     summarize(out_dir)
 

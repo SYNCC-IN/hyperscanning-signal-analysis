@@ -526,6 +526,43 @@ def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True):
     return family_pvalues(statistic(groups[None, :] == 1)[0], statistic(labels), stepdown)
 
 
+
+def signflip_maxT(contrast, rng, n_perm, groups=None, stepdown=True):
+    """Two-sided sign-flip test of a within-dyad contrast on several edges, on shared sign vectors, with FWER control.
+
+    Under H0 (no film effect) each dyad's contrast is symmetric about 0, so its sign is exchangeable. One matrix of
+    signs (one sign per dyad, ``n_perm x n_dyads``) is drawn and applied to every edge; with fewer than `n_perm`
+    non-trivial sign vectors all of them are used (exact test, see `sign_flips`). The statistic of an edge is
+    ``|mean c|`` over its non-NaN dyads, or with `groups` ``|(mean_0 c + mean_1 c) / 2|`` (the film effect averaged
+    over groups, so unequal group sizes do not weight it).
+
+    Parameters
+    ----------
+    contrast : np.ndarray, shape (n_dyads, n_edges)
+        Contrast per dyad and edge (e.g. delta in film 1 minus the mean of films 2 and 3); NaN for dyads that miss a
+        film, left out of that edge only.
+    rng : numpy.random.Generator
+    n_perm : int
+    groups : np.ndarray of int, shape (n_dyads,), optional
+        Labels 0/1.
+    stepdown : bool, optional
+
+    Returns
+    -------
+    dict of {str: np.ndarray}
+        `family_pvalues` output (one value per edge).
+    """
+    valid = np.isfinite(contrast)
+    values = np.where(valid, contrast, 0.0)
+    blocks = [np.ones(len(contrast), bool)] if groups is None else [groups == 0, groups == 1]
+
+    def statistic(signs):
+        means = [((signs * block) @ values) / (block.astype(float) @ valid) for block in blocks]
+        return np.abs(np.mean(means, axis=0))
+
+    flips = sign_flips(len(contrast), rng, n_perm)
+    return family_pvalues(statistic(np.ones((1, len(contrast))))[0], statistic(flips), stepdown)
+
 MULTIPLICITY_METHODS = ("unadjusted", "bonferroni", "maxT", "maxT_single_step", "minP", "minP_single_step")
 
 
