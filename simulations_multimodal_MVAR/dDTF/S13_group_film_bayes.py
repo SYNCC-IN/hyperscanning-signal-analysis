@@ -58,6 +58,7 @@ from src.design import window_geometry
 from src.group_model import convergence_row, fit_model_with_priors, standardize_within_edge
 from src.sim_generators import sample_node_params, simulate_dyads_fixed_params, zscore_designs
 from src.sim_group_bayes import edge_effects, excludes_zero, population_effects
+from src import sim_progress
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import (delta_and_z_all, group_permutation_maxT, real_matrices, signflip_maxT, surrogate_values,
                                wilson_interval)
@@ -489,23 +490,45 @@ def summarize(out_dir):
                    "gate_fail_share": gate_summary.groupby("model").fail_share.mean().to_dict(),
                    "runtime_seconds_per_study": runtime.drop(columns=["rep", "scenario"]).mean().to_dict()}, f, indent=2, default=float)
     print(detection[detection.planted].round(3).to_string()); print(familywise.round(3).to_string()); print(criteria)
+    planted = detection[detection.planted & detection.dv.isin(["delta", "delta_std"])]
+    readouts = {"family-wise rate, scenario a (all methods)": sim_progress.range_text(familywise[(familywise.scenario == "a") & (familywise.scope == "all null edges")].rate.tolist()),
+                "detection on planted edges": sim_progress.range_text(planted.rate.tolist()),
+                "gate failures": sim_progress.range_text(gate_summary.fail_share.tolist())}
+    return readouts, criteria
+
+
+def study_lines(task, result):
+    """Progress lines for one finished study: runtime split, and a warning per Bayesian fit that fails the gate."""
+    runtime = result[2][0]
+    bayes = sum(v for k, v in runtime.items() if k.startswith("bayes"))
+    lines = [f"study scenario {task['scenario']} rep {task['rep']}: simulation {runtime['simulation_and_delta']:.0f} s, "
+             f"permutation {runtime['permutation']:.1f} s, Bayes {bayes:.0f} s"]
+    for gate in result[1]:
+        if not gate["pass_l9"]:
+            lines.append(f"WARNING gate failed: scenario {task['scenario']} rep {task['rep']}, {gate['model']} (edge {gate['edge']}): "
+                         f"R-hat {gate['max_rhat']:.4f}, bulk ESS {gate['min_bulk_ess']:.0f}, tail ESS {gate['min_tail_ess']:.0f}, "
+                         f"divergences {gate['n_divergent']}")
+    return lines
 
 
 def main():
     """Run S13 (or only rebuild its summaries) and write to Results/<estimator>/S_13."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S13 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE,
+                       replicates=f"{REPS.start}-{REPS.stop - 1}", n_per_group=SETTINGS["n_per_group"])
     if not SUMMARIZE_ONLY:
         all_scenarios = list(SCENARIOS)
         seeds = spawn_seeds(BASE_SEED, len(all_scenarios) * N_REP_MAX)
         tasks = [{"scenario": s, "rep": r, "seed": seeds[all_scenarios.index(s) * N_REP_MAX + r]}
                  for r in REPS for s in SETTINGS["scenarios"]]
         start = time.time()
-        results = run_parallel(run_task, tasks, N_JOBS)
+        results = run_parallel(run_task, tasks, N_JOBS, result_lines=study_lines)
         tag = f"{REPS.start}-{REPS.stop - 1}"
         for i, name in enumerate(["raw_results", "gates", "runtime", "rows"]):
             pd.DataFrame([r for res in results for r in res[i]]).to_csv(out_dir / f"{name}_{MODE}_reps_{tag}.csv", index=False)
         print(f"{len(tasks)} studies in {time.time() - start:.0f} s with {N_JOBS} processes")
-    summarize(out_dir)
+    readouts, criteria = summarize(out_dir)
+    sim_progress.finish(out_dir, readouts, criteria)
 
 
 if __name__ == "__main__":

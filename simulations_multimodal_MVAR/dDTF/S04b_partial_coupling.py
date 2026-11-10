@@ -33,6 +33,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import coupling_window, simulate_dyads_partial, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import dyad_pvalues, real_matrices, score_study, surrogate_values, wilson_interval
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,7 @@ def plot(summary, out_dir):
 def main():
     """Run S04b and write all outputs to Results/<estimator>/S_04/partial."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR) / "partial"
+    sim_progress.begin(f"S04b {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     out_dir.mkdir(exist_ok=True)
     tasks = [{"variant": v, "level": q, "gain": g, "rep": r, "seed": s04_seed(SETTINGS["n_dyads"], SETTINGS["seg_s"], g, r)}
              for v in VARIANTS for q in SETTINGS["levels"] for g in SETTINGS["gains"] for r in range(SETTINGS["n_rep"])]
@@ -199,6 +201,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "reproduces_s04_design_a": reproduced, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"power (per edge)": sim_progress.range_text(summary.power.tolist()), "dyad rate, uncoupled dyads": sim_progress.range_text(summary.dyad_rate_uncoupled.tolist())}, criteria)
 
 
 if __name__ == "__main__":

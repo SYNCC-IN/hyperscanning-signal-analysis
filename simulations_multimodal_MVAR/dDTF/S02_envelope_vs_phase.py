@@ -41,6 +41,7 @@ from src.envelopes import downsample, filter_individual_band, hilbert_envelope
 from src.sim_estimation import edge_matrix
 from src.sim_generators import simulate_phase_oscillators
 from src.sim_harness import results_dir, run_parallel
+from src import sim_progress
 from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators, resonant_self_edges
 
 # ---------------------------------------------------------------------------
@@ -142,6 +143,7 @@ def mean_sem(x):
 def main():
     """Run S02 and write all outputs to Results/<estimator>/S_02."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S02 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     tasks = [{"truth": truth, "rep": rep, "seed": BASE_SEED + rep} for truth in TRUTHS for rep in range(SETTINGS["n_rep"])]
     df = pd.DataFrame([r for recs in run_parallel(run_task, tasks, N_JOBS) for r in recs])
     df["direction_index"] = (df.fwd - df.rev) / (df.fwd + df.rev)
@@ -199,6 +201,7 @@ def main():
         json.dump({"mode": MODE, "settings": {k: (list(map(float, v)) if k == "gaps" else v) for k, v in SETTINGS.items()},
                    "criteria": criteria}, f, indent=2)
     print(summary.round(4).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"direction index": sim_progress.range_text(summary.direction_index.tolist())}, criteria)
 
 
 if __name__ == "__main__":

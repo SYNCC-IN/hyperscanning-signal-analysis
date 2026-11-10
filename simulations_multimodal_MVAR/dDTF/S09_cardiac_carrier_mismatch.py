@@ -30,6 +30,7 @@ from src.design import window_geometry
 from src.sim_cardiac import FS_ANALYSIS, represent, simulate_cardiac_dyad
 from src.sim_generators import zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -83,6 +84,7 @@ def run_task(task):
 def main():
     """Run S09 and write all outputs to Results/<estimator>/S_09."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S09 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(t, g) for t in TRUTHS for g in SETTINGS["gaps"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"truth": t, "gap": g, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]} for c, (t, g) in enumerate(cells) for i in range(SETTINGS["n_rep"])]
@@ -124,6 +126,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"FPR (truth none)": sim_progress.range_text(summary[summary.truth == "none"].forward_rate.tolist()), "power (pulling)": sim_progress.range_text(summary[summary.truth == "pulling"].forward_rate.tolist())}, criteria)
 
 
 if __name__ == "__main__":

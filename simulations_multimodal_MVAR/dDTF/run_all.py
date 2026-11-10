@@ -9,7 +9,12 @@ Usage:
 
 Simulations run in the order of RUN_ORDER (calibration first, S13 last); each simulation runs for every estimator before
 the next one starts. Each script writes to simulations_multimodal_MVAR/dDTF/Results/<estimator>/S_xx/ (S04b: S_04/partial/,
-S06b: S_06/noise/). Afterwards compare_estimators.py
+S06b: S_06/noise/).
+
+Progress: every script prints start, per-task, summary and end lines (`src.sim_progress`); run_all adds one line per
+finished run. All lines also go to Results/progress.log (`tail -f`), and Results/progress.json holds the run_all state
+(current run, runs done / total, elapsed, ETA from the previous timings), the running tasks and the finished runs.
+SIM_QUIET=1 switches the per-task lines off. Afterwards compare_estimators.py
 writes the side-by-side tables to Results/comparison/. The timings go to Results/run_all_timing_<mode>.json
 (merged with the timings already there, so runs of single estimators or scripts keep the others).
 """
@@ -21,6 +26,11 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[1]))
+from src import sim_progress  # noqa: E402
+
+RESULTS = HERE / "Results"
+PROGRESS_LOG, PROGRESS_JSON = RESULTS / "progress.log", RESULTS / "progress.json"
 ESTIMATORS = ["dDTF", "GPDC"]
 SCRIPTS = {"1": "S01_recovery_orientation.py", "2": "S02_envelope_vs_phase.py", "3": "S03_null_calibration.py", "4": "S04_power.py",
            "4b": "S04b_partial_coupling.py", "5": "S05_conditioning.py", "6": "S06_smoothness.py", "6b": "S06b_unequal_snr.py",
@@ -37,7 +47,7 @@ def sim_name(sim_id):
 
 def summary_path(estimator, sim_id):
     """Path of a run's summary.json."""
-    return HERE / "Results" / estimator / (SUMMARY_PATHS[sim_id] if sim_id in SUMMARY_PATHS else f"S_{int(sim_id):02d}/summary.json")
+    return RESULTS / estimator / (SUMMARY_PATHS[sim_id] if sim_id in SUMMARY_PATHS else f"S_{int(sim_id):02d}/summary.json")
 
 
 def main():
@@ -47,20 +57,30 @@ def main():
     ids = [a for a in sys.argv[2:] if a not in ESTIMATORS]
     ids = [i for i in RUN_ORDER if i in ids] if ids else RUN_ORDER
     timing, status = {}, {}
-    for sim_id in ids:
-        for estimator in estimators:
-            name = sim_name(sim_id)
-            start = time.time()
-            proc = subprocess.run([sys.executable, str(HERE / SCRIPTS[sim_id]), mode, estimator], capture_output=True, text=True)
-            timing[f"{estimator}/{name}"] = round(time.time() - start, 1)
-            path = summary_path(estimator, sim_id)
-            criteria = json.loads(path.read_text()).get("criteria", {}) if proc.returncode == 0 and path.exists() else None
-            status[estimator, name] = "FAILED TO RUN" if criteria is None else f"{sum(criteria.values())}/{len(criteria)} criteria met"
-            if proc.returncode != 0:
-                print(proc.stderr[-2000:])
-    timing_path = HERE / "Results" / f"run_all_timing_{mode}.json"
+    runs = [(sim_id, estimator) for sim_id in ids for estimator in estimators]
+    timing_path = RESULTS / f"run_all_timing_{mode}.json"
     previous = json.loads(timing_path.read_text()) if timing_path.exists() else {}
-    timing_path.write_text(json.dumps(previous | timing, indent=2))
+    start_all = time.time()
+    for k, (sim_id, estimator) in enumerate(runs):
+        name = sim_name(sim_id)
+        remaining = [previous.get(f"{e}/{sim_name(i)}") for i, e in runs[k:]]
+        eta = sim_progress.format_duration(sum(remaining)) if all(remaining) else "unknown (no previous timing)"
+        sim_progress.update_state(lambda st: st.__setitem__("run_all", {
+            "mode": mode, "current": f"{name} {estimator}", "runs_done": k, "runs_total": len(runs),
+            "elapsed": sim_progress.format_duration(time.time() - start_all), "eta_from_previous_timings": eta}), PROGRESS_JSON)
+        start = time.time()
+        proc = subprocess.run([sys.executable, str(HERE / SCRIPTS[sim_id]), mode, estimator])
+        timing[f"{estimator}/{name}"] = round(time.time() - start, 1)
+        path = summary_path(estimator, sim_id)
+        criteria = json.loads(path.read_text()).get("criteria", {}) if proc.returncode == 0 and path.exists() else None
+        status[estimator, name] = "FAILED TO RUN" if criteria is None else f"{sum(criteria.values())}/{len(criteria)} criteria met"
+        nxt = f"{sim_name(runs[k + 1][0])} {runs[k + 1][1]}" if k + 1 < len(runs) else "-"
+        sim_progress.emit(f"[run_all] {k + 1}/{len(runs)} simulations done | elapsed {sim_progress.format_duration(time.time() - start_all)}"
+                          f" | last: {name} {estimator} {status[estimator, name]} | next: {nxt}", PROGRESS_LOG)
+        timing_path.write_text(json.dumps(previous | timing, indent=2))
+    sim_progress.update_state(lambda st: st.__setitem__("run_all", {
+        "mode": mode, "current": "-", "runs_done": len(runs), "runs_total": len(runs),
+        "elapsed": sim_progress.format_duration(time.time() - start_all), "eta_from_previous_timings": "0:00:00"}), PROGRESS_JSON)
     print("       " + "".join(f"{e:<24}" for e in estimators))
     for sim_id in ids:
         name = sim_name(sim_id)

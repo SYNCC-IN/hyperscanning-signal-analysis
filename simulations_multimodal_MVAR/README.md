@@ -23,6 +23,22 @@ replicates (diagnostics, timing).
 `summary.json` contains the `mode` it was produced with (and `Results/comparison/runs.csv` lists it per estimator).
 Do not interpret quick-mode numbers. `Results/dDTF/` currently holds the full dDTF runs.
 
+## Following a run
+
+Every script prints a start line (mode, replicates, conditions, tasks, N_JOBS), a progress line every 5% of its tasks or
+every 60 s (`[S04 GPDC] 312/1800 tasks (17%) | elapsed 0:41:10 | ETA 3:18:00 | last: n_dyads=25, seg_s=60, gain=0.3`),
+a summary line with its main readouts and the number of criteria met, and an end line with the time and the results
+folder; S13 adds one line per study and a warning for every Bayesian fit that fails the convergence gate. `run_all.py`
+adds one line per finished run. All lines are also appended to `Results/progress.log`, and `Results/progress.json`
+(rewritten after every update) holds the run_all state, the running tasks and the finished runs:
+
+```bash
+tail -f simulations_multimodal_MVAR/dDTF/Results/progress.log
+cat simulations_multimodal_MVAR/dDTF/Results/progress.json
+```
+
+`SIM_QUIET=1` switches the per-task lines off (start, summary and end lines stay). Reporting never changes results.
+
 ## Comparing dDTF and GPDC
 
 The estimator replaces dDTF everywhere it is the method under test: the 4-node analysis of S01–S10, the

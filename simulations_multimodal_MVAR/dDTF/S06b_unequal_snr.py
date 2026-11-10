@@ -32,6 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import add_node_noise, simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study, wilson_interval
 
 # ---------------------------------------------------------------------------
@@ -188,6 +189,7 @@ def plot(null, coupled, out_dir):
 def main():
     """Run S06b and write all outputs to Results/<estimator>/S_06/noise."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR) / "noise"
+    sim_progress.begin(f"S06b {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     out_dir.mkdir(exist_ok=True)
     s01_seeds = spawn_seeds(S01_BASE_SEED, SETTINGS["n_rep"])
     tasks = [{"part": "no_coupling", "noise_set": ns, "noise_sd": sd, "rep": r, "seed": s06_seed(r)}
@@ -209,6 +211,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "s06_radius": S06_RADIUS, "criteria": criteria}, f, indent=2)
     print(null.round(3).to_string()); print(coupled.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"FPR (no coupling)": sim_progress.range_text(null[["fpr_smooth_to_rough", "fpr_rough_to_smooth"]].values.ravel().tolist()), "power (coupled)": sim_progress.range_text(coupled.power.tolist())}, criteria)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import make_stimulus, sample_stimulus_gain, simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import cross_film_values, real_matrices, run_study, score_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -103,6 +104,7 @@ def run_task(task):
 def main():
     """Run S07 and write all outputs to Results/<estimator>/S_07."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S07 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(g, s, r) for g in SETTINGS["gains"] for s in SETTINGS["sd_log"] for r in SETTINGS["ratios"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"gain": g, "sd_log": s, "ratio": r, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]}
@@ -148,6 +150,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"one-group FPR (same film)": sim_progress.range_text(same[same.ratio == 1.0].study_fpr.tolist()), "group FPR (within-group null)": sim_progress.range_text(same[same["mode"] == "within_group"].group_fpr.tolist())}, criteria)
 
 
 if __name__ == "__main__":

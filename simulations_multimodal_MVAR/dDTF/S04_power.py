@@ -31,6 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -172,6 +173,7 @@ def plot_maxT(summary, nonplanted, out_dir):
 def main():
     """Run S04 and write all outputs to Results/<estimator>/S_04."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S04 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(n, s, g) for n in SETTINGS["n_dyads"] for s in SETTINGS["seg_s"] for g in SETTINGS["gains"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "gain": g, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
@@ -235,6 +237,7 @@ def main():
                    "family": list(FAMILY), "min_gain_for_80pct_power": thresholds,
                    "min_gain_for_80pct_power_adjusted": thresholds_adj, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"FPR at gain 0 (design A)": sim_progress.range_text(a[a.gain == 0].power.tolist()), "power (A, N=25, 60 s, gain 0.4)": sim_progress.range_text(a[(a.n_dyads == 25) & (a.seg_s == 60) & (a.gain == 0.4)].power.tolist())}, criteria)
 
 
 if __name__ == "__main__":

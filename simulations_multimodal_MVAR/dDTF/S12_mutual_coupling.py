@@ -36,6 +36,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import delta_and_z_all, real_matrices, score_study, surrogate_values, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -109,6 +110,7 @@ def run_task(task):
 def main():
     """Run S12 and write all outputs to Results/<estimator>/S_12."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S12 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(pair, gf, gr) for pair, conds in SETTINGS["conditions"].items() for gf, gr in conds]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"pair": pair, "g_fwd": gf, "g_rev": gr, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
@@ -160,6 +162,7 @@ def main():
         json.dump({"mode": MODE, "settings": {k: v for k, v in SETTINGS.items() if k != "conditions"},
                    "conditions": {k: [list(c) for c in v] for k, v in SETTINGS["conditions"].items()}, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"forward rate": sim_progress.range_text(summary.forward_rate.tolist()), "reverse rate": sim_progress.range_text(summary.reverse_rate.tolist())}, criteria)
 
 
 if __name__ == "__main__":

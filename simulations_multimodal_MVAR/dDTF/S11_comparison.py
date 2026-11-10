@@ -36,6 +36,7 @@ from src.design import window_geometry
 from src.envelopes import downsample, filter_individual_band, hilbert_envelope
 from src.sim_generators import make_stimulus, sample_stimulus_gain, simulate_dyads, simulate_phase_oscillators, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study, wilson_interval
 from src.synthetic_mvar import edges_to_coupling, generate_coupled_oscillators, resonant_self_edges
 
@@ -215,6 +216,7 @@ def run_task_b(task):
 def main():
     """Run S11 and write all outputs to Results/<estimator>/S_11."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S11 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     n_rep = SETTINGS["n_rep"]
     cells_a = list(A_SCENARIOS)
     cells_b = [(t, g) for t in ("none", "amplitude", "phase") for g in SETTINGS["gaps"]]
@@ -277,6 +279,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
     print(sum_a.round(3).to_string()); print(sum_b.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"null-edge rate": sim_progress.range_text(sum_a[sum_a.role == "null_edge"].study_rate.tolist()), "planted": sim_progress.range_text(sum_a[sum_a.role == "planted"].study_rate.tolist())}, criteria)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,23 @@
-"""Small helpers shared by the simulation scripts: parallel runs, seeds, result folders."""
+"""Small helpers shared by the simulation scripts: parallel runs (with progress reporting), seeds, result folders."""
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+try:
+    from . import sim_progress
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from src import sim_progress
 
-def run_parallel(func, tasks, n_jobs):
+
+def run_parallel(func, tasks, n_jobs, result_lines=None):
     """Apply `func` to every task, in parallel processes if `n_jobs > 1`; results keep task order.
+
+    Results are collected as they finish, and progress is reported through `src.sim_progress` (a start line, then a
+    line every 5% of the tasks or every 60 s) when the script called `sim_progress.begin`. Reporting does not change
+    the results.
 
     Parameters
     ----------
@@ -16,15 +25,31 @@ def run_parallel(func, tasks, n_jobs):
         Module-level function taking one task (picklable).
     tasks : list
     n_jobs : int
+    result_lines : callable, optional
+        ``result_lines(task, result) -> list of str``: extra lines printed for every finished task (e.g. one line
+        per study, warnings); switched off with SIM_QUIET=1 like the progress lines.
 
     Returns
     -------
     list
     """
+    sim_progress.start_line(sim_progress.count_conditions(tasks), len(tasks), n_jobs)
+    progress = sim_progress.TaskProgress(len(tasks))
+    lines = result_lines or (lambda task, result: [])
     if n_jobs == 1:
-        return [func(task) for task in tasks]
+        results = []
+        for task in tasks:
+            results.append(func(task))
+            progress.update(task, lines(task, results[-1]))
+        return results
+    results = [None] * len(tasks)
     with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-        return list(pool.map(func, tasks, chunksize=1))
+        futures = {pool.submit(func, task): i for i, task in enumerate(tasks)}
+        for future in as_completed(futures):
+            i = futures[future]
+            results[i] = future.result()
+            progress.update(tasks[i], lines(tasks[i], results[i]))
+    return results
 
 
 def spawn_seeds(base_seed, n):

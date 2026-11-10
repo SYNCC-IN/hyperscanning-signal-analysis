@@ -45,6 +45,7 @@ from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_estimation import regressor_diagnostics
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import surrogate_design
 from src.sim_inference import run_study, wilson_interval
 
@@ -208,6 +209,7 @@ def run_sweep(out_dir):
 def main():
     """Run S05 and write all outputs to Results/<estimator>/S_05."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S05 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(s, g) for s in SCENARIOS for g in SETTINGS["gains"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"scenario": s, "gain": g, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
@@ -267,6 +269,7 @@ def main():
                    "sweep_5node_absent_rate": sweep[sweep.analysis.str.startswith("5-node") & (sweep.role == "absent")][
                        ["gain", "seg_s", "p", "study_rate", "vif_cg_heart_real", "cond_real"]].round(4).to_dict(orient="records")}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"absent-edge rate (4-node)": sim_progress.range_text(summary[(summary.role == "absent") & (summary.analysis == four)].study_rate.tolist()), "planted power (4-node)": sim_progress.range_text(summary[(summary.role == "planted") & (summary.analysis == four)].study_rate.tolist())}, criteria)
 
 
 if __name__ == "__main__":

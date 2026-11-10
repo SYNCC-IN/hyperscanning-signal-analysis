@@ -36,6 +36,7 @@ from src.mtmvar import direct_dtf, gen_partial_directed_coherence
 from src.sim_estimation import connectivity_cube, fit_mvar
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import real_matrices, run_study, wilson_interval
 from src.synthetic_mvar import edges_to_coupling, generate_var_process
 
@@ -166,6 +167,7 @@ def heatmap(ax, matrix, title):
 def main():
     """Run S01 and write all outputs to Results/<estimator>/S_01."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S01 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     errors = implementation_check()
     a = part_a()
     results = run_parallel(run_replication, spawn_seeds(BASE_SEED, SETTINGS["n_rep"]), N_JOBS)
@@ -230,6 +232,7 @@ def main():
                    "partA_orientation": a["orientation"], "partA_recovery": a["recovery"],
                    "partB": summary.round(4).to_dict(orient="records"), "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"planted detection": sim_progress.range_text(summary.detect_rate.tolist()), "reverse-edge rate": sim_progress.range_text(summary.reverse_detect_rate.tolist())}, criteria)
 
 
 if __name__ == "__main__":

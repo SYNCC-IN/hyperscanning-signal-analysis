@@ -37,6 +37,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import (delta_and_z_all, real_matrices, score_study, surrogate_values, wilson_interval)
 
 # ---------------------------------------------------------------------------
@@ -166,6 +167,7 @@ def plot_fwer(fwer, out_dir):
 def main():
     """Run S03 and write all outputs to Results/<estimator>/S_03."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S03 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(n, s) for n in SETTINGS["n_dyads"] for s in SETTINGS["seg_s"]]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
@@ -240,6 +242,7 @@ def main():
                        ci=lambda d: [wilson_interval(int(round(r.group_fpr * r.n_rep)), int(r.n_rep)) for r in d.itertuples()]).to_dict(orient="records"),
                    "cells_outside_band_study": cell_means[~in_band(cell_means.study_fpr)].round(3).reset_index().to_dict(orient="records")}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"study FPR (null cells, per edge)": sim_progress.range_text(summary.study_fpr.tolist()), "group FPR": sim_progress.range_text(summary.group_fpr.tolist()), "max-T FWER": sim_progress.range_text(fwer[fwer.method == "maxT"].fwer.tolist())}, criteria)
 
 
 if __name__ == "__main__":

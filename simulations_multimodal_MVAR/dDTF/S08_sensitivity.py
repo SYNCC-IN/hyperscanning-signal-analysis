@@ -26,6 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -101,6 +102,7 @@ def run_task(task):
 def main():
     """Run S08 and write all outputs to Results/<estimator>/S_08."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S08 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     seeds = spawn_seeds(BASE_SEED, 2 * SETTINGS["n_rep"])
     tasks = [{"scenario": sc, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]} for i, sc in enumerate(["null", "planted"]) for r in range(SETTINGS["n_rep"])]
     df = pd.DataFrame([r for recs in run_parallel(run_task, tasks, N_JOBS) for r in recs])
@@ -137,6 +139,7 @@ def main():
         json.dump({"mode": MODE, "settings": SETTINGS, "share_variants_fpr_ok": float(ok.mean()),
                    "variants_failing_fpr": summary[~ok].variant.tolist(), "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"null FPR": sim_progress.range_text(summary.null_fpr.tolist()), "power": sim_progress.range_text(summary.power_planted.tolist())}, criteria)
 
 
 if __name__ == "__main__":

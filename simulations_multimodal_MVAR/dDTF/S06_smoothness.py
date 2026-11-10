@@ -27,6 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.design import window_geometry
 from src.sim_generators import simulate_dyads, zscore_designs
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
+from src import sim_progress
 from src.sim_inference import run_study, wilson_interval
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "quick"
@@ -78,6 +79,7 @@ def run_task(task):
 def main():
     """Run S06 and write all outputs to Results/<estimator>/S_06."""
     out_dir = results_dir(Path(__file__).resolve().parent, SIM_ID, ESTIMATOR)
+    sim_progress.begin(f"S06 {ESTIMATOR}", Path(__file__).resolve().parent / "Results", mode=MODE, replicates=SETTINGS["n_rep"])
     cells = [(r, z) for r in SETTINGS["radii"] for z in (True, False)]
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"radius": r, "zscore": z, "rep": i, "seed": seeds[c * SETTINGS["n_rep"] + i]}
@@ -122,6 +124,7 @@ def main():
     with open(out_dir / "summary.json", "w") as f:
         json.dump({"mode": MODE, "settings": SETTINGS, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
+    sim_progress.finish(out_dir, {"FPR after correction (z-scored)": sim_progress.range_text(zs[["fpr_smooth_to_rough", "fpr_rough_to_smooth"]].values.ravel().tolist())}, criteria)
 
 
 if __name__ == "__main__":
