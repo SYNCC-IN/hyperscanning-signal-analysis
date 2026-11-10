@@ -158,28 +158,3 @@ def edge_effects(model, idata, edges, films, groups, dyad_id, hdi_prob):
 def excludes_zero(summary):
     """True if the HDI of a `summarize_draws` output excludes 0."""
     return bool(summary["hdi_low"] > 0 or summary["hdi_high"] < 0)
-
-
-def unrounded_gate(idata, rhat_max, ess_min):
-    """Convergence gate on unrounded diagnostics: max R-hat < `rhat_max`, min bulk/tail ESS > `ess_min`, no divergences.
-
-    Same criteria as `src.group_model.convergence_row`, which reads R-hat from `arviz.summary` rounded to two
-    decimals (so any R-hat >= 1.005 shows as 1.01 and fails ``< 1.01``).
-
-    Parameters
-    ----------
-    idata : arviz.InferenceData
-    rhat_max, ess_min : float
-
-    Returns
-    -------
-    dict
-        `rhat_exact`, `ess_bulk_exact`, `ess_tail_exact`, `pass_exact`.
-    """
-    import arviz as az
-    rhat = float(az.rhat(idata).to_array().max())
-    bulk = float(az.ess(idata, method="bulk").to_array().min())
-    tail = float(az.ess(idata, method="tail").to_array().min())
-    divergent = int(idata.sample_stats["diverging"].values.sum())
-    return {"rhat_exact": rhat, "ess_bulk_exact": bulk, "ess_tail_exact": tail,
-            "pass_exact": bool(rhat < rhat_max and bulk > ess_min and tail > ess_min and divergent == 0)}

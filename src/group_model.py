@@ -593,7 +593,7 @@ def convergence_row(model_label, idata, n_rows, n_dropped_unstable, rhat_max, es
     dict
         Row for `stage06_diagnostics.csv`, including a `pass_l9` boolean.
     """
-    summary = az.summary(idata)
+    summary = az.summary(idata, round_to="none")   # unrounded: rounding to 2 decimals turns R-hat 1.005 into 1.01
     n_divergent = int(idata.sample_stats["diverging"].values.sum())
     loo = az.loo(idata, pointwise=True)
     max_rhat = float(summary["r_hat"].max())

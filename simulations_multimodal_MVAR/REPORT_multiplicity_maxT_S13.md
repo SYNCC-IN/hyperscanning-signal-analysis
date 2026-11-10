@@ -142,9 +142,9 @@ differs), not produced by partial pooling.
 
 Convergence: with `convergence_row` 10–80 % of fits fail the gate, but 71 of the 78 failures have no divergences and
 ESS > 400 and fail only because `convergence_row` takes R-hat from `arviz.summary`, which rounds it to 2 decimals (any
-R-hat ≥ 1.005 shows as 1.01 and fails "< 1.01"). S13 now records the same gate on unrounded diagnostics too (`pass_exact`)
-and triggers the M4 fallback on it. **This rounding also affects `src/group_model.convergence_row` in the `main`
-pipeline (stage 6); not changed here.**
+R-hat ≥ 1.005 shows as 1.01 and fails "< 1.01"). **Fixed in `src/group_model.convergence_row`** (`az.summary(...,
+round_to="none")`), which also changes the gate verdicts of stage 6 of the `main` pipeline; the pilot numbers above were
+computed before the fix (its `pass_exact` columns are the corrected gate). The full S13 run uses the corrected gate.
 
 Runtime (pilot, 2 processes while 8 other simulation processes ran): 25 studies in 2325 s. Per study: simulation and Δ
 0.9 s, all permutation tests 0.04 s, M2 85 s (8 fits), M3 19 s, M4 60 s, M4 fallback 29 s when triggered.

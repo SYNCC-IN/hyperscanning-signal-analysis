@@ -18,9 +18,7 @@ Analyses per study:
      gate, the fallback (group | edge) model is fitted as well and reported separately (no silent refits).
 Contrasts (95% HDI excludes 0 = detected): group effect (ASD - TD, mean over films), film contrast (film 1 - mean of
 films 2 and 3, mean over groups), interaction (film contrast ASD - TD).
-Convergence gate (`src.group_model.convergence_row`): R-hat < 1.01, bulk/tail ESS > 400, no divergences. convergence_row
-reads R-hat rounded to 2 decimals (R-hat >= 1.005 fails), so the same gate on unrounded diagnostics is recorded too
-(`pass_exact`, `src.sim_group_bayes.unrounded_gate`); the model-4 fallback is triggered by the unrounded gate.
+Convergence gate (`src.group_model.convergence_row`): R-hat < 1.01, bulk/tail ESS > 400, no divergences.
 
 Usage: python S13_group_film_bayes.py [quick|full] [dDTF|GPDC] [summarize]
   SIM_NREP=<n>        replicates per scenario (default: SETTINGS)
@@ -55,7 +53,7 @@ import bambi as bmb
 from src.design import window_geometry
 from src.group_model import convergence_row, fit_model_with_priors, standardize_within_edge
 from src.sim_generators import sample_node_params, simulate_dyads_fixed_params, zscore_designs
-from src.sim_group_bayes import edge_effects, excludes_zero, population_effects, unrounded_gate
+from src.sim_group_bayes import edge_effects, excludes_zero, population_effects
 from src.sim_harness import results_dir, run_parallel, spawn_seeds
 from src.sim_inference import delta_and_z_all, group_permutation_maxT, real_matrices, surrogate_values, wilson_interval
 
@@ -213,7 +211,6 @@ def bayes_fit(label, data, mcmc, seed):
     model, idata = fit_model_with_priors(formula, data, PRIORS, required, dict(mcmc, seed=seed))
     seconds = time.time() - start
     gate = convergence_row(label, idata, len(data), 0, GATE["rhat_max"], GATE["ess_min"], GATE["pareto_k_max"])
-    gate.update(unrounded_gate(idata, GATE["rhat_max"], GATE["ess_min"]))
     return model, idata, gate, seconds
 
 
@@ -221,7 +218,7 @@ def effect_rows(method, edge, effects, gate):
     """Records of one edge's effects (summarize_draws dicts)."""
     return [{"method": method, "dv": "delta_std", "film": "all", "edge": edge, "effect": name, "estimate": s["estimate"],
              "hdi_low": s["hdi_low"], "hdi_high": s["hdi_high"], "detected": excludes_zero(s),
-             "gate_pass": gate["pass_l9"], "gate_pass_exact": gate["pass_exact"]}
+             "gate_pass": gate["pass_l9"]}
             for name, s in effects.items()]
 
 
@@ -258,7 +255,7 @@ def bayes_records(df, mcmc, seed):
         records += effect_rows(label, "population", population_effects(model, idata, FILMS, GROUPS, HDI_PROB), gate)
         for edge, effects in edge_effects(model, idata, list(EDGES), FILMS, GROUPS, data.dyad_id.iloc[0], HDI_PROB).items():
             records += effect_rows(label, edge, effects, gate)
-        if label == "bayes_pooled_eff" and not gate["pass_exact"]:      # unrounded gate (see unrounded_gate)
+        if label == "bayes_pooled_eff" and not gate["pass_l9"]:
             labels.append("bayes_pooled_eff_fallback")
 
     # unpooled sample estimate of the standardized group effect per edge (reference for bias / RMSE)
@@ -405,8 +402,6 @@ def summarize(out_dir):
         mean_estimate=("estimate", "mean"), detection_rate=("detected", "mean"), n=("rep", "size")).reset_index()
     population.to_csv(out_dir / "summary_population_effects.csv", index=False)
     gate_summary = gates.groupby(["scenario", "model"]).agg(n_fits=("pass_l9", "size"), fail_share=("pass_l9", lambda x: 1 - x.mean()),
-                                                           fail_share_exact=("pass_exact", lambda x: 1 - x.mean()),
-                                                           max_rhat_exact=("rhat_exact", "max"),
                                                            divergent_share=("n_divergent", lambda x: (x > 0).mean()),
                                                            max_rhat=("max_rhat", "max"), min_ess=("min_bulk_ess", "min"),
                                                            mean_seconds=("seconds", "mean")).reset_index()
@@ -435,7 +430,6 @@ def summarize(out_dir):
         json.dump({"mode": MODE, "settings": settings, "criteria": criteria, "criterion_values": values,
                    "reps_per_scenario": df.groupby("scenario").rep.nunique().to_dict(),
                    "gate_fail_share": gate_summary.groupby("model").fail_share.mean().to_dict(),
-                   "gate_fail_share_exact": gate_summary.groupby("model").fail_share_exact.mean().to_dict(),
                    "runtime_seconds_per_study": runtime.drop(columns=["rep", "scenario"]).mean().to_dict()}, f, indent=2, default=float)
     print(detection[detection.planted].round(3).to_string()); print(familywise.round(3).to_string()); print(criteria)
 
