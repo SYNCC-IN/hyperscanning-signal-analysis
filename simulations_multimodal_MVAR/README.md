@@ -1,4 +1,4 @@
-# Simulations S01–S11 (Table 2 of the methods paper)
+# Simulations S01–S13 and the variants S04b, S06b (Table 2 of the methods paper)
 
 Every script follows the numbering of Table 2 of `docs/draft_v02_ddtf_multimodal_hyperscanning_simulations.md`
 and is run once per connectivity estimator, dDTF (the proposed method) or GPDC. Results go to
@@ -9,6 +9,7 @@ python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py quick          #
 python simulations_multimodal_MVAR/dDTF/S03_null_calibration.py full GPDC      # full protocol, GPDC
 python simulations_multimodal_MVAR/dDTF/run_all.py quick                       # all scripts, dDTF and GPDC, then the comparison
 python simulations_multimodal_MVAR/dDTF/run_all.py full 3 4 7                  # selected scripts, both estimators
+python simulations_multimodal_MVAR/dDTF/run_all.py full 4b 6b                  # the variants (S04b partial coupling, S06b unequal SNR)
 python simulations_multimodal_MVAR/dDTF/run_all.py full GPDC                   # GPDC only (dDTF results already exist)
 python simulations_multimodal_MVAR/dDTF/compare_estimators.py                  # rebuild the comparison from existing results
 ```
@@ -32,7 +33,8 @@ the same simulated studies and every comparison is paired.
 
 `run_all.py` ends with `compare_estimators.py`, which writes `Results/comparison/`:
 
-- `criteria.csv`: every acceptance criterion, met or not, per estimator;
+- `criteria.csv`: every acceptance criterion, met or not, per estimator, and `status` (`pass` = met by both estimators,
+  `fail`; prefixed `proposed: ` for criteria marked `[proposed]`) for Supplementary Table S1;
 - `runs.csv`: mode and number of replicates of each run;
 - `S_xx_<table>.csv`: the main readouts of each summary table, with the dDTF and GPDC columns next to each other;
 - `comparison.md`: all of these as Markdown tables, ready to copy into the manuscript.
@@ -44,17 +46,19 @@ of both runs line up. The readouts shown per table are listed in `TABLES` at the
 |---|---|---|---|---|
 | S01 | `S01_recovery_orientation.py` | Are planted edges recovered and correctly oriented? Fast estimator = repo estimator? | 1 | `partB_summary.csv`, `fig_partA_*`, `fig_partB_recovery.png` |
 | S02 | `S02_envelope_vs_phase.py` | Envelope vs phase estimators under amplitude and phase truths, centre-frequency gap | 2 | `summary.csv`, `fig_edge_values_by_truth.png`, `fig_direction_index.png` |
-| S03 | `S03_null_calibration.py` | Is the surrogate test calibrated under zero coupling (N, segment length, pooled vs exclude null)? | 1 | `summary.csv`, `fig_fpr_by_cell.png`, `fig_z_distribution.png` |
-| S04 | `S04_power.py` | Power and direction accuracy vs gain, N, segment length; one group and group contrast | 1 | `summary.csv`, `fig_power_curves.png` |
-| S05 | `S05_conditioning.py` | Indirect paths (cascade), cross-person common driver, omitted dyad-level driver (with/without it as a 5th node): 4-node estimator/ffDTF/DTF vs bivariate | 1 | `summary.csv`, `fig_absent_edge_false_positives.png` |
+| S03 | `S03_null_calibration.py` | Is the surrogate test calibrated under zero coupling (N, segment length, pooled vs exclude null)? The N = 10 cells and an N = 16 cell (8 vs 8) run to 1000 replicates (`summary_small_n.csv`). | 1 | `summary.csv`, `fig_fpr_by_cell.png`, `fig_z_distribution.png` |
+| S04 | `S04_power.py` | Power and direction accuracy vs gain, N, segment length; one group and group contrast. Design B at 5 vs 5, 60 s, gains 0/0.2/0.4 runs to 1000 replicates (`summary_small_n_group.csv`). | 1 | `summary.csv`, `fig_power_curves.png` |
+| S04b | `S04b_partial_coupling.py` | Partial coupling (design A, N = 25, 60 s): only a share q of the dyads coupled, or coupling on during part of the 60 s (one continuous simulation); power per edge and after max-T, reverse rate, dyad-level rate in coupled vs uncoupled dyads | 1 | `S_04/partial/summary.csv`, `fig_partial_coupling` |
+| S05 | `S05_conditioning.py` | Indirect paths (cascade), cross-person common driver, omitted dyad-level driver (with/without it as a 5th node): 4-node estimator/ffDTF/DTF vs bivariate. Collinearity diagnostics (condition number, caregiver-heart VIF) and an omitted-driver sweep over segment length and model order (`summary_sweep.csv`, `fig_collinearity_sweep`). | 1 | `summary.csv`, `fig_absent_edge_false_positives.png` |
 | S06 | `S06_smoothness.py` | Smooth channel as spurious source; effect of the surrogate correction and of z-scoring | 1 | `summary.csv`, `fig_smoothness_artefact.png` |
+| S06b | `S06b_unequal_snr.py` | Unequal SNR: white observation noise (SD 0–2 × node SD) on the caregiver heart or the child brain (no coupling, S6 design), or on the caregiver nodes (S1 edges); asymmetry, FPR, power | 1 | `S_06/noise/summary_no_coupling.csv`, `summary_coupled.csv`, `fig_unequal_snr` |
 | S07 | `S07_shared_stimulus.py` | Common stimulus, group-dependent gain, pooled vs within-group null, wrong-film null | 1 | `summary.csv`, `fig_stimulus_false_positives.png` |
 | S08 | `S08_sensitivity.py` | Estimator, order, window, overlap, detrending, Box-Cox, band (one factor at a time, paired) | 1 | `summary.csv`, `fig_variants.png` |
 | S09 | `S09_cardiac_carrier_mismatch.py` | Cardiac carrier-frequency gap, coupling-band width (RSA oscillators, option A) | 2 | `summary.csv`, `fig_gap_effect.png` |
 | S10 | `S10_coupling_type_visibility.py` | Which coupling types are visible with raw IBI (A) vs RSA amplitude (A′, B) | 2 | `summary.csv`, `fig_coupling_type_visibility.png` |
 | S11 | `S11_comparison.py` | dDTF vs pairwise Granger, lagged cross-correlation, coherence, PLV | 1–2 | `summary_partA/B.csv`, `fig_partA/B_methods.png` |
 | S12 | `S12_mutual_coupling.py` | Mutual (bidirectional) coupling: detection of both directions, false 'mutual' from one-way links, dominant direction and a sign-flip asymmetry test | 1 | `summary.csv`, `fig_mutual_coupling.png` |
-| S13 | `S13_group_film_bayes.py` | Group and film effects across the 8 cross-person edges: permutation max-T vs Bayesian models with edge as a grouping factor (per edge, `(1\|edge)`, `(film*group\|edge)`); detection, family-wise rate on null edges, shrinkage and leakage | 1 | `summary_detection.csv`, `summary_familywise_null.csv`, `summary_shrinkage.csv`, `summary_gate.csv`, `fig_group_film_bayes.png` |
+| S13 | `S13_group_film_bayes.py` | Group and film effects across the 8 cross-person edges: permutation max-T vs Bayesian models with edge as a grouping factor (per edge, `(1\|edge)`, `(film*group\|edge)`); detection, family-wise rate on null edges, shrinkage and leakage. Film effect (sign-flip, max-T) and film × group interaction (label permutation, max-T) on the contrast film 1 − mean(films 2, 3); scenarios a–f. | 1 | `summary_detection.csv`, `summary_familywise_null.csv`, `summary_shrinkage.csv`, `summary_gate.csv`, `fig_group_film_bayes.png` |
 
 Every folder also has `raw_results*.csv` (one row per replicate × condition × edge) and `summary.json` (settings and
 the pass/fail status of the proposed acceptance criteria).
@@ -76,7 +80,10 @@ Connectivity matrices are `[target, source]`. Node order in Level-1 designs: 0 c
   film) the real pairing is exchangeable with re-pairings of children and caregivers, so the mean real value is compared
   with the means of 1000 randomly re-paired studies (re-paired within groups for the within-group null);
 - dyad level: empirical one-sided p-value of the real value among its surrogate values, p < .05;
-- group level: permutation test (1000 label permutations) of the difference in group means of delta.
+- group level: permutation test (1000 label permutations) of the difference in group means of delta. When a test has
+  no more distinct rearrangements than N_PERM (5 vs 5 dyads: 252 relabellings), all of them are used (exact test;
+  `label_permutations`, `caregiver_permutations`, `sign_flips` in `src/sim_inference.py`);
+- film contrasts (S13): sign-flip test of the per-dyad contrast (`signflip_maxT`), interaction by label permutation;
 - multiplicity: the 8 cross-person edges form one family, tested on one shared set of permutations; max-T (per-edge
   standardization, Westfall-Young step-down), min-p and Bonferroni adjusted p-values (`pairing_permutation_maxT`,
   `group_permutation_maxT`). Within-person edges cannot be tested against pseudo-dyads and are never in a family.

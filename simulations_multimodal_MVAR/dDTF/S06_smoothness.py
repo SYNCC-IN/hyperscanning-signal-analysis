@@ -44,7 +44,7 @@ if os.environ.get("SIM_NREP"):
 FS = 2.5
 WIN_LEN_S, OVERLAP = 10.0, 0.5
 MODEL_ORDER = 4
-BAND_HZ = (0.15, 0.5)                 # [TBD: confirm]
+BAND_HZ = (0.15, 0.5)
 BOX_COX = 0.25
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
 F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])

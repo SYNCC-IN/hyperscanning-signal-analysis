@@ -49,7 +49,7 @@ if os.environ.get("SIM_NREP"):
 FS = 2.5
 WIN_LEN_S, OVERLAP = 10.0, 0.5
 MODEL_ORDER = 4
-BAND_HZ = (0.15, 0.5)                 # [TBD: confirm]
+BAND_HZ = (0.15, 0.5)
 BOX_COX = 0.25
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
 POLE_RADIUS_RANGES = np.array([[0.45, 0.65], [0.45, 0.65], [0.80, 0.92], [0.80, 0.92]])
@@ -115,17 +115,24 @@ def main():
                                    median_z=("median_z", "median"), n_rep=("rep", "size")).reset_index()
     summary.to_csv(out_dir / "summary.csv", index=False)
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5), sharey=True)
     base = summary[(summary.sd_log == SETTINGS["sd_log"][-1])]
-    for (null_source, mode), sub in base.groupby(["null_source", "mode"]):
-        one = sub[sub.ratio == 1.0].sort_values("gain")
-        axes[0].plot(one.gain, one.study_fpr, marker="o", label=f"{null_source}, {mode}")
-        contrast = sub[sub.ratio == max(SETTINGS["ratios"])].sort_values("gain")
-        axes[1].plot(contrast.gain, contrast.group_fpr, marker="o", label=f"{null_source}, {mode}")
-    for ax, title in zip(axes, ["one group (pairing permutation)", f"group contrast, gain ratio {max(SETTINGS['ratios'])} (permutation)"]):
-        ax.axhline(ALPHA, color="k", lw=0.6); ax.set_xlabel("stimulus gain"); ax.set_title(title)
-    axes[0].set_ylabel("false-positive rate"); axes[0].legend(fontsize=6)
-    fig.tight_layout(); fig.savefig(out_dir / "fig_stimulus_false_positives.png", dpi=150); plt.close(fig)
+    panels = [(axes[0], base[(base.null_source == "same film") & (base.ratio == 1.0)], "study_fpr", "A  one group, same-film null (pairing permutation)"),
+              (axes[1], base[(base.null_source == "other film") & (base.ratio == 1.0)], "study_fpr", "B  one group, other-film null (pairing permutation)"),
+              (axes[2], base[(base.null_source == "same film") & (base.ratio == max(SETTINGS["ratios"]))], "group_fpr",
+               f"C  group contrast, gain ratio {max(SETTINGS['ratios'])} (permutation)")]
+    for ax, sub, column, title in panels:
+        for mode, s2 in sub.groupby("mode"):
+            s2 = s2.sort_values("gain")
+            ci = np.array([wilson_interval(int(round(v * n)), int(n)) for v, n in zip(s2[column], s2.n_rep)])
+            ax.errorbar(s2.gain, s2[column], yerr=[s2[column] - ci[:, 0], ci[:, 1] - s2[column]], marker="o", capsize=2, label=f"{mode} null")
+        ax.axhline(ALPHA, color="k", lw=0.6); ax.axhline(FPR_MAX, color="r", lw=0.6, ls="--")
+        ax.set_xlabel("stimulus gain"); ax.set_title(title, fontsize=9); ax.legend(fontsize=7)
+    axes[0].set_ylabel(f"false-positive rate (sd_log {SETTINGS['sd_log'][-1]})")
+    fig.tight_layout()
+    for ext in ("png", "svg"):
+        fig.savefig(out_dir / f"fig_stimulus_false_positives.{ext}", dpi=150)
+    plt.close(fig)
 
     same = summary[summary.null_source == "same film"]
     top_ratio = max(SETTINGS["ratios"])
