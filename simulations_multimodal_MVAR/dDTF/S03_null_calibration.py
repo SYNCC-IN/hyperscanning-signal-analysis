@@ -9,6 +9,9 @@ members) vs 'exclude' (foreign pairs involving neither member of the scored dyad
 Readouts per edge: dyad-level false-positive rate (empirical p < .05 among the surrogates), study-level (one-sided
 pairing permutation test, alpha = .05), group-level (permutation test of a difference between two groups of N/2 dyads that
 differ in nothing), and the distribution of z.
+Small-N cells with more replicates (`extra_cells`): the N = 10 cells and a new N = 16 cell (8 vs 8 dyads, 60 s) run to
+1000 replicates; replicates beyond the first 200 (and the whole N = 16 cell) use a separate seed stream, so the first 200
+are unchanged. Every rate is reported with a 95% Wilson interval.
 Multiplicity: the 8 cross-person edges form one family. Family-wise false-positive rate (any edge rejected) and the
 per-edge rate after correction, for uncorrected tests, Bonferroni, max-T single-step, max-T step-down and min-p
 (one shared set of permutations for the whole family; `src.sim_inference.pairing_permutation_maxT` and
@@ -45,14 +48,17 @@ N_JOBS = 4
 SIM_ID = 3
 BASE_SEED = 20260103
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": [8], "seg_s": [60], "max_pairs": None},
-    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "max_pairs": None},
-}[MODE]
+    "quick": {"n_rep": 6, "n_dyads": [8], "seg_s": [60], "max_pairs": None, "extra_cells": {(8, 60): 10, (10, 60): 6}},
+    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "max_pairs": None,
+             "extra_cells": {(10, 60): 1000, (10, 120): 1000, (10, 300): 1000, (16, 60): 1000}},
+}[MODE]                                   # extra_cells: (N, segment s) -> total replicates (separate seed stream)
+N_REP_EXTRA_MAX = 10000                   # seed index stride of the extra stream
 import os
 if os.environ.get("SIM_NREP"):            # optional override for diagnostics
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
     SETTINGS["n_dyads"] = [int(x) for x in os.environ.get("SIM_NDYADS", "25").split(",")]
     SETTINGS["seg_s"] = [int(x) for x in os.environ.get("SIM_SEG", "60").split(",")]
+    SETTINGS["extra_cells"] = {}
 NULL_MODES = ["pooled", "exclude", "within_group"]
 
 FS = 2.5
@@ -164,6 +170,10 @@ def main():
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
              for i, (n, s) in enumerate(cells) for r in range(SETTINGS["n_rep"])]
+    extra_seeds = spawn_seeds([BASE_SEED, 1], len(SETTINGS["extra_cells"]) * N_REP_EXTRA_MAX)
+    tasks += [{"n_dyads": n, "seg_s": s, "rep": r, "seed": extra_seeds[j * N_REP_EXTRA_MAX + r]}
+              for j, ((n, s), total) in enumerate(SETTINGS["extra_cells"].items())
+              for r in range(SETTINGS["n_rep"] if (n, s) in cells else 0, total)]
     results = run_parallel(run_task, tasks, N_JOBS)
     df = pd.DataFrame([r for recs, *_ in results for r in recs])
     df.to_csv(out_dir / "raw_results.csv", index=False)
@@ -174,6 +184,10 @@ def main():
         median_z=("median_z", "median"), sd_z=("sd_z", "mean"), unstable_pairs=("n_pairs_unstable", "mean"), n_rep=("rep", "size")).reset_index()
     ci = summary.apply(lambda r: wilson_interval(int(round(r.study_fpr * r.n_rep)), int(r.n_rep)), axis=1)
     summary["study_fpr_ci_low"], summary["study_fpr_ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
+    ci = summary.apply(lambda r: wilson_interval(int(round(r.group_fpr * r.n_rep)), int(r.n_rep)), axis=1)
+    summary["group_fpr_ci_low"], summary["group_fpr_ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
+    small_n = summary[summary.n_rep > SETTINGS["n_rep"]]
+    small_n.to_csv(out_dir / "summary_small_n.csv", index=False)
     summary.to_csv(out_dir / "summary.csv", index=False)
     fwer = fwer_table(df)
     fwer.to_csv(out_dir / "summary_fwer.csv", index=False)
@@ -219,8 +233,11 @@ def main():
                    "max-T FWER: Wilson 95% CI overlaps the band in every cell (group contrast)": bool(ci_overlaps[max_t.level == "group"].all()),
                    "max-T cells outside the band": max_t[~fwer_in_band][["level", "mode", "n_dyads", "seg_s", "fwer"]].round(3).to_dict(orient="records")}
     with open(out_dir / "summary.json", "w") as f:
-        json.dump({"mode": MODE, "settings": SETTINGS, "fpr_band": FPR_BAND, "fwer_band": FWER_BAND, "criteria": criteria,
+        json.dump({"mode": MODE, "settings": dict(SETTINGS, extra_cells={f"N{n}_{s}s": t for (n, s), t in SETTINGS["extra_cells"].items()}), "fpr_band": FPR_BAND, "fwer_band": FWER_BAND, "criteria": criteria,
                    "fwer_diagnostics": diagnostics,
+                   "small_n_group_fpr_mean_over_edges": small_n.groupby(["n_dyads", "seg_s", "mode"]).agg(
+                       group_fpr=("group_fpr", "mean"), n_rep=("n_rep", "first")).reset_index().assign(
+                       ci=lambda d: [wilson_interval(int(round(r.group_fpr * r.n_rep)), int(r.n_rep)) for r in d.itertuples()]).to_dict(orient="records"),
                    "cells_outside_band_study": cell_means[~in_band(cell_means.study_fpr)].round(3).reset_index().to_dict(orient="records")}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
 

@@ -8,6 +8,8 @@ direction accuracy (planted edge beats its reverse, dir_study), with Wilson inte
 Multiplicity: all 8 cross-person edges form one family, tested on one shared set of permutations (max-T and min-p
 step-down, Bonferroni). Readouts: planted-edge power before/after correction and the rejection rate of every non-planted
 edge after max-T. The per-edge (uncorrected) tests are run for the planted edge and its reverse only, as before.
+Small-N group contrast (`extra_b_cells`): design B with 5 vs 5 dyads at 60 s, gains 0 / 0.2 / 0.4, runs to 1000 replicates;
+replicates beyond the first 200 run design B only, on a separate seed stream (the first 200 are unchanged).
 
 Usage: python S04_power.py [quick|full] [dDTF|GPDC]       Results: Results/<estimator>/S_04/
 """
@@ -37,11 +39,14 @@ N_JOBS = 4
 SIM_ID = 4
 BASE_SEED = 20260104
 SETTINGS = {
-    "quick": {"n_rep": 6, "n_dyads": [10], "seg_s": [60], "gains": [0.0, 0.3, 0.6]},
-    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "gains": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]},
-}[MODE]
+    "quick": {"n_rep": 6, "n_dyads": [10], "seg_s": [60], "gains": [0.0, 0.3, 0.6], "extra_b_cells": {(10, 60, 0.0): 10}},
+    "full": {"n_rep": 200, "n_dyads": [10, 25, 50], "seg_s": [60, 120, 300], "gains": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+             "extra_b_cells": {(10, 60, 0.0): 1000, (10, 60, 0.2): 1000, (10, 60, 0.4): 1000}},
+}[MODE]                                   # extra_b_cells: (N, segment s, gain) -> total replicates of design B
+N_REP_EXTRA_MAX = 10000                   # seed index stride of the extra stream
 if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
+    SETTINGS["extra_b_cells"] = {}
 
 FS = 2.5
 WIN_LEN_S, OVERLAP = 10.0, 0.5
@@ -69,7 +74,7 @@ GAIN_FOR_POWER_CRITERION = 0.4        # [proposed]
 
 
 def run_task(task):
-    """One replicated study for (N, segment length, gain): design A and design B."""
+    """One replicated study for (N, segment length, gain): design A and design B (only B if ``task["only_b"]``)."""
     rng = np.random.default_rng(task["seed"])
     n, seg_s, gain = task["n_dyads"], task["seg_s"], task["gain"]
     n_samples = int(seg_s * FS)
@@ -79,9 +84,10 @@ def run_task(task):
     mult = dict(family=FAMILY, multiplicity=MULTIPLICITY, multiplicity_rng=family_rng)
     out = []
     # Design A: all dyads coupled
-    designs = zscore_designs(simulate_dyads(rng, n, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS))
-    for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, **mult):
-        out.append(dict(r, design="A", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
+    if not task.get("only_b"):
+        designs = zscore_designs(simulate_dyads(rng, n, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [(1, 0, 1, gain)], N_LAGS))
+        for r in run_study(designs, NODES, CHILD_NODES, est, EDGES, ["pooled"], None, rng, STABILITY_MAX_ROOT, DYAD_ALPHA, ALPHA, N_PERM, **mult):
+            out.append(dict(r, design="A", n_dyads=n, seg_s=seg_s, gain=gain, rep=task["rep"]))
     # Design B: first half uncoupled, second half coupled
     half = n // 2
     d0 = simulate_dyads(rng, half, n_samples, FS, POLE_RADIUS_RANGES, F0_RANGES, [], N_LAGS)
@@ -170,6 +176,10 @@ def main():
     seeds = spawn_seeds(BASE_SEED, len(cells) * SETTINGS["n_rep"])
     tasks = [{"n_dyads": n, "seg_s": s, "gain": g, "rep": r, "seed": seeds[i * SETTINGS["n_rep"] + r]}
              for i, (n, s, g) in enumerate(cells) for r in range(SETTINGS["n_rep"])]
+    extra_seeds = spawn_seeds([BASE_SEED, 1], len(SETTINGS["extra_b_cells"]) * N_REP_EXTRA_MAX)
+    tasks += [{"n_dyads": n, "seg_s": s, "gain": g, "rep": r, "only_b": True, "seed": extra_seeds[j * N_REP_EXTRA_MAX + r]}
+              for j, ((n, s, g), total) in enumerate(SETTINGS["extra_b_cells"].items())
+              for r in range(SETTINGS["n_rep"] if (n, s, g) in cells else 0, total)]
     df = pd.DataFrame([r for recs in run_parallel(run_task, tasks, N_JOBS) for r in recs])
     df.to_csv(out_dir / "raw_results.csv", index=False)
 
@@ -189,6 +199,7 @@ def main():
         rows.append(row)
     summary = pd.DataFrame(rows)
     summary.to_csv(out_dir / "summary.csv", index=False)
+    summary[summary.n_rep > SETTINGS["n_rep"]].to_csv(out_dir / "summary_small_n_group.csv", index=False)
     nonplanted = nonplanted_table(df)
     nonplanted.to_csv(out_dir / "summary_nonplanted_maxT.csv", index=False)
     plot_maxT(summary, nonplanted, out_dir)
@@ -218,7 +229,10 @@ def main():
     thresholds_adj = {m: {f"{d}|N={n}|{s}s": min_gain(sub, f"power_{m}") for (d, n, s), sub in summary.groupby(["design", "n_dyads", "seg_s"])}
                       for m in MULTIPLICITY}
     with open(out_dir / "summary.json", "w") as f:
-        json.dump({"mode": MODE, "settings": SETTINGS, "family": list(FAMILY), "min_gain_for_80pct_power": thresholds,
+        json.dump({"mode": MODE, "settings": dict(SETTINGS, extra_b_cells={f"N{n}_{s}s_gain{g}": t for (n, s, g), t in SETTINGS["extra_b_cells"].items()}),
+                   "small_n_group_contrast": summary[summary.n_rep > SETTINGS["n_rep"]][["n_dyads", "seg_s", "gain", "power", "power_ci_low", "power_ci_high",
+                                                                                         "power_maxT", "power_maxT_ci_low", "power_maxT_ci_high", "n_rep"]].to_dict(orient="records"),
+                   "family": list(FAMILY), "min_gain_for_80pct_power": thresholds,
                    "min_gain_for_80pct_power_adjusted": thresholds_adj, "criteria": criteria}, f, indent=2)
     print(summary.round(3).to_string()); print(criteria)
 
