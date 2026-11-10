@@ -177,6 +177,37 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
     return band_average_cube(cube, freqs, band_hz), max_abs_root, p_used
 
 
+
+def regressor_diagnostics(design, p, win_len, step, node, detrend_type="linear"):
+    """Collinearity of the lagged regressors of the least-squares MVAR fit on stacked windows.
+
+    The regressor matrix is the one `src.mtmvar.ols_coeff` solves: for every window (from `src.design`), the rows
+    ``[x(t-1), ..., x(t-p)]`` for t = p, ..., n-1, stacked over windows. It is the same in every equation of the
+    model, so the VIF of a regressor does not depend on the target equation.
+
+    Parameters
+    ----------
+    design : np.ndarray, shape (k, n_samples)
+    p : int
+        Model order.
+    win_len, step : int
+        Window length / step in samples.
+    node : int
+        Row of `design` whose lags are scored by the VIF (e.g. the caregiver heart).
+    detrend_type : {'linear', 'constant'}, optional
+
+    Returns
+    -------
+    dict
+        condition_number (2-norm condition number of the regressor matrix), vif_max (largest variance inflation
+        factor ``1 / (1 - R^2)`` over the p lags of `node`, from the inverse correlation matrix of the regressors).
+    """
+    stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
+    k, n, n_windows = stack.shape
+    x = np.vstack([np.hstack([stack[:, p - lag:n - lag, w].T for lag in range(1, p + 1)]) for w in range(n_windows)])
+    vif = np.diag(np.linalg.inv(np.corrcoef(x, rowvar=False)))
+    return {"condition_number": float(np.linalg.cond(x)), "vif_max": float(vif[[lag * k + node for lag in range(p)]].max())}
+
 def var_autocovariance(coupling, noise_cov, n_lags):
     """Exact autocovariances Gamma(0..n_lags) of a stable VAR process.
 

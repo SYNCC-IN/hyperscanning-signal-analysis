@@ -96,3 +96,15 @@ def test_true_conditional_gc_of_a_white_source():
     assert np.isclose(gc, np.log(1.25), atol=1e-10)
     assert np.isclose(improvement, 0.2, atol=1e-10)
     assert abs(true_conditional_gc(coupling, 0, 1)[0]) < 1e-10
+
+
+def test_regressor_diagnostics_flags_a_near_duplicate_node():
+    """Independent white nodes: VIF ~ 1 and a small condition number; a near-copy of the scored node inflates both."""
+    from src.sim_estimation import regressor_diagnostics
+    rng = np.random.default_rng(0)
+    design = rng.normal(size=(5, 300))
+    clean = regressor_diagnostics(design, 4, 25, 12, 3)
+    design[4] = design[3] + 0.1 * rng.normal(size=300)
+    collinear = regressor_diagnostics(design, 4, 25, 12, 3)
+    assert clean["vif_max"] < 1.5 and clean["condition_number"] < 3
+    assert collinear["vif_max"] > 50 and collinear["condition_number"] > 10
