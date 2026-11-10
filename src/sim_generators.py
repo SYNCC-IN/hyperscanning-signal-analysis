@@ -50,14 +50,16 @@ def build_coupling(pole_radius, f0_hz, fs, edges, n_lags):
 
 
 def simulate_var(coupling, n_samples, rng, noise_std=1.0, drive=None,
-                 coupling_end=None, noise_scale=None, burn_in=200):
+                 coupling_end=None, noise_scale=None, burn_in=200, coupling_off=None, on=None):
     """Simulate a VAR process, optionally with an external drive and slow drifts.
 
     Implements ``x[:, t] = sum_lag C(t)[:, :, lag-1] @ x[:, t-lag] + drive[:, t] +
     noise_scale[t] * noise[:, t]``. If `coupling_end` is given, the coefficient
     tensor changes linearly from `coupling` (start of the recording) to
     `coupling_end` (end), which produces a non-stationary process (drifting
-    resonance frequency, changing coupling).
+    resonance frequency, changing coupling). If `on` is given, the tensor is `coupling` at samples where `on`
+    is True and `coupling_off` elsewhere (switched coupling in one continuous process); the burn-in uses the
+    state of the first sample.
 
     Parameters
     ----------
@@ -76,6 +78,10 @@ def simulate_var(coupling, n_samples, rng, noise_std=1.0, drive=None,
         Time-varying multiplier of the innovation standard deviation (after burn-in).
     burn_in : int, optional
         Initial samples discarded.
+    coupling_off : np.ndarray, shape (k, k, n_lags), optional
+        Coefficient tensor where `on` is False.
+    on : np.ndarray of bool, shape (n_samples,), optional
+        Samples (after burn-in) at which `coupling` applies.
 
     Returns
     -------
@@ -91,6 +97,8 @@ def simulate_var(coupling, n_samples, rng, noise_std=1.0, drive=None,
         if coupling_end is not None and t >= burn_in:
             weight = (t - burn_in) / max(n_samples - 1, 1)
             current = (1.0 - weight) * coupling + weight * coupling_end
+        elif on is not None:
+            current = coupling if on[max(t - burn_in, 0)] else coupling_off
         else:
             current = coupling
         acc = noise[:, t].copy()
@@ -275,6 +283,67 @@ def simulate_dyads_fixed_params(rng, pole_radius, f0_hz, n_samples, fs, edges_pe
     return np.stack([simulate_var(build_coupling(pole_radius[d], f0_hz[d], fs, edges, n_lags), n_samples, rng)
                      for d, edges in enumerate(edges_per_dyad)])
 
+
+
+def coupling_window(rng, n_samples, fraction):
+    """Mask of one contiguous coupling episode covering `fraction` of the recording, at a random start.
+
+    Parameters
+    ----------
+    rng : numpy.random.Generator
+    n_samples : int
+    fraction : float
+        Share of samples with coupling on (0 to 1).
+
+    Returns
+    -------
+    np.ndarray of bool, shape (n_samples,)
+    """
+    length = int(round(fraction * n_samples))
+    start = int(rng.integers(0, n_samples - length + 1))
+    mask = np.zeros(n_samples, dtype=bool)
+    mask[start:start + length] = True
+    return mask
+
+
+def simulate_dyads_partial(rng, n_dyads, n_samples, fs, pole_radius_ranges, f0_ranges, edges, n_lags,
+                           coupled, on_masks=None):
+    """`simulate_dyads` with the planted edges only in some dyads and, optionally, only during part of the recording.
+
+    Node parameters and innovations are drawn exactly as in `simulate_dyads`, so with every dyad coupled and no
+    masks the output equals `simulate_dyads(rng, ...)` for the same generator state.
+
+    Parameters
+    ----------
+    rng : numpy.random.Generator
+    n_dyads, n_samples : int
+    fs : float
+    pole_radius_ranges, f0_ranges : np.ndarray, shape (k, 2)
+    edges : list of tuple
+        ``(source, target, lag, gain)`` of the coupled dyads.
+    n_lags : int
+    coupled : np.ndarray of bool, shape (n_dyads,)
+        Dyads that have the edges (the others have gain 0).
+    on_masks : np.ndarray of bool, shape (n_dyads, n_samples), optional
+        Samples with coupling on, per dyad (e.g. from `coupling_window`); None = always on. Coupling switches
+        within one continuous simulation (`simulate_var` with `on`).
+
+    Returns
+    -------
+    np.ndarray, shape (n_dyads, k, n_samples)
+        Raw (not z-scored) signals.
+    """
+    radii = sample_node_params(rng, n_dyads, pole_radius_ranges)
+    f0s = sample_node_params(rng, n_dyads, f0_ranges)
+    out = []
+    for dyad in range(n_dyads):
+        coupling = build_coupling(radii[dyad], f0s[dyad], fs, edges if coupled[dyad] else [], n_lags)
+        if on_masks is None:
+            out.append(simulate_var(coupling, n_samples, rng))
+        else:
+            coupling_off = build_coupling(radii[dyad], f0s[dyad], fs, [], n_lags)
+            out.append(simulate_var(coupling, n_samples, rng, coupling_off=coupling_off, on=on_masks[dyad]))
+    return np.stack(out, axis=0)
 
 def zscore_designs(raw):
     """Z-score every row of every dyad over time (ddof=0), as in the real design matrix.
