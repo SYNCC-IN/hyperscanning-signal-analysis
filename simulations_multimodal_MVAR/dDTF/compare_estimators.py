@@ -1,4 +1,4 @@
-"""Side-by-side comparison of the dDTF and GPDC runs of S01-S12, for the manuscript.
+"""Side-by-side comparison of the dDTF and GPDC runs of S01-S13, for the manuscript.
 
 Both estimators analyse the same simulated studies (same seeds), so every row is a paired comparison.
 Reads Results/<estimator>/S_xx/ and writes Results/comparison/:
@@ -27,8 +27,10 @@ DECIMALS = 3
 TABLES = {
     "S_01": [("partB_summary.csv", ["edge", "gain"], ["detect_rate", "beats_reverse_rate", "beats_absent_rate", "reverse_detect_rate", "median_z"])],
     "S_02": [("summary.csv", ["truth", "path", "gap"], ["fwd", "rev", "direction_index", "relative_fwd"])],
-    "S_03": [("summary.csv", ["n_dyads", "seg_s", "mode", "edge"], ["dyad_fpr", "study_fpr", "group_fpr", "median_z", "sd_z"])],
-    "S_04": [("summary.csv", ["design", "n_dyads", "seg_s", "gain"], ["power", "dyad_detection", "direction_accuracy"])],
+    "S_03": [("summary.csv", ["n_dyads", "seg_s", "mode", "edge"], ["dyad_fpr", "study_fpr", "group_fpr", "median_z", "sd_z"]),
+             ("summary_fwer.csv", ["n_dyads", "seg_s", "mode", "level", "method"], ["fwer", "per_edge_rate"])],
+    "S_04": [("summary.csv", ["design", "n_dyads", "seg_s", "gain"], ["power", "power_maxT", "power_minP", "dyad_detection", "direction_accuracy"]),
+             ("summary_nonplanted_maxT.csv", ["design", "n_dyads", "seg_s", "gain", "edge"], ["rate_maxT"])],
     "S_05": [("summary.csv", ["scenario", "gain", "analysis", "role", "edge_label"], ["study_rate", "dyad_rate"])],
     "S_06": [("summary.csv", ["radius", "zscore"], ["uncorrected_asymmetry", "corrected_asymmetry", "fpr_smooth_to_rough", "fpr_rough_to_smooth"])],
     "S_07": [("summary.csv", ["null_source", "mode", "gain", "sd_log", "ratio"], ["study_fpr", "group_fpr", "dyad_fpr"])],
@@ -38,6 +40,10 @@ TABLES = {
     "S_11": [("summary_partA.csv", ["scenario", "role", "method"], ["study_rate", "dyad_rate", "direction_accuracy"]),
              ("summary_partB.csv", ["truth", "gap", "method"], ["study_rate", "dyad_rate"])],
     "S_12": [("summary.csv", ["pair", "g_fwd", "g_rev"], ["forward_rate", "reverse_rate", "mutual_rate", "forward_dominant", "asymmetry_rate"])],
+    "S_13": [("summary_detection.csv", ["scenario", "method", "dv", "edge", "effect"], ["rate"]),
+             ("summary_familywise_null.csv", ["scenario", "method", "dv", "effect", "scope"], ["rate"]),
+             ("summary_shrinkage.csv", ["scenario", "method", "edge"], ["reference", "mean_estimate", "bias", "rmse"]),
+             ("summary_gate.csv", ["scenario", "model"], ["fail_share", "mean_seconds"])],
 }
 
 

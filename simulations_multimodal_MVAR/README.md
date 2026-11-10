@@ -54,6 +54,7 @@ of both runs line up. The readouts shown per table are listed in `TABLES` at the
 | S10 | `S10_coupling_type_visibility.py` | Which coupling types are visible with raw IBI (A) vs RSA amplitude (A′, B) | 2 | `summary.csv`, `fig_coupling_type_visibility.png` |
 | S11 | `S11_comparison.py` | dDTF vs pairwise Granger, lagged cross-correlation, coherence, PLV | 1–2 | `summary_partA/B.csv`, `fig_partA/B_methods.png` |
 | S12 | `S12_mutual_coupling.py` | Mutual (bidirectional) coupling: detection of both directions, false 'mutual' from one-way links, dominant direction and a sign-flip asymmetry test | 1 | `summary.csv`, `fig_mutual_coupling.png` |
+| S13 | `S13_group_film_bayes.py` | Group and film effects across the 8 cross-person edges: permutation max-T vs Bayesian models with edge as a grouping factor (per edge, `(1\|edge)`, `(film*group\|edge)`); detection, family-wise rate on null edges, shrinkage and leakage | 1 | `summary_detection.csv`, `summary_familywise_null.csv`, `summary_shrinkage.csv`, `summary_gate.csv`, `fig_group_film_bayes.png` |
 
 Every folder also has `raw_results*.csv` (one row per replicate × condition × edge) and `summary.json` (settings and
 the pass/fail status of the proposed acceptance criteria).
@@ -76,6 +77,9 @@ Connectivity matrices are `[target, source]`. Node order in Level-1 designs: 0 c
   with the means of 1000 randomly re-paired studies (re-paired within groups for the within-group null);
 - dyad level: empirical one-sided p-value of the real value among its surrogate values, p < .05;
 - group level: permutation test (1000 label permutations) of the difference in group means of delta.
+- multiplicity: the 8 cross-person edges form one family, tested on one shared set of permutations; max-T (per-edge
+  standardization, Westfall-Young step-down), min-p and Bonferroni adjusted p-values (`pairing_permutation_maxT`,
+  `group_permutation_maxT`). Within-person edges cannot be tested against pseudo-dyads and are never in a family.
 
 Delta and robust z (`real - median(null)`, divided by the scaled MAD) are kept as descriptive readouts. A common model
 order (p = 4) is used for real and surrogate fits except in S08.

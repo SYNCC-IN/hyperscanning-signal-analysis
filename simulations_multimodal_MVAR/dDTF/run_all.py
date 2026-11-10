@@ -1,4 +1,4 @@
-"""Run the simulation scripts S01-S12 for each connectivity estimator, then compare the estimators.
+"""Run the simulation scripts S01-S13 for each connectivity estimator, then compare the estimators.
 
 Usage:
     python simulations_multimodal_MVAR/dDTF/run_all.py quick                 # smoke test, dDTF and GPDC (a couple of minutes)
@@ -21,7 +21,8 @@ HERE = Path(__file__).resolve().parent
 ESTIMATORS = ["dDTF", "GPDC"]
 SCRIPTS = {1: "S01_recovery_orientation.py", 2: "S02_envelope_vs_phase.py", 3: "S03_null_calibration.py", 4: "S04_power.py",
            5: "S05_conditioning.py", 6: "S06_smoothness.py", 7: "S07_shared_stimulus.py", 8: "S08_sensitivity.py",
-           9: "S09_cardiac_carrier_mismatch.py", 10: "S10_coupling_type_visibility.py", 11: "S11_comparison.py", 12: "S12_mutual_coupling.py"}
+           9: "S09_cardiac_carrier_mismatch.py", 10: "S10_coupling_type_visibility.py", 11: "S11_comparison.py", 12: "S12_mutual_coupling.py",
+           13: "S13_group_film_bayes.py"}
 
 
 def main():

@@ -250,6 +250,32 @@ def simulate_dyads(rng, n_dyads, n_samples, fs, pole_radius_ranges, f0_ranges, e
     return np.stack(out, axis=0)
 
 
+def simulate_dyads_fixed_params(rng, pole_radius, f0_hz, n_samples, fs, edges_per_dyad, n_lags):
+    """Simulate dyads whose per-person node parameters are given (e.g. kept across films).
+
+    Each dyad gets its own planted edges, so coupling can differ between groups or films while
+    the persons (pole radii, resonance frequencies) stay the same; innovations are new on every call.
+
+    Parameters
+    ----------
+    rng : numpy.random.Generator
+    pole_radius, f0_hz : np.ndarray, shape (n_dyads, k)
+        Node parameters per dyad (e.g. from `sample_node_params`).
+    n_samples : int
+    fs : float
+    edges_per_dyad : list of list of tuple
+        ``edges_per_dyad[d]`` = ``[(source, target, lag, gain), ...]`` of dyad d.
+    n_lags : int
+
+    Returns
+    -------
+    np.ndarray, shape (n_dyads, k, n_samples)
+        Raw (not z-scored) signals.
+    """
+    return np.stack([simulate_var(build_coupling(pole_radius[d], f0_hz[d], fs, edges, n_lags), n_samples, rng)
+                     for d, edges in enumerate(edges_per_dyad)])
+
+
 def zscore_designs(raw):
     """Z-score every row of every dyad over time (ddof=0), as in the real design matrix.
 
