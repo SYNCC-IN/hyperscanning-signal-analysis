@@ -149,6 +149,36 @@ def add_observation_noise(signal, snr, rng):
     return signal + rng.normal(size=signal.shape) * noise_std
 
 
+
+def add_node_noise(raw, nodes, relative_sd, rng):
+    """Add white observation noise to some nodes of simulated dyads, after the VAR simulation.
+
+    The noise is not part of the VAR (a measurement-noise model), and its standard deviation is `relative_sd`
+    times the standard deviation of the node in that dyad, so the signal-to-noise ratio of those nodes is
+    ``1 / relative_sd``.
+
+    Parameters
+    ----------
+    raw : np.ndarray, shape (n_dyads, k, n_samples)
+        Raw (not z-scored) signals.
+    nodes : sequence of int
+        Nodes that get noise.
+    relative_sd : float
+        Noise SD relative to the node SD (0 = unchanged; no random draws are made then).
+    rng : numpy.random.Generator
+
+    Returns
+    -------
+    np.ndarray, same shape
+    """
+    if relative_sd == 0:
+        return raw
+    out = raw.copy()
+    nodes = list(nodes)
+    sd = raw[:, nodes].std(axis=2, keepdims=True)
+    out[:, nodes] += relative_sd * sd * rng.normal(size=out[:, nodes].shape)
+    return out
+
 def make_stimulus(rng, n_samples, fs, pole_radius, f0_hz):
     """A common stimulus-driven input: broadband AR(2) noise with unit standard deviation.
 

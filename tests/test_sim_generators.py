@@ -34,3 +34,14 @@ def test_coupling_window_is_one_contiguous_episode_of_the_requested_length():
     mask = coupling_window(np.random.default_rng(9), 150, 0.75)
     assert mask.sum() == round(0.75 * 150)
     assert np.count_nonzero(np.diff(mask.astype(int)) != 0) <= 2
+
+
+def test_node_noise_zero_is_unchanged_and_sets_the_noise_level():
+    """Noise SD 0 returns the input; SD 1 doubles the variance of the noisy node only."""
+    from src.sim_generators import add_node_noise
+    raw = simulate_dyads(np.random.default_rng(10), 4, 2000, 2.5, RADII, F0, EDGE, 3)
+    np.testing.assert_array_equal(add_node_noise(raw, [3], 0.0, np.random.default_rng(1)), raw)
+    noisy = add_node_noise(raw, [3], 1.0, np.random.default_rng(1))
+    np.testing.assert_array_equal(noisy[:, :3], raw[:, :3])
+    ratio = noisy[:, 3].var(axis=1) / raw[:, 3].var(axis=1)
+    assert np.all(np.abs(ratio - 2.0) < 0.2)
