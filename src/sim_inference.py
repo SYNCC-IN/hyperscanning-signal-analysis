@@ -847,8 +847,9 @@ def wilson_interval(successes, n, z=1.96):
     Returns
     -------
     low, high : float
+        Bounds kept within [0, p] and [p, 1] (rounding can otherwise put them a hair outside, e.g. 1 - 1e-16 for p = 1).
     """
     p = successes / n
     centre = (p + z * z / (2 * n)) / (1 + z * z / n)
     half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
-    return float(centre - half), float(centre + half)
+    return float(min(max(centre - half, 0.0), p)), float(max(min(centre + half, 1.0), p))

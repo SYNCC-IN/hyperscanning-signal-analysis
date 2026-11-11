@@ -290,3 +290,12 @@ def test_interaction_is_calibrated_when_groups_share_the_film_effect():
                for _ in range(500))
     low, high = wilson_interval(25, 500)
     assert low <= hits / 500 <= high
+
+
+def test_wilson_interval_contains_the_rate_and_stays_in_0_1():
+    """At 0 and n successes the bounds are exactly 0 and 1 and the interval contains the rate."""
+    for n in (5, 50, 100, 200, 1000):
+        for k in (0, 1, n - 1, n):
+            low, high = wilson_interval(k, n)
+            assert 0.0 <= low <= k / n <= high <= 1.0
+    assert wilson_interval(0, 100)[0] == 0.0 and wilson_interval(100, 100)[1] == 1.0
