@@ -109,7 +109,7 @@ order (p = 4) is used for real and surrogate fits except in S08.
 
 ## Run time (measured 2026-11-10/11, Apple M2 Pro, full mode, dDTF / GPDC)
 
-S03 12 min / 10 min, S04 1.6 h / 1.3 h, S04b 9 min / 7 min, S01 0 min / 0 min, S12 4 min / 3 min, S05 27 min / 23 min, S06 4 min / 3 min, S06b 5 min / 4 min, S07 29 min / 24 min, S08 24 min / 19 min, S02 5 min / 5 min, S09 10 min / 8 min, S10 7 min / 6 min, S11 20 min / 17 min. In total S1–S12 with the variants took 7 h 44 min (one script at a time, 4 processes), with S13 running alongside:
+S03 12 min / 10 min, S04 1.6 h / 1.3 h, S04b 9 min / 7 min, S01 29 s / 22 s, S12 4 min / 3 min, S05 27 min / 23 min, S06 4 min / 3 min, S06b 5 min / 4 min, S07 29 min / 24 min, S08 24 min / 19 min, S02 5 min / 5 min, S09 10 min / 8 min, S10 7 min / 6 min, S11 20 min / 17 min. In total S1–S12 with the variants took 7 h 44 min (one script at a time, 4 processes), with S13 running alongside:
 1200 studies (100 replicates × 6 scenarios × 2 estimators) in 9 h 7 min with 5, then 9 processes (≈ 3.3 min per study,
 almost all Bayesian fitting). `Results/run_full_rerun.sh` runs both streams; times are in `Results/run_all_timing_full.json`.
 
