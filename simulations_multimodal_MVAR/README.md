@@ -107,10 +107,11 @@ Connectivity matrices are `[target, source]`. Node order in Level-1 designs: 0 c
 Delta and robust z (`real - median(null)`, divided by the scaled MAD) are kept as descriptive readouts. A common model
 order (p = 4) is used for real and surrogate fits except in S08.
 
-## Run time (4 cores, full mode, extrapolated from 2-replicate runs)
+## Run time (measured 2026-11-10/11, Apple M2 Pro, full mode, dDTF / GPDC)
 
-S01 ≈ 4 min, S02 ≈ 6 min, S03 ≈ 15 min, S04 ≈ 1.7 h, S05 ≈ 9 min, S06 ≈ 6 min, S07 ≈ 26 min, S08 ≈ 15 min,
-S09 ≈ 9 min, S10 ≈ 6 min, S11 ≈ 9 min; about 3.5 h in total per estimator (about 7 h for dDTF and GPDC). S04 dominates (3 N × 3 segment lengths × 6 gains × 2 designs).
+S03 12 min / 10 min, S04 1.6 h / 1.3 h, S04b 9 min / 7 min, S01 0 min / 0 min, S12 4 min / 3 min, S05 27 min / 23 min, S06 4 min / 3 min, S06b 5 min / 4 min, S07 29 min / 24 min, S08 24 min / 19 min, S02 5 min / 5 min, S09 10 min / 8 min, S10 7 min / 6 min, S11 20 min / 17 min. In total S1–S12 with the variants took 7 h 44 min (one script at a time, 4 processes), with S13 running alongside:
+1200 studies (100 replicates × 6 scenarios × 2 estimators) in 9 h 7 min with 5, then 9 processes (≈ 3.3 min per study,
+almost all Bayesian fitting). `Results/run_full_rerun.sh` runs both streams; times are in `Results/run_all_timing_full.json`.
 
 ## Points to check before the full runs are interpreted
 
