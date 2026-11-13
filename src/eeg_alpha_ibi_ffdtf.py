@@ -31,14 +31,14 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
 
 class EEG_IBI_FFDTF_Pipeline:
     def __init__(self, cleaned_signals_folder: Path, output_ffDTF_folder: Path, target_events: list, smoke_test: bool = False, smoke_dyads_n: int = 1,
-                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled: float = 8.0, n_windows: int = 3, window_size: int = None, ar_p: int = 5,
-                 plot_global_enabled: bool = True, save_global_enabled: bool = True, plot_windowed_enabled: bool = True, save_windowed_enabled: bool = True,):
+                 left_frontal_eeg_channel: str = "F3", right_frontal_eeg_channel: str = "F4", fs_downsampled: float = 4.0, ar_p: int = 5,
+                 plot_global_enabled: bool = True, save_global_enabled: bool = True):
         """
         Pipeline for dyadic EEG-IBI analysis using full frequency Direct Transfer Function (ffDTF).
 
         This class implements a full processing workflow for dyadic EEG recordings.
         The pipeline includes preprocessing, frontal alpha asymmetry (FAA) computation, downsampling,
-        cropping, windowing, and z-score normalization. It then computes the ffDTF for multivariate connectivity of FAA and IBI signals,
+        cropping, and z-score normalization. It then computes the ffDTF for multivariate connectivity of FAA and IBI signals,
         saving the processed data and generated plots to files to facilitate further downstream analysis.
 
         During initialization, the pipeline automatically scans the provided
@@ -68,7 +68,7 @@ class EEG_IBI_FFDTF_Pipeline:
         right_frontal_eeg_channel : str, default="F4"
             Name of the right frontal EEG channel used to compute Frontal Alpha Asymmetry (FAA).
 
-        fs_downsampled : float, default=8.0
+        fs_downsampled : float, default=4.0
             Target sampling frequency used for signal resampling and alignment
             before ffDTF estimation.
 
@@ -77,12 +77,6 @@ class EEG_IBI_FFDTF_Pipeline:
 
         save_global_enabled : bool, default=True
             Enables saving of global ffDTF figures to disk.
-
-        plot_windowed_enabled : bool, default=True
-            Enables plotting of windowed (dynamic) ffDTF connectivity results.
-
-        save_windowed_enabled : bool, default=True
-            Enables saving of windowed ffDTF figures to disk.
 
         Notes
         -----
@@ -103,13 +97,9 @@ class EEG_IBI_FFDTF_Pipeline:
         self.freq_step = 0.01                   # Frequency resolution.
         self.freq_max = 2                       # Maximum frequency for analysis.
 
-        self.n_windows = n_windows
-        self.window_size = window_size
         self.ar_p = ar_p
         self.plot_global_enabled = plot_global_enabled
         self.save_global_enabled = save_global_enabled
-        self.plot_windowed_enabled = plot_windowed_enabled
-        self.save_windowed_enabled = save_windowed_enabled
         
         # Tables for storing file paths and dyads to process
         self.eeg_files = []
@@ -493,76 +483,6 @@ class EEG_IBI_FFDTF_Pipeline:
                 f"It needs to be at least {required_sec} seconds long, "
                 f"but the provided signal is only {total_sec:.2f} seconds."
             )
-    
-
-    def _create_windows(self, signals, n_windows=3, window_size=None):
-        """
-        Creates n_windows that evenly span the entire length of the signal.
-
-        If window_size is None, the signal is divided into n_windows strictly
-        non-overlapping consecutive segments. If window_size is provided, the 
-        windows will overlap evenly to perfectly cover the entire signal from 
-        the first to the last sample.
-
-        Parameters
-        ----------
-        signals : np.ndarray
-            Shape (channels, time). The input signal to be windowed.
-        n_windows : int, default=3
-            Exact number of windows to generate.
-        window_size : int, optional
-            Number of samples per window. If None, it is calculated automatically
-            to avoid overlap. Must be large enough so that n_windows cover the 
-            entire signal.
-
-        Returns
-        -------
-        list of np.ndarray
-            List containing n_windows segments of the signal.
-        """
-        T = signals.shape[1]
-
-        if window_size is None:
-            # Auto-calculate exact window size for zero overlap
-            if T % n_windows != 0:
-                raise ValueError(
-                    f"Cannot evenly divide signal of length {T} into {n_windows} "
-                    f"non-overlapping windows. Provide a specific window_size."
-                )
-            window_size = T // n_windows
-        else:
-            # Calculate the mathematical ceiling for minimum required size
-            min_required_size = (T + n_windows - 1) // n_windows
-            
-            if window_size < min_required_size:
-                raise ValueError(
-                    f"window_size={window_size} is too short. To cover {T} samples "
-                    f"with {n_windows} windows without leaving gaps, the minimum "
-                    f"window_size is {min_required_size}."
-                )
-            
-            if window_size > T:
-                raise ValueError(f"window_size ({window_size}) cannot exceed signal length ({T}).")
-
-        # The last window must end exactly at the end of the signal
-        max_start = T - window_size
-        
-        # Prevent generating identical, fully overlapping windows
-        if max_start < n_windows - 1 and n_windows > 1:
-            raise ValueError(
-                f"window_size={window_size} is too large to generate {n_windows} "
-                f"distinct windows. Decrease window_size or n_windows."
-            )
-
-        if n_windows == 1:
-            positions = [0]
-        else:
-            positions = np.linspace(0, max_start, n_windows, dtype=int)
-
-        # Generate the list of windows based on calculated start positions
-        windows = [signals[:, start:start + window_size] for start in positions]
-
-        return windows
 
 
     def _compute_ffDTF(
@@ -663,6 +583,34 @@ class EEG_IBI_FFDTF_Pipeline:
             )
 
             fig = plt.gcf()
+
+            # Set fixed Y-axis limits
+            n_chan = len(chan_names)
+            axes = np.array(fig.axes).reshape(n_chan, n_chan)
+
+            SPECTRA_YLIM = (0.0, 12.0)
+            SPECTRA_TICKS = [0, 4, 8, 12]
+
+            FFDTF_YLIM = (0.0, 0.10)
+            FFDTF_TICKS = [0.0, 0.05, 0.10]
+
+            for row in range(n_chan):
+                for col in range(n_chan):
+                    ax = axes[row, col]
+                    if row == col:
+                        ax.set_ylim(SPECTRA_YLIM)
+                        ax.set_yticks(SPECTRA_TICKS)
+                    else:
+                        ax.set_ylim(FFDTF_YLIM)
+                        ax.set_yticks(FFDTF_TICKS)
+
+                    # Show tick marks on the left edge, hide numeric labels by default
+                    ax.tick_params(axis='y', left=True, labelleft=False)
+
+            # Show numeric labels ONLY on (1, 1) for spectra and (4, 1) for ffDTF
+            axes[0, 0].tick_params(axis='y', labelleft=True)
+            axes[-1, 0].tick_params(axis='y', labelleft=True)
+
             fig.tight_layout()
 
             if save_path is not None and save_plot:
@@ -683,6 +631,79 @@ class EEG_IBI_FFDTF_Pipeline:
         return ff_dtf, spectra, p_opt
 
 
+    def _reversed_signals_check(
+            self,
+            dyad,
+            film,
+            signals,
+            chan_names,
+            fs,
+            save_dir):
+        """
+        Reverses the time axis of the multivariate signals and computes ffDTF ('reversed')
+        to verify that causal directionality flips across the matrix diagonal.
+        """
+        # Reverse time axis (axis=1) independently for all 4 channels
+        signals_reversed = signals[:, ::-1].copy()
+
+        # Re-standardize for numerical consistency
+        signals_reversed = (
+            (signals_reversed - np.mean(signals_reversed, axis=1, keepdims=True))
+            / np.std(signals_reversed, axis=1, keepdims=True)
+        )
+
+        ff_dtf_rev, spectra_rev, p_opt_rev = self._compute_ffDTF(
+            dyad=dyad,
+            signals=signals_reversed,
+            chan_names=chan_names,
+            fs=fs,
+            plot=self.plot_global_enabled,
+            save_plot=self.save_global_enabled,
+            save_path=save_dir,
+            fig_name=f"{dyad}_{film}_ffDTF_reversed.png"
+        )
+
+        return ff_dtf_rev, spectra_rev, p_opt_rev
+
+
+    def _noise_stability_check(
+            self,
+            dyad,
+            film,
+            signals,
+            chan_names,
+            fs,
+            save_dir,
+            noise_level=0.10,
+            random_seed=42):
+        """
+        Adds Gaussian white noise (default 10% of signal standard deviation) and computes ffDTF
+        to verify estimation stability and robustness against noise perturbations.
+        """
+        rng = np.random.default_rng(random_seed)
+
+        # Generate white noise scaled to 10% of each channel's standard deviation
+        sig_std = np.std(signals, axis=1, keepdims=True)
+        gaussian_noise = rng.normal(loc=0.0, scale=noise_level * sig_std, size=signals.shape)
+
+        signals_noisy = signals + gaussian_noise
+
+        signals_noisy = ((signals_noisy - np.mean(signals_noisy, axis=1, keepdims=True))/ np.std(signals_noisy, axis=1, keepdims=True))
+
+        ff_dtf_noisy, spectra_noisy, p_opt_noisy = self._compute_ffDTF(
+            dyad=dyad,
+            signals=signals_noisy,
+            chan_names=chan_names,
+            fs=fs,
+            plot=self.plot_global_enabled,
+            save_plot=self.save_global_enabled,
+            save_path=save_dir,
+            fig_name=f"{dyad}_{film}_ffDTF_noise10pct.png"
+        )
+
+        return ff_dtf_noisy, spectra_noisy, p_opt_noisy
+    
+
     def _save_single_result(self, dyad, film, result):
         """
         Saves a single dyad-film ffDTF result immediately after computation.
@@ -697,10 +718,13 @@ class EEG_IBI_FFDTF_Pipeline:
             file_path,
             ff_dtf_global=result["mvar"]["ff_dtf_global"],
             spectra_global=result["mvar"]["spectra_global"],
-            ff_dtf_windowed=np.array(result["mvar"]["ff_dtf_windowed"]),
-            spectra_windowed=np.array(result["mvar"]["spectra_windowed"]),
             p_opt_g=result["mvar"]["p_opt_g"],
-            p_opt_w=result["mvar"]["p_opt_w"],
+            ff_dtf_reversed=result["mvar"]["ff_dtf_reversed"],
+            spectra_reversed=result["mvar"]["spectra_reversed"],
+            p_opt_reversed=result["mvar"]["p_opt_reversed"],
+            ff_dtf_noise10pct=result["mvar"]["ff_dtf_noise10pct"],
+            spectra_noise10pct=result["mvar"]["spectra_noise10pct"],
+            p_opt_noise10pct=result["mvar"]["p_opt_noise10pct"],
             meta=json.dumps(result["meta"])
         )
 
@@ -763,10 +787,14 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 signals_to_ffDTF = np.vstack([faa_ch_cropped, ibi_ch_cropped, faa_cg_cropped, ibi_cg_cropped])
 
+                # # Remove DC offset and linear trend independently for each of the 4 channels
+                signals_to_ffDTF = detrend(signals_to_ffDTF, axis=1, type='linear')
+
                 # Standardization of multivariate signals (channel-wise z-score normalization)
                 # Ensures zero mean and unit variance per channel, improving MVAR estimation stability
                 # and preventing scale dominance between EEG-derived FAA and IBI signals
                 signals_to_ffDTF = (signals_to_ffDTF - np.mean(signals_to_ffDTF, axis=1, keepdims=True)) / np.std(signals_to_ffDTF, axis=1, keepdims=True)
+
             
                 chan_names_to_ffDTF = ["faa_ch", "ibi_ch", "faa_cg", "ibi_cg"]
 
@@ -779,48 +807,14 @@ class EEG_IBI_FFDTF_Pipeline:
 
                 tab_p.append(suggested_p)
 
-                # Windowed ffDTF (dynamic connectivity)
-                windowed_signals = self._create_windows(signals_to_ffDTF, self.n_windows, self.window_size)
-
-                processed_windows = []
-                eps = 1e-8
-                for w in windowed_signals:
-                    # z-score normalization per channel within the window
-                    w_norm = (w - np.mean(w, axis=1, keepdims=True)) / (np.std(w, axis=1, keepdims=True) + eps)
-                    processed_windows.append(w_norm)
-                windowed_signals = processed_windows
-
-                ffdtf_results_windowed = []
-                spectra_windowed = []
-                tab_p_opt_w = []
-
-                window_save_dir = self.output_ffDTF_folder / dyad
-
-                print(f" [INFO] Computing windowed ffDTF ({len(windowed_signals)} windows)...")
-
-                for i, w in enumerate(windowed_signals):
-                    ff_dtf_w, spectra_w, p_opt_w  = self._compute_ffDTF(
-                        dyad,
-                        w,
-                        chan_names_to_ffDTF,
-                        self.fs_ds,
-                        plot=self.plot_windowed_enabled,
-                        save_plot=self.save_windowed_enabled,
-                        save_path=window_save_dir,
-                        fig_name=f"{dyad}_{film}_win{i}_ffDTF.png"
-                    )
-
-                    ffdtf_results_windowed.append(ff_dtf_w)
-                    spectra_windowed.append(spectra_w)
-                    tab_p_opt_w.append(p_opt_w)
-
-                # Global ffDTF (baseline)
+                # Global ffDTF
                 global_save_dir = self.output_ffDTF_folder / dyad
                 fig_name_global = f"{dyad}_{film}_ffDTF_global.png"
 
-                print(" [INFO] Computing global ffDTF...")
+                print(" [INFO] Computing ffDTF...")
 
-                ff_dtf_global, spectra_global, p_opt_g  = self._compute_ffDTF(
+                # Global ffDTF
+                ff_dtf_global, spectra_global, p_opt_g = self._compute_ffDTF(
                     dyad,
                     signals_to_ffDTF,
                     chan_names_to_ffDTF,
@@ -831,17 +825,43 @@ class EEG_IBI_FFDTF_Pipeline:
                     fig_name=fig_name_global
                 )
 
-                processing_history += f" -> Alpha -> FAA -> Downsample from {fs_eeg} to {self.fs_ds} -> Crop -> Z-Score -> {self.n_windows} windowing -> Computing global and windowed ffDTF"
+                # Time-reversed signals ffDTF
+                print(" [INFO] Computing time-reversed ffDTF ('reversed')...")
+                ff_dtf_rev, spectra_rev, p_opt_rev = self._reversed_signals_check(
+                    dyad=dyad,
+                    film=film,
+                    signals=signals_to_ffDTF,
+                    chan_names=chan_names_to_ffDTF,
+                    fs=self.fs_ds,
+                    save_dir=global_save_dir
+                )
+
+                # ffDTF with 10% noise added to the signals
+                print(" [INFO] Computing 10%-noise signals ffDTF...")
+                ff_dtf_noisy, spectra_noisy, p_opt_noisy = self._noise_stability_check(
+                    dyad=dyad,
+                    film=film,
+                    signals=signals_to_ffDTF,
+                    chan_names=chan_names_to_ffDTF,
+                    fs=self.fs_ds,
+                    save_dir=global_save_dir,
+                    noise_level=0.10
+                )
+
+                processing_history += f" -> Alpha -> FAA -> Downsample from {fs_eeg} to {self.fs_ds} -> Crop -> Z-Score -> Computing global ffDTF"
 
                 # Build result object
                 result = {
                     "mvar": {
                         "ff_dtf_global": ff_dtf_global,
                         "spectra_global": spectra_global,
-                        "ff_dtf_windowed": ffdtf_results_windowed,
-                        "spectra_windowed": spectra_windowed,
                         "p_opt_g": p_opt_g,
-                        "p_opt_w": tab_p_opt_w
+                        "ff_dtf_reversed": ff_dtf_rev,
+                        "spectra_reversed": spectra_rev,
+                        "p_opt_reversed": p_opt_rev,
+                        "ff_dtf_noise10pct": ff_dtf_noisy,
+                        "spectra_noise10pct": spectra_noisy,
+                        "p_opt_noise10pct": p_opt_noisy,
                     },
                     "meta": {
                         "dyad": dyad,
@@ -850,10 +870,6 @@ class EEG_IBI_FFDTF_Pipeline:
                         "fs_original": fs_eeg,
                         "chan_names": chan_names_to_ffDTF,
                         "faa_chan_names": (self.left_chan, self.right_chan),
-                        "windowing": {
-                            "n_windows": self.n_windows,
-                            "window_size": self.window_size,
-                        },
                         "notes": notes,
                         "child_info": child_info,
                         "event_order": event_order,
@@ -866,9 +882,4 @@ class EEG_IBI_FFDTF_Pipeline:
                 # Save result object
                 self._save_single_result(dyad, film, result)
 
-                # Force RAM cleanup by removing temporary objects already saved to disk
-                del windowed_signals
-                del signals_to_ffDTF
-                del ffdtf_results_windowed
-                del spectra_windowed
         return tab_p

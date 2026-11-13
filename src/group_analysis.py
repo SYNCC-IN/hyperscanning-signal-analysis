@@ -23,7 +23,11 @@ def load_and_aggregate_data(data_dir: str):
     if not files:
         return None, None, None, None
 
-    metrics = ["ff_dtf_g", "spectra_global", "ff_dtf_w", "spectra_windowed"]
+    metrics = [
+        "ff_dtf_g", "spectra_global",
+        "ff_dtf_rev", "spectra_reversed",
+        "ff_dtf_noise", "spectra_noise10pct"
+    ]
     groups = ["TD", "ASD", "P", "ASD+P", "P, możliwe ASD"]
     sexes = ["B", "G"]
 
@@ -35,8 +39,26 @@ def load_and_aggregate_data(data_dir: str):
             matrices = {
                 "ff_dtf_g": data["ff_dtf_global"],
                 "spectra_global": data["spectra_global"],
-                "ff_dtf_w": data["ff_dtf_windowed"],
-                "spectra_windowed": data["spectra_windowed"]
+                "ff_dtf_rev": data["ff_dtf_reversed"],
+                "spectra_reversed": data["spectra_reversed"],
+                "ff_dtf_noise": data["ff_dtf_noise10pct"],
+                "spectra_noise10pct": data["spectra_noise10pct"],
+            }
+    groups = ["TD", "ASD", "P", "ASD+P", "P, możliwe ASD"]
+    sexes = ["B", "G"]
+
+    stacked_by_group = {g: {} for g in groups}
+    stacked_by_sex = {s: {} for s in sexes}
+
+    for file in files:
+        with np.load(file, allow_pickle=True) as data:
+            matrices = {
+                "ff_dtf_g": data["ff_dtf_global"],
+                "spectra_global": data["spectra_global"],
+                "ff_dtf_rev": data["ff_dtf_reversed"],
+                "spectra_reversed": data["spectra_reversed"],
+                "ff_dtf_noise": data["ff_dtf_noise10pct"],
+                "spectra_noise10pct": data["spectra_noise10pct"],
             }
 
             meta = json.loads(data["meta"].item())
@@ -98,20 +120,19 @@ def combine_dtf_and_spectra(dtf_data, spectra_data, channel_names):
     return combined
 
 
-def get_means(data1, data2, f_max=2.0):
+def get_means(data1, data2, f_min=0.15, f_max=1.0, freq_start=0.01, freq_step=0.01):
     """
     Calculates the mean values (Spectra on diag, DTF off-diag), averaged over 
-    frequencies up to 1 Hz (subject-level) and then averaged across subjects (group-level).
+    the specified frequency band [f_min, f_max] and then averaged across subjects.
     """
-
     n_bins = data1.shape[-1]
+    freqs = np.round(freq_start + np.arange(n_bins) * freq_step, 6)
     
-    # Rzeczywista rozdzielczość częstotliwościowa (Hz na bin)
-    freq_resolution = f_max / n_bins
-    idx_1hz = int(1.0 / freq_resolution)
+    # Boolean mask covering the [0.15, 1.00] Hz band (86 bins: 0.15 to 1.00 Hz)
+    freq_mask = (freqs >= f_min) & (freqs <= f_max)
     
-    subj_mean_td = np.mean(data1[..., :idx_1hz], axis=-1)
-    subj_mean_asd = np.mean(data2[..., :idx_1hz], axis=-1)
+    subj_mean_td = np.mean(data1[..., freq_mask], axis=-1)
+    subj_mean_asd = np.mean(data2[..., freq_mask], axis=-1)
 
     group1_mean = np.mean(subj_mean_td, axis=0)
     group2_mean = np.mean(subj_mean_asd, axis=0)
@@ -160,55 +181,29 @@ def plot_global_heatmaps(m1, m2, channel_names, title0, title1, title2, title3, 
         plt.show()
 
 
-def plot_windowed_heatmaps(mw1, mw2, channel_names, title0, title1, title2, title3, save_path=None):
-    """
-    Plots a grid of heatmap for time windows (3x3).
-    X-axis: Source | Y-axis: Target
-    """
-    fig, axes = plt.subplots(3, 3, figsize=(18, 15))
-    fig.suptitle(title0, fontsize=16)
-    heatmap_kwargs = {'annot': True, 'fmt': '.4f', 'xticklabels': channel_names, 'yticklabels': channel_names}
-    
-    for w in range(3):
-        sns.heatmap(mw1[w], ax=axes[w, 0], cmap='viridis', cbar=False, **heatmap_kwargs)
-        axes[w, 0].set_ylabel(f"Window {w+1}\nTarget", fontsize=11, fontweight='bold')
-        if w == 0: axes[0, 0].set_title(title1, fontsize=14)
-        if w == 2: axes[2, 0].set_xlabel("Source", fontweight='bold')
-        
-        sns.heatmap(mw2[w], ax=axes[w, 1], cmap='viridis', cbar=False, **heatmap_kwargs)
-        if w == 0: axes[0, 1].set_title(title2, fontsize=14)
-        if w == 2: axes[2, 1].set_xlabel("Source", fontweight='bold')
-        
-        diff = mw1[w] - mw2[w]
-        sns.heatmap(diff, ax=axes[w, 2], cmap='coolwarm', center=0, cbar=True, **heatmap_kwargs)
-        if w == 0: axes[0, 2].set_title(title3, fontsize=14)
-        if w == 2: axes[2, 2].set_xlabel("Source", fontweight='bold')
-        
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    if save_path:
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-    else:
-        plt.show()
-
-
 def get_significance_stars(p_value):
     """Returns the appropriate number of stars based on the p-value."""
     if p_value < 0.001: return '***'
     elif p_value < 0.01: return '**'
     elif p_value < 0.05: return '*'
-    else: return 'ns' # not significant
+    else: return 'ns'
 
 
 def plot_violins_with_stats(data1_subj, data2_subj, cond1, cond2, channel_names, title, save_path=None):
     """
     Grid of violin plots for each source-target pair, with Mann-Whitney U test results.
-    X-axis: Group (cond1 vs cond2) | Y-axis: Values (Spectra on diag, DTF off-diag)
+    Uses tight uniform Y-axis scales separately for Spectra (diagonal) and ffDTF (off-diagonal)
     """
     n_chan = data1_subj.shape[1]
     fig, axes = plt.subplots(n_chan, n_chan, figsize=(18, 18))
     fig.suptitle(title, fontsize=20)
     palette = {cond1: "#4C72B0", cond2: "#DD8452"}
+
+    SPECTRA_YLIM = (-0.05, 1.35)
+    SPECTRA_TICKS = [0.0, 0.4, 0.8, 1.2]
+
+    FFDTF_YLIM = (-0.0005, 0.013)
+    FFDTF_TICKS = [0.0, 0.005, 0.010]
 
     for src in range(n_chan):
         for tgt in range(n_chan):
@@ -226,7 +221,8 @@ def plot_violins_with_stats(data1_subj, data2_subj, cond1, cond2, channel_names,
             
             sns.violinplot(
                 data=df_combined, x='Group', y='Value', ax=ax,
-                palette=palette, inner="quartile", hue='Group', legend=False
+                palette=palette, inner="quartile", hue='Group', legend=False,
+                cut=0, width=0.85
             )
             
             conn_type = "Spectra" if src == tgt else "ffDTF"
@@ -235,20 +231,34 @@ def plot_violins_with_stats(data1_subj, data2_subj, cond1, cond2, channel_names,
             weight = 'bold' if p_val < 0.05 else 'normal'
             ax.set_title(title_text, fontsize=11, fontweight=weight)
             ax.set_xlabel("")
-            if src != 0: 
-                ax.set_ylabel("") 
+            ax.set_ylabel("")
+
+            if src == tgt:
+                ax.set_ylim(SPECTRA_YLIM)
+                ax.set_yticks(SPECTRA_TICKS)
+            else:
+                ax.set_ylim(FFDTF_YLIM)
+                ax.set_yticks(FFDTF_TICKS)
+
+            ax.tick_params(axis='y', left=True, labelleft=False)
                 
             if p_val < 0.05:
                 y_max = df_combined['Value'].max()
-                y_min = df_combined['Value'].min()
-                y_range = y_max - y_min if y_max != y_min else 1.0
-                h = y_range * 0.05
+                y_lim_top = SPECTRA_YLIM[1] if src == tgt else FFDTF_YLIM[1]
+                y_lim_bot = SPECTRA_YLIM[0] if src == tgt else FFDTF_YLIM[0]
+                y_range = y_lim_top - y_lim_bot
+                h = y_range * 0.035
                 
                 x1, x2 = 0, 1
-                y_line = y_max + h
-                ax.plot([x1, x1, x2, x2], [y_line, y_line+h, y_line+h, y_line], lw=1.5, c='k')
-                ax.text((x1+x2)*.5, y_line+h, stars, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
-                ax.set_ylim(bottom=ax.get_ylim()[0], top=y_line + 4*h)
+                y_line = min(y_max + h, y_lim_top - 2.5 * h)
+                ax.plot([x1, x1, x2, x2], [y_line, y_line + h, y_line + h, y_line], lw=1.5, c='k')
+                ax.text((x1 + x2) * 0.5, y_line + h, stars, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+
+    axes[0, 0].tick_params(axis='y', labelleft=True)
+    axes[0, 0].set_ylabel("Spectra (mean 0.15–1 Hz)", fontweight='bold')
+
+    axes[-1, 0].tick_params(axis='y', labelleft=True)
+    axes[-1, 0].set_ylabel("ffDTF (mean 0.15–1 Hz)", fontweight='bold')
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     if save_path:
@@ -258,75 +268,56 @@ def plot_violins_with_stats(data1_subj, data2_subj, cond1, cond2, channel_names,
         plt.show()
 
 
-
 def run_group_analysis(stacked_data, cond1, cond2, films, channel_names, fs, output_base_dir="group_analysis_results"):
     """
-    Runs the full analysis pipeline (Global and Windowed) for a list of films.
+    Runs the full analysis pipeline for Global, Time-Reversed, and 10%-Noise ffDTF variants.
     Saves heatmaps and violin plots into structured directories.
     """
     base_dir = Path(output_base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
+
+    variants = [
+        ("ff_dtf_g",     "spectra_global",     "01_Global",     "Global"),
+        ("ff_dtf_rev",   "spectra_reversed",   "02_Reversed",   "Time-Reversed"),
+        ("ff_dtf_noise", "spectra_noise10pct", "03_Noise10pct", "10% Noise Signal"),
+    ]
     
     for film in films:
         print(f"[INFO] Processing film: {film}")
         film_dir = base_dir / f"{film}_{cond1}_vs_{cond2}"
         film_dir.mkdir(exist_ok=True)
         
-        # Data extraction for both groups and both types
-        dtf1_g = stacked_data[cond1][film]["ff_dtf_g"]
-        spec1_g = stacked_data[cond1][film]["spectra_global"]
-        combined1_g = combine_dtf_and_spectra(dtf1_g, spec1_g, channel_names)
-        
-        dtf2_g = stacked_data[cond2][film]["ff_dtf_g"]
-        spec2_g = stacked_data[cond2][film]["spectra_global"]
-        combined2_g = combine_dtf_and_spectra(dtf2_g, spec2_g, channel_names)
-        
-        # Windowed
-        dtf1_w = stacked_data[cond1][film]["ff_dtf_w"]
-        spec1_w = stacked_data[cond1][film]["spectra_windowed"]
-        combined1_w = combine_dtf_and_spectra(dtf1_w, spec1_w, channel_names)
-        
-        dtf2_w = stacked_data[cond2][film]["ff_dtf_w"]
-        spec2_w = stacked_data[cond2][film]["spectra_windowed"]
-        combined2_w = combine_dtf_and_spectra(dtf2_w, spec2_w, channel_names)
+        for dtf_key, spec_key, file_prefix, title_label in variants:
+            dtf1 = stacked_data[cond1][film][dtf_key]
+            spec1 = stacked_data[cond1][film][spec_key]
+            combined1 = combine_dtf_and_spectra(dtf1, spec1, channel_names)
+            
+            dtf2 = stacked_data[cond2][film][dtf_key]
+            spec2 = stacked_data[cond2][film][spec_key]
+            combined2 = combine_dtf_and_spectra(dtf2, spec2, channel_names)
 
-        # Means Calculation
-        global1_mean, global2_mean, global1_subj, global2_subj = get_means(combined1_g, combined2_g, f_max=2.0)
-        windowed1_mean, windowed2_mean, windowed1_subj, windowed2_subj = get_means(combined1_w, combined2_w, f_max=2.0)
+            # calculate means for both groups (Spectra on diag, ffDTF off-diag)
+            mean1, mean2, subj1, subj2 = get_means(combined1, combined2, f_min=0.15, f_max=1.0)
 
-        
-        # Zero Diagonals for Heatmaps
-        global1_to_plot = zero_diagonal(global1_mean)
-        global2_to_plot = zero_diagonal(global2_mean)
-        windowed1_to_plot = zero_diagonal(windowed1_mean)
-        windowed2_to_plot = zero_diagonal(windowed2_mean)
+            # Zero out the diagonal for plotting purposes
+            m1_to_plot = zero_diagonal(mean1)
+            m2_to_plot = zero_diagonal(mean2)
 
-        
-        # Plotting and Saving Results
-        plot_global_heatmaps(
-            global1_to_plot, global2_to_plot, channel_names, 
-            title0=f"Film: {film}", title1=f"{cond1} Group", title2=f"{cond2} Group", title3=f"Diff ({cond1} - {cond2})",
-            save_path=film_dir / f"01_{film}_Heatmaps_Global.png"
-        )
-        
-        plot_windowed_heatmaps(
-            windowed1_to_plot, windowed2_to_plot, channel_names, 
-            title0=f"Film: {film}", title1=f"{cond1} Group", title2=f"{cond2} Group", title3=f"Diff ({cond1} - {cond2})",
-            save_path=film_dir / f"02_{film}_Heatmaps_Windowed.png"
-        )
-        
-        plot_violins_with_stats(
-            global1_subj, global2_subj, cond1, cond2, channel_names, 
-            title=f"Film: {film} - Global ffDTF and Spectra Stats",
-            save_path=film_dir / f"03_{film}_Violins_Global.png"
-        )
-        
-        num_windows = windowed1_subj.shape[1]
-        for w in range(num_windows):
-            plot_violins_with_stats(
-                windowed1_subj[:, w, :, :], windowed2_subj[:, w, :, :], cond1, cond2, channel_names, 
-                title=f"Film: {film} {cond1} - Window {w+1} ffDTF and Spectra Stats",
-                save_path=film_dir / f"04_{film}_Violins_Window_{w+1}.png"
+            # save heatmaps
+            plot_global_heatmaps(
+                m1_to_plot, m2_to_plot, channel_names, 
+                title0=f"Film: {film} ({title_label})",
+                title1=f"{cond1} Group",
+                title2=f"{cond2} Group",
+                title3=f"Diff ({cond1} - {cond2})",
+                save_path=film_dir / f"{file_prefix}_{film}_Heatmaps.png"
             )
             
-        print(f"[INFO] Saved all plots for {film} in {film_dir}\n")
+            # save violin plots
+            plot_violins_with_stats(
+                subj1, subj2, cond1, cond2, channel_names, 
+                title=f"Film: {film} - {title_label} ffDTF and Spectra Stats",
+                save_path=film_dir / f"{file_prefix}_{film}_Violins.png"
+            )
+            
+        print(f"[INFO] Saved all plots (Global, Reversed, Noised) for {film} in {film_dir}\n")
