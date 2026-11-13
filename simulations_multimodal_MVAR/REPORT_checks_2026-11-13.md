@@ -227,3 +227,131 @@ At minimum S1, S3 and S8 need a rerun; S5 does too, for the omitted-driver numbe
 5. Recommendation: drop per-window linear detrending (`detrend_type="none"`) and rerun S1, S3, S5 and S8. A
    non-growing, real-dyad-only 11–25% residual at gain 0.6 remains (likely the collinearity of Z and the caregiver heart; not
    tested).
+
+---
+
+## Rerun of S1, S3, S5 and S8 with the new default (no per-window detrending)
+
+Following the A4 verdict, which was approved, the default of `fit_mvar`, `edge_matrix`, `regressor_diagnostics` and
+`conditional_gc` in `src/sim_estimation.py` is now `detrend_type="none"`: the 10 s windows (50% overlap) are fitted as
+cut. The old behaviour is still available as `detrend_type="linear"`. In S8 the baseline changed accordingly, and the old
+default was added as the last variant, `detrend=linear`. It comes last so that every other variant draws the same
+permutations as before.
+
+The two implementation checks against `src.connectivity.Granger_estimator`, which detrends linearly, now pass `"linear"`
+explicitly. These are S01's `implementation_check` and `tests/test_sim_estimation.py`.
+
+S1, S3, S5 and S8 were rerun in full mode for both estimators with the full-run seeds, so they analyse the same
+simulated studies. Old results are kept in `Results/<est>/S_NN_linear_detrend/` (local, gitignored); new results are in
+`Results/<est>/S_NN/`. Comparison tables with all cells: `checks_2026-11/nodetrend/compare_S0{1,3,5,8}.csv`, built by
+`dDTF/CHK_nodetrend_compare.py`. All rates come with 95% Wilson intervals. Rates pooled over edges use
+n = studies × edges, so their intervals are somewhat too narrow.
+
+A consistency check confirms the rerun used identical data: the new S8 variant `detrend=linear` reproduces the old
+baseline (null FPR dDTF 0.057 vs. 0.059, GPDC 0.050 vs. 0.052). The variants that never detrended ("window=whole
+segment") or detrend constantly are identical old vs. new.
+
+### S1 recovery (25 dyads, 60 s, 200 studies)
+
+- **Planted edges:** detected in 100% of studies in both versions and for both estimators, uncorrected and after max-T
+  (0.981–1.000).
+- **Absent cross-person edges:** 0–2% (old) and 0–1% (new).
+- **Reverse edges:** for dDTF, the reverse edges of the planted edges are detected in 100% of studies in both versions.
+  This is the known dDTF reverse-edge pattern, and it is unchanged.
+- **Median z of the planted edges:**
+  - dDTF: 3.40 / 4.18 / 3.79 → 3.65 / 4.16 / 3.95.
+  - GPDC: 2.56 / 2.63 / 2.49 → 2.67 / 2.57 / 2.60.
+
+### S3 null calibration (200 studies per cell; 1000 for N = 10 and N = 16)
+
+Per-edge rates (mean over 8 edges, per cell and null mode) are unchanged.
+
+| estimator | level | old range over cells × modes | new range |
+|---|---|---|---|
+| dDTF | study | 0.037–0.060 | 0.042–0.058 |
+| dDTF | group | 0.038–0.075 | 0.040–0.074 |
+| GPDC | study | 0.043–0.055 | 0.039–0.054 |
+| GPDC | group | 0.040–0.082 | 0.043–0.083 |
+
+The within-group group contrast at N = 10 stays at 7–8% in both versions: this is the A2 effect, not affected by
+detrending. |median z| ≤ 0.016 everywhere.
+
+The single edge × cell extremes widened slightly, from 0.020–0.095 to 0.010–0.125. The new maximum (0.125, 95% CI
+0.085–0.178, at N = 25, 120 s, cg:ROI→child:ROI, exclude null) is one of 288 edge × cell rates from 200 studies. The
+same cell was the old maximum region (0.090).
+
+Max-T family-wise rates, selected cells:
+
+| cell | estimator | level, null | old | new |
+|---|---|---|---|---|
+| N10, 60 s | dDTF | study, pooled | 0.063 (0.050–0.080) | 0.059 (0.046–0.075) |
+| N16, 60 s | dDTF | study, pooled | 0.061 (0.048–0.078) | 0.063 (0.050–0.080) |
+| N25, 60 s | dDTF | study, pooled | 0.035 (0.017–0.070) | 0.045 (0.024–0.083) |
+| N50, 60 s | dDTF | study, pooled | 0.080 (0.050–0.126) | 0.075 (0.046–0.120) |
+| N10, 300 s | dDTF | group, within_group | 0.100 (0.083–0.120) | 0.124 (0.105–0.146) |
+| N16, 60 s | dDTF | group, within_group | 0.071 (0.057–0.089) | 0.062 (0.049–0.079) |
+| N10, 60 s | GPDC | study, pooled | 0.061 (0.048–0.078) | 0.053 (0.041–0.069) |
+| N16, 60 s | GPDC | study, pooled | 0.059 (0.046–0.075) | 0.053 (0.041–0.069) |
+| N10, 300 s | GPDC | group, within_group | 0.117 (0.099–0.138) | 0.131 (0.111–0.153) |
+| N16, 60 s | GPDC | group, within_group | 0.081 (0.066–0.100) | 0.102 (0.085–0.122) |
+
+Study-level max-T is within 2.5–8.5% in every cell in both versions. The GPDC criterion "max-T within band in every cell
+(study level)" now passes; it failed before.
+
+The within-group group contrast at N = 10–16 is still above the band (10–13%) in both versions, and slightly higher in
+the new run. This is the problem A2 addresses with `renull` (not used in these scripts). All other S3 criteria have the
+same outcome as before.
+
+### S5 omitted driver (sweep: 200 studies per cell, N = 25)
+
+Rate of the absent edge cg:HRV → child:HRV in the 5-node model with Z:
+
+| gain | segment, p | dDTF old | dDTF new | GPDC old | GPDC new |
+|---|---|---|---|---|---|
+| 0.4 | 60 s, p 4 | 0.065 (0.038–0.108) | 0.030 (0.014–0.064) | 0.105 (0.070–0.155) | 0.075 (0.046–0.120) |
+| 0.4 | 120 s, p 4 | 0.180 (0.133–0.239) | **0.040** (0.020–0.077) | 0.360 (0.297–0.429) | **0.095** (0.062–0.144) |
+| 0.4 | 300 s, p 4 | 0.710 (0.644–0.768) | **0.010** (0.003–0.036) | 0.860 (0.805–0.901) | **0.085** (0.054–0.132) |
+| 0.4 | 60 s, p 2 / p 6 | 0.135 / 0.015 | 0.030 / 0.015 | 0.120 / 0.185 | 0.080 / 0.070 |
+| 0.6 | 60 s, p 4 | 0.525 (0.456–0.593) | 0.165 (0.120–0.223) | 0.640 (0.571–0.703) | 0.140 (0.099–0.195) |
+| 0.6 | 120 s, p 4 | 0.825 (0.766–0.871) | 0.175 (0.129–0.234) | 0.950 (0.910–0.973) | 0.140 (0.099–0.195) |
+| 0.6 | 300 s, p 4 | 1.000 (0.981–1.000) | 0.150 (0.107–0.206) | 1.000 (0.981–1.000) | 0.160 (0.116–0.217) |
+
+The growth with length is gone. At gain 0.4 the rate is 1–9.5% at every length. At gain 0.6 a flat residual of 14–17%
+remains, as predicted by A4. The 4-node model without Z still detects the dyad-level edge in 100% of studies, as
+intended.
+
+Main run (60 s, gain 0.4):
+- **Cascade:** absent indirect edge, 4-node estimator: dDTF 1.00 → 1.00 (the known dDTF cascade limitation, unchanged);
+  GPDC 0.005 → 0.010. Planted power is 1.00 everywhere.
+- **Common driver:** absent edge, 4-node estimator: dDTF 0.020 → 0.005, GPDC 0.085 → 0.065.
+- **Omitted driver, 5-node with Z:** dDTF 0.065 → 0.040, GPDC 0.135 → 0.075.
+- **Criteria:** dDTF 5 of 7 met in both versions, the same two failing (both dDTF cascade criteria). GPDC goes from 6 of
+  7 to 7 of 7: the omitted-driver criterion (5-node with Z ≤ 0.10) now passes.
+
+### S8 sensitivity (25 dyads, 60 s, 200 null + 200 planted studies)
+
+| estimator | variant | null FPR old | null FPR new | power old → new |
+|---|---|---|---|---|
+| dDTF | baseline | 0.059 (0.047–0.074) | 0.051 (0.040–0.065) | 1.00 → 1.00 |
+| dDTF | detrend=linear (old default) | – | 0.057 (0.045–0.071) | – → 1.00 |
+| dDTF | range over all variants | 0.038–0.059 | 0.038–0.057 | 1.00 everywhere |
+| GPDC | baseline | 0.052 (0.041–0.066) | 0.058 (0.046–0.072) | 1.00 → 1.00 |
+| GPDC | detrend=linear (old default) | – | 0.050 (0.039–0.064) | – → 1.00 |
+| GPDC | range over all variants | 0.043–0.057 | 0.038–0.060 | 1.00 everywhere |
+
+All S8 criteria are met in both versions (3 of 3).
+
+### Verdict of the rerun
+
+Calibration and power are unchanged:
+- **S1:** recovery is 100%, absent edges ≤ 2%, and median z is slightly higher.
+- **S3:** per-edge and study-level family-wise rates are within the same ranges as before. The one S3 issue that
+  remains, the within-group group contrast at N = 10–16, is the A2 problem and is independent of detrending.
+- **S8:** every variant keeps its null FPR at 3.8–6.0% with full power.
+
+The only material change is the intended one in S5: with Z in the model, the spurious heart → heart edge no longer grows
+with recording length.
+
+**Not rerun:** S2, S4, S4b, S6, S6b, S7, S9–S13, the Drive copy of the results and the manuscript figures. They still
+reflect per-window linear detrending. `fig2_model_and_null.py` also still annotates the windows as "each linearly
+detrended".

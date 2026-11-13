@@ -106,7 +106,7 @@ def implementation_check():
     design = zscore_designs(simulate_dyads(rng, 1, N_SAMPLES, FS, POLE_RADIUS_RANGES, F0_RANGES,
                                            list(PLANTED.values()), N_LAGS))[0]
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
-    coeffs, variance, _ = fit_mvar(design, MODEL_ORDER, win_len, step, method="yw")   # the repository estimator fits Yule-Walker
+    coeffs, variance, _ = fit_mvar(design, MODEL_ORDER, win_len, step, "linear", method="yw")   # as the repository estimator: Yule-Walker, linear detrending
     errors = {}
     for estimator in ("dDTF", "ffDTF", "GPDC"):
         with contextlib.redirect_stdout(io.StringIO()):

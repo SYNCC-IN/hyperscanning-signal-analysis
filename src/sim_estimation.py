@@ -82,7 +82,7 @@ def connectivity_cube(ar_coeffs, variance, freqs, fs, estimator):
     return cube.transpose(1, 2, 0)
 
 
-def fit_mvar(design, p, win_len, step, detrend_type="linear", method="ols"):
+def fit_mvar(design, p, win_len, step, detrend_type="none", method="ols"):
     """Fit one MVAR model, from window-averaged autocovariance or from the whole segment.
 
     Parameters
@@ -94,8 +94,9 @@ def fit_mvar(design, p, win_len, step, detrend_type="linear", method="ols"):
     win_len, step : int or None
         Window length / step in samples. ``win_len=None`` fits the whole segment as one
         un-detrended window (the global fit).
-    detrend_type : {'linear', 'constant', 'none'}, optional
-        Per-window detrending; 'none' fits the windows as cut.
+    detrend_type : {'none', 'linear', 'constant'}, optional
+        Per-window detrending. 'none' (default since 2026-11-13) fits the windows as cut; 'linear' (the earlier
+        default) biases conditional estimates of slow, collinear nodes (check A4, REPORT_checks_2026-11-13.md).
     method : {'ols', 'yw'}, optional
         'ols' (default): least squares on the stacked windows (`src.mtmvar.ols_coeff`), no
         edge-truncation bias. 'yw': Yule-Walker on the window-averaged biased autocovariance
@@ -141,7 +142,7 @@ def select_order(design, p_max, crit_type):
 
 
 def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
-                box_cox_lambda=-1, detrend_type="linear", p_max=8, crit_type="SC", method="ols"):
+                box_cox_lambda=-1, detrend_type="none", p_max=8, crit_type="SC", method="ols"):
     """Band-averaged connectivity matrix ``[target, source]`` of one design.
 
     Parameters
@@ -159,7 +160,8 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
         Coupling band (low, high) in Hz.
     box_cox_lambda : float, optional
         Box-Cox exponent applied before band-averaging (-1 = none).
-    detrend_type : {'linear', 'constant', 'none'}, optional
+    detrend_type : {'none', 'linear', 'constant'}, optional
+        See `fit_mvar` (default 'none').
     p_max : int, optional
         Largest order considered when `p` is None.
     crit_type : {'AIC', 'HQ', 'SC'}, optional
@@ -181,7 +183,7 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
 
 
 
-def regressor_diagnostics(design, p, win_len, step, node, detrend_type="linear"):
+def regressor_diagnostics(design, p, win_len, step, node, detrend_type="none"):
     """Collinearity of the lagged regressors of the least-squares MVAR fit on stacked windows.
 
     The regressor matrix is the one `src.mtmvar.ols_coeff` solves: for every window (from `src.design`), the rows
@@ -197,7 +199,8 @@ def regressor_diagnostics(design, p, win_len, step, node, detrend_type="linear")
         Window length / step in samples.
     node : int
         Row of `design` whose lags are scored by the VIF (e.g. the caregiver heart).
-    detrend_type : {'linear', 'constant'}, optional
+    detrend_type : {'none', 'linear', 'constant'}, optional
+        As in `fit_mvar` (default 'none').
 
     Returns
     -------
@@ -205,7 +208,9 @@ def regressor_diagnostics(design, p, win_len, step, node, detrend_type="linear")
         condition_number (2-norm condition number of the regressor matrix), vif_max (largest variance inflation
         factor ``1 / (1 - R^2)`` over the p lags of `node`, from the inverse correlation matrix of the regressors).
     """
-    stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
+    stack = window_stack(design, win_len, step)
+    if detrend_type != "none":
+        stack = detrend_windows(stack, dtype=detrend_type)
     k, n, n_windows = stack.shape
     x = np.vstack([np.hstack([stack[:, p - lag:n - lag, w].T for lag in range(1, p + 1)]) for w in range(n_windows)])
     vif = np.diag(np.linalg.inv(np.corrcoef(x, rowvar=False)))
@@ -296,7 +301,7 @@ def true_conditional_gc(coupling, source, target, noise_var=1.0, order=60):
     return gc, float(1.0 - np.exp(-gc))
 
 
-def conditional_gc(design, source, target, p, win_len, step, detrend_type="linear"):
+def conditional_gc(design, source, target, p, win_len, step, detrend_type="none"):
     """Estimated conditional Granger causality F of `source` -> `target` from a least-squares MVAR fit.
 
     ``F = ln(sigma2_restricted / sigma2_full)``: sigma2_full is the residual variance of the `target` equation of the
@@ -312,7 +317,8 @@ def conditional_gc(design, source, target, p, win_len, step, detrend_type="linea
         Model order.
     win_len, step : int or None
         Window length / step in samples; ``win_len=None`` uses the whole segment as one window, not detrended.
-    detrend_type : {'linear', 'constant', 'none'}, optional
+    detrend_type : {'none', 'linear', 'constant'}, optional
+        As in `fit_mvar` (default 'none').
 
     Returns
     -------

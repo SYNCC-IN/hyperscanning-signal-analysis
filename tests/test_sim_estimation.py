@@ -22,7 +22,7 @@ def test_fast_cube_matches_granger_estimator(estimator):
     win_len, step = window_geometry(10.0, 0.5, fs)
     freqs = np.linspace(0.02, fs / 2 - 0.02, 100)
     reference, _ = Granger_estimator(design, freqs, fs, p, win_len, step, "linear", ESTIMATOR=estimator)
-    coeffs, variance, _ = fit_mvar(design, p, win_len, step, method="yw")   # Granger_estimator fits Yule-Walker
+    coeffs, variance, _ = fit_mvar(design, p, win_len, step, "linear", method="yw")   # Granger_estimator: Yule-Walker, linear detrending
     fast = connectivity_cube(coeffs, variance, freqs, fs, estimator)
     np.testing.assert_allclose(fast, reference, rtol=1e-8, atol=1e-12)
 

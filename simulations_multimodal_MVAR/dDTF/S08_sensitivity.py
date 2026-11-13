@@ -1,7 +1,8 @@
 """S08 - Sensitivity to estimator, model order, window geometry, detrending, Box-Cox and band (Table 2, S8).
 
-One-factor-at-a-time variations around the baseline (ESTIMATOR = dDTF or GPDC, p = 4, 10 s windows with 50% overlap, linear
-detrending, Box-Cox 0.25, band 0.15-0.5 Hz). All variants analyse the same simulated studies (paired comparison).
+One-factor-at-a-time variations around the baseline (ESTIMATOR = dDTF or GPDC, p = 4, 10 s windows with 50% overlap, no
+per-window detrending (linear before 2026-11-13: variant detrend=linear), Box-Cox 0.25, band 0.15-0.5 Hz). All variants
+analyse the same simulated studies (paired comparison).
 Scenarios: 'null' (no coupling) and 'planted' (cg:ROI->child:ROI, cg:HRV->child:HRV, cg:HRV->child:ROI).
 Readouts per variant: false-positive rate (null, mean over the six cross-person edges), power of the planted edges,
 rate of detection of the three reverse edges in the planted scenario, direction accuracy, share of unstable fits.
@@ -42,7 +43,7 @@ if os.environ.get("SIM_NREP"):
     SETTINGS["n_rep"] = int(os.environ["SIM_NREP"])
 
 FS = 2.5
-BASE = {"p": 4, "win_s": 10.0, "overlap": 0.5, "estimator": ESTIMATOR, "detrend_type": "linear", "box_cox_lambda": 0.25,
+BASE = {"p": 4, "win_s": 10.0, "overlap": 0.5, "estimator": ESTIMATOR, "detrend_type": "none", "box_cox_lambda": 0.25,
         "band_hz": (0.15, 0.5), "p_max": 8, "crit_type": "SC", "method": "ols"}
 VARIANTS = {"baseline": {},
             **{f"estimator={e}": {"estimator": e} for e in ("DTF", "ffDTF", "dDTF", "GPDC") if e != ESTIMATOR},
@@ -52,7 +53,8 @@ VARIANTS = {"baseline": {},
             "overlap=0.25": {"overlap": 0.25}, "overlap=0.75": {"overlap": 0.75}, "window=whole segment": {"win_s": None},
             "detrend=constant": {"detrend_type": "constant"}, "box-cox=none": {"box_cox_lambda": -1.0},
             "band=0.05-0.15": {"band_hz": (0.05, 0.15)}, "band=0.1-0.3": {"band_hz": (0.1, 0.3)}, "band=0.3-0.5": {"band_hz": (0.3, 0.5)},
-            "fit=Yule-Walker": {"method": "yw"}, "fit=Yule-Walker, window=20s": {"method": "yw", "win_s": 20.0}}
+            "fit=Yule-Walker": {"method": "yw"}, "fit=Yule-Walker, window=20s": {"method": "yw", "win_s": 20.0},
+            "detrend=linear": {"detrend_type": "linear"}}   # the default before 2026-11-13; last, so earlier variants draw as before
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
 POLE_RADIUS_RANGES = np.array([[0.45, 0.65], [0.45, 0.65], [0.80, 0.92], [0.80, 0.92]])
 F0_RANGES = np.array([[0.20, 0.50], [0.20, 0.50], [0.25, 0.45], [0.25, 0.45]])
