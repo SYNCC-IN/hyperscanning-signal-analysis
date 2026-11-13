@@ -21,7 +21,7 @@ def label(ax, s, dx=-0.02):
 
 # ---------- (A) nodes and edges ----------
 def panel_a(ax):
-    ax.set_xlim(-0.35, 1.35); ax.set_ylim(-0.32, 1.32); ax.set_aspect("equal"); ax.axis("off")
+    ax.set_xlim(-0.35, 1.35); ax.set_ylim(-0.48, 1.32); ax.set_aspect("equal"); ax.axis("off")
     pos = {"CgB": (0., 1.), "ChB": (1., 1.), "CgH": (0., 0.), "ChH": (1., 0.)}
     names = {"CgB": "caregiver\nbrain", "ChB": "child\nbrain",
              "CgH": "caregiver\nheart", "ChH": "child\nheart"}
@@ -56,7 +56,7 @@ def panel_a(ax):
     hl = [(TEAL, "brain–brain"), (AMBER, "heart–heart"),
           (PURPLE, "cross-modal"), (GREY, "within-person (not tested)")]
     for i, (c, t) in enumerate(hl):
-        x = -0.3 + (i % 2) * 0.85; y = -0.18 - (i // 2) * 0.1
+        x = -0.3 + (i % 2) * 0.85; y = -0.32 - (i // 2) * 0.1
         ax.plot([x, x + 0.1], [y, y], color=c, lw=1.5,
                 ls="--" if c == GREY else "-")
         ax.text(x + 0.13, y, t, va="center", fontsize=6.5)
@@ -166,12 +166,12 @@ def panel_d(axs, axh):
     axh.set_title("sign-flip null (two-sided)", fontsize=8.5)
 
 
-def main(out):
+def main(out, name="fig2_model_and_null", dpi=200):
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     fig = plt.figure(figsize=(7.48, 6.4))  # 190 mm wide
     gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.05], hspace=0.3, wspace=0.18,
                           left=0.07, right=0.98, top=0.95, bottom=0.08)
-    axA = fig.add_subplot(gs[0, 0]); panel_a(axA); label(axA, "A")
+    axA = fig.add_subplot(gs[0, 0]); panel_a(axA); label(axA, "A", dx=-0.12)  # the lower legend makes panel A narrower
     axB = fig.add_subplot(gs[0, 1]); panel_b(axB); label(axB, "B")
     gC = gs[1, 0].subgridspec(1, 2, wspace=0.35, width_ratios=[1, 1.1])
     axCm = fig.add_subplot(gC[0]); axCh = fig.add_subplot(gC[1])
@@ -183,7 +183,7 @@ def main(out):
         fig.text(ax_l.get_position().x0 - 0.045, ax_t.get_position().y1 + 0.012, L,
                  fontsize=11, fontweight="bold", va="bottom")
     for ext in ("svg", "png"):
-        fig.savefig(out / f"fig2_model_and_null.{ext}", dpi=200)
+        fig.savefig(out / f"{name}.{ext}", dpi=dpi)
     print("saved", out)
 
 
