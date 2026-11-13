@@ -9,6 +9,7 @@ fig_gain_conversion.png/.svg : Supplementary figure: prediction improvement (and
 fig02_model_and_null    : Fig. 2 (schematic, drawn by fig2_model_and_null.py).
 fig06 ... fig14         : publication figures of the results (S3-S13), SVG + PNG (300 dpi), from the summary and raw
                           CSVs of the full runs; no simulation is run here.
+figS4_frequency_gap     : Fig. S4 (Supplement S3): S2 edge value relative to gap 0 and direction index vs. frequency gap.
 
 Usage: python figures_manuscript.py [all | NAME ...] [OUT_DIR [RESULTS_DIR]]
   NAME is a function name below (level1, level2, fig3, fig_gain_conversion, fig02, fig06 ... fig14); default all.
@@ -893,9 +894,63 @@ def fig14():
         save(fig, "fig14_group_film")
 
 
+S2_BANDWIDTH_HZ = 1.5                                 # BANDWIDTH_HZ of S02_envelope_vs_phase.py
+S2_PATHS = [("envelope", EEG_COL, "o", "envelope"), ("phase", "#b8460b", "s", "raw signal, widening grid"),
+            ("phase_fixedgrid", "#56b4e9", "^", "raw signal, fixed grid")]
+
+
+def s2_stats(est):
+    """Mean and SEM over reps of relative_fwd and direction_index per (truth, path, gap) of S2 for one estimator."""
+    raw = pd.read_csv(RES / est / "S_02" / "raw_results.csv")
+    return raw.groupby(["truth", "path", "gap"])[["relative_fwd", "direction_index"]].agg(["mean", "sem"])
+
+
+def figS4():
+    stats = {est: s2_stats(est) for est in EST}
+    with plt.rc_context(PUB):
+        fig, axes = plt.subplots(2, 3, figsize=(FULL_W, 4.2), sharex="col", sharey="row",
+                                 gridspec_kw={"wspace": 0.1, "hspace": 0.18})
+        fig.subplots_adjust(left=0.09, right=0.98, top=0.88, bottom=0.1)
+        for j, (truth, title) in enumerate([("amplitude", "amplitude coupling"), ("phase", "phase coupling"), ("none", "no coupling")]):
+            axes[0, j].set_title(title)
+            for i, column in enumerate(["relative_fwd", "direction_index"]):
+                ax = axes[i, j]
+                ax.axhline(1 if i == 0 else 0, color="0.6", lw=0.5, zorder=0)
+                ax.axvline(S2_BANDWIDTH_HZ, color="0.5", ls=":", lw=0.8, zorder=0)
+                for path, col, mk, _ in S2_PATHS:
+                    for est, ls in zip(EST, ("-", "--")):
+                        s = stats[est].loc[(truth, path)][column]
+                        gap, m, e = s.index.to_numpy(), s["mean"].to_numpy(), s["sem"].to_numpy()
+                        ax.fill_between(gap, m - e, m + e, color=col, alpha=0.18, lw=0)
+                        ax.plot(gap, m, color=col, ls=ls, lw=0.9, marker=mk, ms=2.5, mew=0.6,
+                                mfc=col if est == "dDTF" else "white")
+            axes[1, j].set_xlabel("frequency gap between partners (Hz)"); axes[1, j].set_xticks(range(0, 11, 2))
+        axes[0, 0].set_yscale("log"); axes[0, 0].set_ylim(0.02, 100)              # dDTF envelope reaches ~70 under no coupling
+        axes[0, 0].set_yticks([0.03, 0.1, 0.3, 1, 3, 10, 30]); axes[0, 0].set_yticklabels(["0.03", "0.1", "0.3", "1", "3", "10", "30"])
+        axes[0, 0].yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+        axes[1, 0].set_ylim(-1.05, 1.05); axes[1, 0].set_yticks([-1, -0.5, 0, 0.5, 1])
+        axes[0, 0].set_ylabel("edge value relative to gap 0"); axes[1, 0].set_ylabel("direction index")
+        handles = [matplotlib.lines.Line2D([], [], color=col, marker=mk, ms=3, lw=1, label=lab) for _, col, mk, lab in S2_PATHS]
+        handles += [matplotlib.lines.Line2D([], [], color="0.3", ls=ls, lw=0.9, marker="o", ms=3, mfc=mfc, label=est)
+                    for est, ls, mfc in zip(EST, ("-", "--"), ("0.3", "white"))]
+        fig.legend(handles=handles, loc="upper center", ncol=5, bbox_to_anchor=(0.535, 1.0), columnspacing=1.6, handlelength=2.6)
+        panel(axes[0, 0], "A", x=-0.2, y=1.0); panel(axes[1, 0], "B", x=-0.2, y=1.0)
+        save(fig, "figS4_frequency_gap")
+    for est in EST:
+        st = stats[est]
+        print(f"{est}: amplitude/envelope relative_fwd {st.loc[('amplitude', 'envelope'), ('relative_fwd', 'mean')].agg(['min', 'max']).round(3).tolist()}")
+        ph = st.loc[("amplitude", "phase"), ("relative_fwd", "mean")]
+        print(f"{est}: amplitude/phase relative_fwd at 4.5/5/9.5 Hz {ph.loc[[4.5, 5.0, 9.5]].round(3).tolist()}, first gap < 0.05: {ph[ph < 0.05].index.min()}")
+        fg = st.loc[("amplitude", "phase_fixedgrid"), ("relative_fwd", "mean")]
+        print(f"{est}: amplitude/fixed grid relative_fwd max {fg.max():.3f} at {fg.idxmax()} Hz, at 9.5 Hz {fg.loc[9.5]:.3f}, min after max {fg.loc[fg.idxmax():].min():.3f}")
+        for path in ("phase", "envelope"):
+            di = st.loc[("none", path), ("direction_index", "mean")]
+            print(f"{est}: none/{path} direction_index min {di.min():.3f}, max {di.max():.3f}")
+
+
 FIGURES = {"level1": level1, "level2": level2, "fig3": fig3, "fig_gain_conversion": fig_gain_conversion,
            "fig02": fig02, "fig06": fig06, "fig07": fig07, "fig08": fig08, "fig09": fig09,
-           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14}
+           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4}
 
 if __name__ == "__main__":
     for name in (list(FIGURES) if not NAMES or NAMES == ["all"] else NAMES):
