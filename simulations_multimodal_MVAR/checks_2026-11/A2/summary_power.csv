@@ -1,0 +1,33 @@
+estimator,cell,gain,measure,version,rate,ci_low,ci_high,n
+dDTF,"S4 design B, 12 vs 13",0.1,"power, uncorrected",current,0.22,0.16816453539463405,0.2823892279196257,200
+dDTF,"S4 design B, 12 vs 13",0.1,"power, max-T over 8",current,0.055,0.030985020801370097,0.0957879244659355,200
+dDTF,"S4 design B, 12 vs 13",0.1,"power, uncorrected",renull,0.215,0.16371792563672208,0.2770242977367209,200
+dDTF,"S4 design B, 12 vs 13",0.1,"power, max-T over 8",renull,0.06,0.0346518499012715,0.10193263530685089,200
+dDTF,"S4 design B, 12 vs 13",0.2,"power, uncorrected",current,0.93,0.8859442178331628,0.9578482170770813,200
+dDTF,"S4 design B, 12 vs 13",0.2,"power, max-T over 8",current,0.69,0.622826945087378,0.75001157266366,200
+dDTF,"S4 design B, 12 vs 13",0.2,"power, uncorrected",renull,0.945,0.9042120755340645,0.9690149791986299,200
+dDTF,"S4 design B, 12 vs 13",0.2,"power, max-T over 8",renull,0.7,0.6332080400667355,0.759253557565936,200
+dDTF,"S4 design B, 25 vs 25",0.1,"power, uncorrected",current,0.35,0.28728715939415395,0.41836664238134236,200
+dDTF,"S4 design B, 25 vs 25",0.1,"power, max-T over 8",current,0.1,0.06566994117157123,0.14940686356308552,200
+dDTF,"S4 design B, 25 vs 25",0.1,"power, uncorrected",renull,0.36,0.29669087731339805,0.42858600434373184,200
+dDTF,"S4 design B, 25 vs 25",0.1,"power, max-T over 8",renull,0.12,0.08197935023887545,0.17234361425904846,200
+dDTF,"S4 design B, 25 vs 25",0.2,"power, uncorrected",current,0.995,0.9722256001302286,0.999116854010634,200
+dDTF,"S4 design B, 25 vs 25",0.2,"power, max-T over 8",current,0.975,0.9428208558483829,0.9892754385292123,200
+dDTF,"S4 design B, 25 vs 25",0.2,"power, uncorrected",renull,1.0,0.9811539940816791,1.0,200
+dDTF,"S4 design B, 25 vs 25",0.2,"power, max-T over 8",renull,0.99,0.9642775148038205,0.9972533993962251,200
+GPDC,"S4 design B, 12 vs 13",0.1,"power, uncorrected",current,0.21,0.15928329527863416,0.271647388153992,200
+GPDC,"S4 design B, 12 vs 13",0.1,"power, max-T over 8",current,0.075,0.045974507057252416,0.12004459797332034,200
+GPDC,"S4 design B, 12 vs 13",0.1,"power, uncorrected",renull,0.18,0.13294550662534108,0.2391159371623843,200
+GPDC,"S4 design B, 12 vs 13",0.1,"power, max-T over 8",renull,0.07,0.04215178292291873,0.11405578216683726,200
+GPDC,"S4 design B, 12 vs 13",0.2,"power, uncorrected",current,0.91,0.8622332538615105,0.9423130212854665,200
+GPDC,"S4 design B, 12 vs 13",0.2,"power, max-T over 8",current,0.705,0.6384115802925058,0.7638615572809827,200
+GPDC,"S4 design B, 12 vs 13",0.2,"power, uncorrected",renull,0.875,0.8219846471534161,0.9138808484078432,200
+GPDC,"S4 design B, 12 vs 13",0.2,"power, max-T over 8",renull,0.66,0.5918836703220929,0.7220856077840445,200
+GPDC,"S4 design B, 25 vs 25",0.1,"power, uncorrected",current,0.33,0.26857320614303315,0.3978344358691961,200
+GPDC,"S4 design B, 25 vs 25",0.1,"power, max-T over 8",current,0.115,0.07786317221824318,0.16664825233886393,200
+GPDC,"S4 design B, 25 vs 25",0.1,"power, uncorrected",renull,0.31,0.24998842733633997,0.377173054912622,200
+GPDC,"S4 design B, 25 vs 25",0.1,"power, max-T over 8",renull,0.09,0.05768697871453362,0.13776674613848952,200
+GPDC,"S4 design B, 25 vs 25",0.2,"power, uncorrected",current,1.0,0.9811539940816791,1.0,200
+GPDC,"S4 design B, 25 vs 25",0.2,"power, max-T over 8",current,0.98,0.9497121344948062,0.9921956998236058,200
+GPDC,"S4 design B, 25 vs 25",0.2,"power, uncorrected",renull,0.995,0.9722256001302286,0.999116854010634,200
+GPDC,"S4 design B, 25 vs 25",0.2,"power, max-T over 8",renull,0.985,0.9568335194437211,0.9948858548155076,200

@@ -1,0 +1,37 @@
+estimator,cell,n_per_group,measure,version,rate,ci_low,ci_high,n
+dDTF,"S3 null, 8 vs 8",8.0,per-edge rate (mean over 8 edges),current,0.060625,0.05560343500600247,0.06606833820849993,8000
+dDTF,"S3 null, 8 vs 8",8.0,"family-wise rate, max-T over 8",current,0.069,0.05488371422135517,0.08641507236011349,1000
+dDTF,"S3 null, 8 vs 8",8.0,per-edge rate (mean over 8 edges),renull,0.053125,0.04842117532598035,0.058257797431301606,8000
+dDTF,"S3 null, 8 vs 8",8.0,"family-wise rate, max-T over 8",renull,0.069,0.05488371422135517,0.08641507236011349,1000
+dDTF,"S3 null, 12 vs 13",12.5,per-edge rate (mean over 8 edges),current,0.05175,0.045304881230853945,0.059055291259486324,4000
+dDTF,"S3 null, 12 vs 13",12.5,"family-wise rate, max-T over 8",current,0.064,0.045695733565557124,0.08895293379339062,500
+dDTF,"S3 null, 12 vs 13",12.5,per-edge rate (mean over 8 edges),renull,0.05325,0.04671048313770802,0.06064681091708174,4000
+dDTF,"S3 null, 12 vs 13",12.5,"family-wise rate, max-T over 8",renull,0.044,0.029233737680341678,0.06571991441984218,500
+dDTF,"S3 null, 25 vs 25",25.0,per-edge rate (mean over 8 edges),current,0.04325,0.03737201372879841,0.050004469896328,4000
+dDTF,"S3 null, 25 vs 25",25.0,"family-wise rate, max-T over 8",current,0.03,0.018263049234083534,0.04890409218496562,500
+dDTF,"S3 null, 25 vs 25",25.0,per-edge rate (mean over 8 edges),renull,0.05325,0.04671048313770802,0.06064681091708174,4000
+dDTF,"S3 null, 25 vs 25",25.0,"family-wise rate, max-T over 8",renull,0.046,0.030844883399787512,0.06807827022627275,500
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, max-T within film (per film x study)",current,0.05,0.03524504216014047,0.07048069783524907,600
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, any film (per study)",current,0.135,0.09446507976920289,0.18929250455117141,200
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"interaction, family-wise, max-T over 8",current,0.075,0.045974507057252416,0.12004459797332034,200
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, max-T within film (per film x study)",renull,0.06833333333333333,0.050767817082089134,0.09139131869126602,600
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, any film (per study)",renull,0.185,0.13730116322736063,0.2445718205011816,200
+dDTF,"S13 a, 15 vs 15, 3 films",15.0,"interaction, family-wise, max-T over 8",renull,0.05,0.027382349028644986,0.08957905629784384,200
+GPDC,"S3 null, 8 vs 8",8.0,per-edge rate (mean over 8 edges),current,0.074375,0.06882737888648051,0.08033119516625935,8000
+GPDC,"S3 null, 8 vs 8",8.0,"family-wise rate, max-T over 8",current,0.084,0.068358553811171,0.10282542581270594,1000
+GPDC,"S3 null, 8 vs 8",8.0,per-edge rate (mean over 8 edges),renull,0.0495,0.044959210432715745,0.05447324210357634,8000
+GPDC,"S3 null, 8 vs 8",8.0,"family-wise rate, max-T over 8",renull,0.054,0.04162111458513981,0.06979247895392054,1000
+GPDC,"S3 null, 12 vs 13",12.5,per-edge rate (mean over 8 edges),current,0.06575,0.058478257935444714,0.07385504915642425,4000
+GPDC,"S3 null, 12 vs 13",12.5,"family-wise rate, max-T over 8",current,0.068,0.04906621332682857,0.09352145708387197,500
+GPDC,"S3 null, 12 vs 13",12.5,per-edge rate (mean over 8 edges),renull,0.04975,0.043433233802120885,0.05693077660228672,4000
+GPDC,"S3 null, 12 vs 13",12.5,"family-wise rate, max-T over 8",renull,0.052,0.03573001990962654,0.07510163829406287,500
+GPDC,"S3 null, 25 vs 25",25.0,per-edge rate (mean over 8 edges),current,0.05625,0.04952621647503592,0.06382532070865285,4000
+GPDC,"S3 null, 25 vs 25",25.0,"family-wise rate, max-T over 8",current,0.048,0.03246497509125218,0.07042768006068446,500
+GPDC,"S3 null, 25 vs 25",25.0,per-edge rate (mean over 8 edges),renull,0.0485,0.04226496333488697,0.05560144576581272,4000
+GPDC,"S3 null, 25 vs 25",25.0,"family-wise rate, max-T over 8",renull,0.042,0.027632099334746148,0.06335205123956134,500
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, max-T within film (per film x study)",current,0.08666666666666667,0.0667020816019414,0.11189044994937937,600
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, any film (per study)",current,0.24,0.1860652685202468,0.3037346545572801,200
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"interaction, family-wise, max-T over 8",current,0.085,0.05374529946985246,0.13189688544235392,200
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, max-T within film (per film x study)",renull,0.05333333333333334,0.03802886791437883,0.07432112585882264,600
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"group contrast, family-wise, any film (per study)",renull,0.14,0.09866918625271481,0.19489993800847627,200
+GPDC,"S13 a, 15 vs 15, 3 films",15.0,"interaction, family-wise, max-T over 8",renull,0.07,0.04215178292291873,0.11405578216683726,200

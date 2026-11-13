@@ -1,0 +1,7 @@
+data,gain,n_draws,max_abs_dDTF,max_abs_GPDC,max_abs_population_GC,n_draws_GC
+C0 default,0.4,1000,0.0,0.0,3.9079850466804747e-14,100
+C0 default,0.6,1000,0.0,0.0,1.5631940186720982e-13,100
+C5 Z -> both hearts at lag 1,0.4,1000,0.0,0.0,1.0658141036400935e-13,100
+C5 Z -> both hearts at lag 1,0.6,1000,0.0,0.0,1.8474111129760898e-13,100
+C6 Z pole radius 0.5,0.4,1000,0.0,0.0,1.9539925233402948e-14,100
+C6 Z pole radius 0.5,0.6,1000,0.0,0.0,2.1316282072803233e-14,100

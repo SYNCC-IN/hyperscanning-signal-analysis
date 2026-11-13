@@ -94,7 +94,8 @@ def fit_mvar(design, p, win_len, step, detrend_type="linear", method="ols"):
     win_len, step : int or None
         Window length / step in samples. ``win_len=None`` fits the whole segment as one
         un-detrended window (the global fit).
-    detrend_type : {'linear', 'constant'}, optional
+    detrend_type : {'linear', 'constant', 'none'}, optional
+        Per-window detrending; 'none' fits the windows as cut.
     method : {'ols', 'yw'}, optional
         'ols' (default): least squares on the stacked windows (`src.mtmvar.ols_coeff`), no
         edge-truncation bias. 'yw': Yule-Walker on the window-averaged biased autocovariance
@@ -109,6 +110,8 @@ def fit_mvar(design, p, win_len, step, detrend_type="linear", method="ols"):
     """
     if win_len is None:
         stack = design
+    elif detrend_type == "none":
+        stack = window_stack(design, win_len, step)
     else:
         stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
     if method == "ols":
@@ -156,7 +159,7 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
         Coupling band (low, high) in Hz.
     box_cox_lambda : float, optional
         Box-Cox exponent applied before band-averaging (-1 = none).
-    detrend_type : {'linear', 'constant'}, optional
+    detrend_type : {'linear', 'constant', 'none'}, optional
     p_max : int, optional
         Largest order considered when `p` is None.
     crit_type : {'AIC', 'HQ', 'SC'}, optional
@@ -291,3 +294,43 @@ def true_conditional_gc(coupling, source, target, noise_var=1.0, order=60):
     restricted = prediction_error_cov(gamma[:, keep][:, :, keep], order)[keep.index(target), keep.index(target)]
     gc = float(np.log(restricted / noise_var))
     return gc, float(1.0 - np.exp(-gc))
+
+
+def conditional_gc(design, source, target, p, win_len, step, detrend_type="linear"):
+    """Estimated conditional Granger causality F of `source` -> `target` from a least-squares MVAR fit.
+
+    ``F = ln(sigma2_restricted / sigma2_full)``: sigma2_full is the residual variance of the `target` equation of the
+    full model (the regression `src.mtmvar.ols_coeff` solves: lags 1..p of every node, rows stacked over windows),
+    sigma2_restricted that of the same equation without the lags of `source`. Population value: `true_conditional_gc`.
+
+    Parameters
+    ----------
+    design : np.ndarray, shape (k, n_samples)
+    source, target : int
+        Rows of `design`.
+    p : int
+        Model order.
+    win_len, step : int or None
+        Window length / step in samples; ``win_len=None`` uses the whole segment as one window, not detrended.
+    detrend_type : {'linear', 'constant', 'none'}, optional
+
+    Returns
+    -------
+    float
+    """
+    if win_len is None:
+        stack = design[:, :, None]
+    elif detrend_type == "none":
+        stack = window_stack(design, win_len, step)
+    else:
+        stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
+    k, n, n_windows = stack.shape
+    x = np.vstack([np.hstack([stack[:, p - lag:n - lag, w].T for lag in range(1, p + 1)]) for w in range(n_windows)])
+    y = np.concatenate([stack[target, p:, w] for w in range(n_windows)])
+    keep = [col for col in range(k * p) if col % k != source]
+
+    def residual_variance(columns):
+        coef, *_ = np.linalg.lstsq(columns, y, rcond=None)
+        return np.mean((y - columns @ coef) ** 2)
+
+    return float(np.log(residual_variance(x[:, keep]) / residual_variance(x)))
