@@ -12,8 +12,10 @@ Tests (none assumes a symmetric or normal null):
   given the film) the real pairing of children and caregivers is exchangeable with any
   re-pairing, so the mean real value is compared with the means of randomly re-paired studies;
 - group contrast: permutation of the group labels, difference of group means of delta.
-  With the within-group null, `renull=True` recomputes every dyad's null median under each relabelling
-  (`renull_delta`), so the estimation error of the group null medians is permuted with the labels.
+  With the within-group null the default (`renull=True`, since 2026-11-14) recomputes every dyad's null median under
+  each relabelling (`renull_delta`), so the estimation error of the group null medians is permuted with the labels;
+  `renull=False` (labels permuted on the fixed delta) is liberal and kept for comparison (check A2,
+  REPORT_checks_2026-11-13.md).
 
 Multiplicity across edges: `pairing_permutation_maxT` and `group_permutation_maxT` score all edges
 of a family on one shared set of permutations and return max-T (Westfall & Young, 1993), min-p and
@@ -585,7 +587,7 @@ def renull_statistics(real, pair_values, valid, labels, combine=None):
     return group_mean_difference(np.where(valid[None], delta, np.nan), labels)
 
 
-def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True, renull=False, real=None, pair_values=None, combine=None):
+def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True, renull=True, real=None, pair_values=None, combine=None):
     """Two-sided group contrast of several edges on the same label permutations, with FWER control.
 
     The statistic of an edge is ``|mean_1 - mean_0|`` of its delta (NaN values left out).
@@ -599,10 +601,11 @@ def group_permutation_maxT(delta, groups, rng, n_perm, stepdown=True, renull=Fal
     n_perm : int
     stepdown : bool, optional
     renull : bool, optional
-        False (default): the labels are permuted on the fixed `delta`. True: for every permutation the within-group
-        null median of every dyad is recomputed from `pair_values` with the permuted groups and delta is recomputed
-        before the statistic (`renull_statistics`); `delta` then only marks, by its NaN entries, the dyads left out.
-        The same permutations are drawn in both cases.
+        True (default): for every permutation the within-group null median of every dyad is recomputed from
+        `pair_values` with the permuted groups and delta is recomputed before the statistic (`renull_statistics`);
+        `delta` then only marks, by its NaN entries, the dyads left out; needs `real` and `pair_values`. False: the
+        labels are permuted on the fixed `delta` (liberal for a delta against the within-group null; for comparison,
+        or for a contrast that does not use a within-group null). The same permutations are drawn in both cases.
     real : np.ndarray, shape (n_dyads, n_columns), optional
         Real values (needed with `renull`).
     pair_values : np.ndarray, shape (n_dyads, n_dyads, n_columns), optional
@@ -675,7 +678,7 @@ MULTIPLICITY_METHODS = ("unadjusted", "bonferroni", "maxT", "maxT_single_step", 
 
 
 def multiplicity_records(table, delta, z, groups, within_group, family, alpha, rng, n_perm, methods,
-                         renull=False, real=None, pair_values=None):
+                         renull=True, real=None, pair_values=None):
     """Family-wise adjusted study-level and group-level decisions for one study and one null.
 
     Parameters
@@ -697,7 +700,8 @@ def multiplicity_records(table, delta, z, groups, within_group, family, alpha, r
     methods : sequence of str
         Subset of `MULTIPLICITY_METHODS`.
     renull : bool, optional
-        Re-null the group contrast under every permutation (`group_permutation_maxT`); needs `real` and `pair_values`.
+        With `within_group`, re-null the group contrast under every permutation (`group_permutation_maxT`; default);
+        needs `real` and `pair_values`. Ignored for the other nulls.
     real : np.ndarray, shape (n_dyads, k, k), optional
     pair_values : np.ndarray, shape (n_dyads, n_dyads, k, k), optional
         Surrogate values (NaN diagonal).
@@ -714,8 +718,8 @@ def multiplicity_records(table, delta, z, groups, within_group, family, alpha, r
                                      groups if within_group else None)
     group = None
     if groups is not None:
-        renull_args = {}
-        if renull:
+        renull_args = {"renull": False}
+        if renull and within_group:
             renull_args = dict(renull=True, real=real[:, targets, sources], pair_values=pair_values[:, :, targets, sources])
         group = group_permutation_maxT(np.where(np.isfinite(z[:, targets, sources]), delta[:, targets, sources], np.nan),
                                        groups, rng, n_perm, **renull_args)
@@ -752,7 +756,7 @@ def permutation_pvalue(values_a, values_b, rng, n_perm):
 
 
 def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha, alpha, rng, n_perm,
-                 renull=False, real=None, pair_values=None):
+                 renull=True, real=None, pair_values=None):
     """Dyad-level, study-level and group-level readouts for one directed edge.
 
     Parameters
@@ -775,8 +779,9 @@ def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha
     n_perm : int
         Number of permutations of the study-level and group-level tests.
     renull : bool, optional
-        Group contrast with the within-group null recomputed under every label permutation (see
-        `group_permutation_maxT`) instead of `permutation_pvalue` on the fixed delta; needs `real` and `pair_values`.
+        With `within_group` (default True): group contrast with the within-group null recomputed under every label
+        permutation (see `group_permutation_maxT`); needs `real` and `pair_values`. False, or another null:
+        `permutation_pvalue` on the fixed delta.
     real : np.ndarray, shape (n_dyads, k, k), optional
     pair_values : np.ndarray, shape (n_dyads, n_dyads, k, k), optional
         Surrogate values (NaN diagonal).
@@ -796,7 +801,7 @@ def edge_summary(table, delta, z, p_dyad, edge, groups, within_group, dyad_alpha
     ok = np.isfinite(z_edge)
     study_p = pairing_permutation_pvalue(table[:, :, target, source], rng, n_perm, groups if within_group else None)
     group_p = np.nan
-    if groups is not None and renull:
+    if groups is not None and renull and within_group:
         group_p = float(group_permutation_maxT(np.where(ok, d_fwd, np.nan)[:, None], groups, rng, n_perm, renull=True,
                                                real=real[:, target, source][:, None],
                                                pair_values=pair_values[:, :, target, source][:, :, None])["unadjusted"][0])
@@ -834,7 +839,7 @@ def family_dict(edges, family):
 
 
 def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, alpha, rng, n_perm,
-                family=None, multiplicity="none", multiplicity_rng=None, renull=False):
+                family=None, multiplicity="none", multiplicity_rng=None, renull=True):
     """Readouts of every edge of one study against one surrogate null.
 
     Parameters
@@ -864,8 +869,9 @@ def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, al
         Generator of the family permutations (default `rng`, drawn after the per-edge tests). A
         separate generator leaves every draw from `rng`, and so the per-edge results, unchanged.
     renull : bool, optional
-        Only with ``mode='within_group'``: the group contrasts (per edge and family-wise) recompute the within-group
-        null of every dyad under every label permutation (see `group_permutation_maxT`). Default False.
+        With ``mode='within_group'`` (default True): the group contrasts (per edge and family-wise) recompute the
+        within-group null of every dyad under every label permutation (see `group_permutation_maxT`). False gives the
+        fixed-delta test (for comparison). No effect with the other modes.
 
     Returns
     -------
@@ -881,7 +887,6 @@ def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, al
     table = pair_values.copy()
     index = np.arange(real.shape[0])
     table[index, index] = diagonal
-    assert not renull or mode == "within_group", "renull applies to the within-group null only"
     renull_args = dict(renull=renull, real=real, pair_values=pair_values)
     out = {name: edge_summary(table, delta, z, p_dyad, edge, groups, mode == "within_group", dyad_alpha, alpha, rng, n_perm,
                               **renull_args)
@@ -910,7 +915,7 @@ def score_study(real, pair_values, diagonal, mode, groups, edges, dyad_alpha, al
 
 def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stability_max_root,
               dyad_alpha, alpha, n_perm, max_pairs=None, family=None, multiplicity="none", multiplicity_rng=None,
-              renull=False):
+              renull=True):
     """Analyse one simulated study end to end and return one record per (mode, edge).
 
     Dyads whose real fit is unstable are dropped together with their surrogate pairs.
@@ -944,8 +949,8 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     multiplicity_rng : numpy.random.Generator, optional
         See `score_study`.
     renull : bool, optional
-        Re-null the group contrasts of the 'within_group' mode under every permutation (see `score_study`); the other
-        modes are unaffected. Default False.
+        Re-null the group contrasts of the 'within_group' mode under every permutation (default; see `score_study`);
+        the other modes are unaffected. False gives the fixed-delta test (for comparison).
 
     Returns
     -------
@@ -963,7 +968,7 @@ def run_study(designs, nodes, child_nodes, est, edges, modes, groups, rng, stabi
     for mode in modes:
         delta, _ = delta_and_z_all(real, values, mode, kept_groups)
         summaries = score_study(real, values, real, mode, kept_groups, edges, dyad_alpha, alpha, rng, n_perm,
-                                family, multiplicity, multiplicity_rng, renull and mode == "within_group")
+                                family, multiplicity, multiplicity_rng, renull)
         for name, (source, target) in (edges | family_dict(edges, family)).items():
             records.append(dict(summaries[name], mode=mode, edge=name,
                                 real_mean=float(real[:, target, source].mean()),

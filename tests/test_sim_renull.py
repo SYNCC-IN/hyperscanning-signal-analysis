@@ -47,7 +47,7 @@ def test_renull_and_fixed_delta_draw_the_same_permutations():
     real, pair_values = exchangeable_study(np.random.default_rng(2), 16)
     delta, _ = delta_and_z_all(real.reshape(16, 1, 1), pair_values.reshape(16, 16, 1, 1), "within_group", groups)
     rng_a, rng_b = np.random.default_rng(3), np.random.default_rng(3)
-    group_permutation_maxT(delta.reshape(16, 1), groups, rng_a, 100)
+    group_permutation_maxT(delta.reshape(16, 1), groups, rng_a, 100, renull=False)
     group_permutation_maxT(delta.reshape(16, 1), groups, rng_b, 100, renull=True, real=real, pair_values=pair_values)
     assert rng_a.random() == rng_b.random()
 
@@ -92,3 +92,21 @@ def test_renull_group_contrast_is_uniform_under_exchangeable_values():
           f"rate(p < 0.05) renull = {np.mean(p_renull < 0.05):.4f} (KS p = {ks_renull:.3f}), "
           f"fixed delta = {np.mean(p_fixed < 0.05):.4f} (KS p = {ks_fixed:.2g})")
     assert ks_renull > 0.01
+
+
+def test_score_study_defaults_renull_only_for_the_within_group_null():
+    """Default: the within-group group contrast is re-nulled; the pooled-null group contrast is the fixed-delta test."""
+    rng = np.random.default_rng(6)
+    groups = np.repeat([0, 1], 6)
+    real, pair_values = exchangeable_study(rng, 12, 4)
+    real, pair_values = real.reshape(12, 2, 2), pair_values.reshape(12, 12, 2, 2)
+    edges = {"e": (1, 0)}
+
+    def group_p(mode, **kwargs):
+        out = score_study(real, pair_values, real, mode, groups, edges, 0.05, 0.05, np.random.default_rng(7), 300,
+                          family=edges, multiplicity=["maxT"], multiplicity_rng=np.random.default_rng(8), **kwargs)
+        return out["e"]["group_p"], out["e"]["group_p_adj_maxT"]
+
+    assert group_p("within_group") == group_p("within_group", renull=True)
+    assert group_p("within_group") != group_p("within_group", renull=False)
+    assert group_p("pooled") == group_p("pooled", renull=False)

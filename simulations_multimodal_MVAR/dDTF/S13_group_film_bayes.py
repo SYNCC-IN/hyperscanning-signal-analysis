@@ -10,6 +10,9 @@ group effect (0.1 in film 1, 0.3 in films 2 and 3, both groups).
 Dependent variable: delta against the within-group null of each film (surrogates built from dyads of the same group and
 film), standardized within edge for the Bayesian models (`src.group_model.standardize_within_edge`); the robust z
 (delta / scaled MAD of the null) is a sensitivity DV for the permutation tests.
+Group-label permutation tests of the delta DV (group contrasts and interaction) recompute the within-group null under
+every permutation (`renull`, default since 2026-11-14), from surrogate tables over all 30 dyads of a film; the z DV is
+tested on the fixed z.
 Analyses per study:
   1. permutation: group contrast per edge and film, max-T over the 8 edges within each film; max-T over the 24
      edge x film tests; max-T over the 8 edges on the film-averaged delta; film contrast
@@ -164,30 +167,59 @@ def planted_effects(scenario):
 
 
 def simulate_delta_table(rng, scenario, n_per_group, est):
-    """Simulate one study (3 films, 2 groups) and return the tidy delta / z table against the within-group null."""
+    """Simulate one study (3 films, 2 groups); tidy delta / z table against the within-group null, and the tables.
+
+    The surrogate table of every film covers all dyads of both groups (the within-group blocks are the within-group
+    null; the whole table is needed to re-null the group tests under permuted labels). Dyads with an unstable real fit
+    in a film are left out of that film (NaN real values, rows and columns).
+
+    Returns
+    -------
+    df : pandas.DataFrame
+    groups : np.ndarray, shape (n,)
+    tables : dict of {film: (real, values)}
+        real (n, n_edges) and values (n, n, n_edges) of the family edges, for `group_permutation_maxT(renull=True)`.
+    """
     n = 2 * n_per_group
     groups = np.r_[np.zeros(n_per_group, int), np.ones(n_per_group, int)]
     radii, f0s = sample_node_params(rng, n, POLE_RADIUS_RANGES), sample_node_params(rng, n, F0_RANGES)
-    rows = []
+    rows, tables = [], {}
+    sources, targets = [s for s, _ in EDGES.values()], [t for _, t in EDGES.values()]
     for f, film in enumerate(FILMS):
         edges_per_dyad = [[(*EDGES[edge], 1, gains[groups[d]][f]) for edge, gains in SCENARIOS[scenario].items()]
                           for d in range(n)]
         designs = zscore_designs(simulate_dyads_fixed_params(rng, radii, f0s, int(SEG_S * FS), FS, edges_per_dyad, N_LAGS))
-        for g in (0, 1):
-            members = np.flatnonzero(groups == g)
-            real, roots, _ = real_matrices(designs[members], NODES, est)
-            values, _, _ = surrogate_values(designs[members], NODES, CHILD_NODES, est, STABILITY_MAX_ROOT, rng)
-            stable = roots < STABILITY_MAX_ROOT
-            delta, z = delta_and_z_all(real[stable], values[stable][:, stable], "pooled")   # within this group and film
-            for i, dyad in enumerate(members[stable]):
-                for edge, (s, t) in EDGES.items():
-                    rows.append({"dyad_id": f"d{dyad:02d}", "dyad": int(dyad), "group": GROUPS[g], "film": film,
-                                 "edge": edge, "delta": float(delta[i, t, s]), "z": float(z[i, t, s])})
-    return pd.DataFrame(rows), groups
+        real, roots, _ = real_matrices(designs, NODES, est)
+        values, _, _ = surrogate_values(designs, NODES, CHILD_NODES, est, STABILITY_MAX_ROOT, rng)
+        unstable = roots >= STABILITY_MAX_ROOT
+        real[unstable], values[unstable], values[:, unstable] = np.nan, np.nan, np.nan
+        delta, z = delta_and_z_all(real, values, "within_group", groups)
+        tables[film] = (real[:, targets, sources], values[:, :, targets, sources])
+        for dyad in np.flatnonzero(~unstable):
+            for edge, (s, t) in EDGES.items():
+                rows.append({"dyad_id": f"d{dyad:02d}", "dyad": int(dyad), "group": GROUPS[groups[dyad]], "film": film,
+                             "edge": edge, "delta": float(delta[dyad, t, s]), "z": float(z[dyad, t, s])})
+    return pd.DataFrame(rows), groups, tables
 
 
-def permutation_records(df, groups, rng, dv):
-    """Group-contrast permutation tests of one DV: per film (uncorrected, max-T over 8), max-T over 24, max-T on the film mean."""
+def renull_args(tables, dv, films, combine=None):
+    """Keyword arguments of `group_permutation_maxT`: re-nulled tables for the delta DV, the fixed-DV test for z.
+
+    The robust z has no re-nulled version, so its group tests permute the labels on the fixed z (`renull=False`).
+    `films` are stacked as columns (film x edge); `combine` maps them to the tested quantities.
+    """
+    if dv != "delta":
+        return {"renull": False}
+    return {"renull": True, "real": np.hstack([tables[f][0] for f in films]),
+            "pair_values": np.concatenate([tables[f][1] for f in films], axis=2), "combine": combine}
+
+
+def permutation_records(df, groups, rng, dv, tables):
+    """Group-contrast permutation tests of one DV: per film (uncorrected, max-T over 8), max-T over 24, max-T on the film mean.
+
+    For the delta DV the within-group null is recomputed under every permutation (`renull`, from `tables`); a dyad
+    missing a film is then left out of the film-mean test (instead of averaging its other films).
+    """
     n = len(groups)
     wide = {film: np.full((n, len(EDGES)), np.nan) for film in FILMS}
     for (film, edge), sub in df.groupby(["film", "edge"]):
@@ -198,36 +230,40 @@ def permutation_records(df, groups, rng, dv):
         out.append({"method": method, "dv": dv, "film": film, "edge": edge, "effect": "group", "p": float(p), "detected": bool(p < ALPHA)})
 
     for film in FILMS:
-        res = group_permutation_maxT(wide[film], groups, rng, N_PERM)
+        res = group_permutation_maxT(wide[film], groups, rng, N_PERM, **renull_args(tables, dv, [film]))
         for e, edge in enumerate(EDGES):
             add("perm_film_unadj", film, edge, res["unadjusted"][e])
             add("perm_film_maxT", film, edge, res["maxT"][e])
-    res = group_permutation_maxT(np.hstack([wide[film] for film in FILMS]), groups, rng, N_PERM)
+    res = group_permutation_maxT(np.hstack([wide[film] for film in FILMS]), groups, rng, N_PERM, **renull_args(tables, dv, FILMS))
     for f, film in enumerate(FILMS):
         for e, edge in enumerate(EDGES):
             add("perm_24_maxT", film, edge, res["maxT"][f * len(EDGES) + e])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         film_mean = np.nanmean(np.stack([wide[film] for film in FILMS]), axis=0)
-    res = group_permutation_maxT(film_mean, groups, rng, N_PERM)
+    eye = np.eye(len(EDGES))
+    res = group_permutation_maxT(film_mean, groups, rng, N_PERM, **renull_args(tables, dv, FILMS, np.vstack([eye / 3] * 3)))
     for e, edge in enumerate(EDGES):
         add("perm_mean_maxT", "mean", edge, res["maxT"][e])
     return out
 
 
-def contrast_records(df, groups, rng, dv):
+def contrast_records(df, groups, rng, dv, tables):
     """Film effect (sign-flip, max-T over 8) and film x group interaction (label permutation, max-T over 8) of one DV.
 
     The contrast per dyad and edge is c = dv(F1) - mean(dv(F2), dv(F3)); a dyad missing a film is NaN for that edge.
+    For the delta DV the interaction re-nulls the within-group null of every film under every permutation (`renull`).
     """
     n = len(groups)
     wide = {film: np.full((n, len(EDGES)), np.nan) for film in FILMS}
     for (film, edge), sub in df.groupby(["film", "edge"]):
         wide[film][sub.dyad.to_numpy(), list(EDGES).index(edge)] = sub[dv].to_numpy()
     contrast = wide["F1"] - (wide["F2"] + wide["F3"]) / 2
+    eye = np.eye(len(EDGES))
+    interaction = renull_args(tables, dv, FILMS, np.vstack([eye, -eye / 2, -eye / 2]))
     out = []
     for effect, label, res in (("film", "perm_contrast", signflip_maxT(contrast, rng, N_PERM, groups)),
-                               ("interaction", "perm_interaction", group_permutation_maxT(contrast, groups, rng, N_PERM))):
+                               ("interaction", "perm_interaction", group_permutation_maxT(contrast, groups, rng, N_PERM, **interaction))):
         for e, edge in enumerate(EDGES):
             for kind, key in (("unadj", "unadjusted"), ("maxT", "maxT")):
                 p = float(res[key][e])
@@ -304,12 +340,12 @@ def run_task(task):
     start = time.time()
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP, FS)
     est = dict(p=MODEL_ORDER, win_len=win_len, step=step, freqs=FREQS, fs=FS, estimator=ESTIMATOR, band_hz=BAND_HZ, box_cox_lambda=BOX_COX)
-    df, groups = simulate_delta_table(rng, task["scenario"], SETTINGS["n_per_group"], est)
+    df, groups, tables = simulate_delta_table(rng, task["scenario"], SETTINGS["n_per_group"], est)
     t_sim = time.time() - start
     perm_rng = np.random.default_rng([task["seed"], 1])
     start = time.time()
-    records = permutation_records(df, groups, perm_rng, "delta") + permutation_records(df, groups, perm_rng, "z")
-    records += contrast_records(df, groups, perm_rng, "delta") + contrast_records(df, groups, perm_rng, "z")   # drawn after the group tests
+    records = permutation_records(df, groups, perm_rng, "delta", tables) + permutation_records(df, groups, perm_rng, "z", tables)
+    records += contrast_records(df, groups, perm_rng, "delta", tables) + contrast_records(df, groups, perm_rng, "z", tables)   # drawn after the group tests
     runtime = {"simulation_and_delta": t_sim, "permutation": time.time() - start}
     bayes, gates, bayes_time = bayes_records(df, SETTINGS["mcmc"], int(task["seed"] % 2**31))
     runtime.update(bayes_time)

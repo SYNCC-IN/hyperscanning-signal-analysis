@@ -471,3 +471,151 @@ All remaining simulations were rerun in full mode for dDTF and GPDC with the ful
 
 - **Fig. 2, panel B:** "The segment is cut into 11 overlapping 10 s windows (50% overlap), and each window is linearly detrended." The figure now reads "fitted as cut (no detrending)". The editing tool refused an in-place edit of the Drive file, so the caption is left for the author.
 - **Fig. 10:** "the default (highlighted) and 24 variants" is now 25 variants (the added `detrend=linear`). The list "(..., detrending, ...)" still fits. The default is now no detrending.
+
+---
+
+## `renull=True` as the default, and the rerun of S3, S4, S7 and S13 (2026-11-14/15)
+
+`renull=True` is now the default of every test against the within-group null:
+- `group_permutation_maxT`;
+- the per-edge group contrast of `edge_summary`, and through it `score_study`, `multiplicity_records` and `run_study`;
+- in S13, the group contrasts per film, over 24 and on the film mean, and the film × group interaction, all for the
+  delta DV.
+
+`renull=False` remains for comparison. Under the pooled and exclude nulls nothing changes. The robust-z DV of S13 has no
+re-nulled version, so its tests stay on the fixed z.
+
+To re-null, S13 now builds the surrogate table over all 30 dyads of a film. The within-group blocks are the same fits, and
+the delta table is identical; this was checked on a test study.
+
+The tests on generic synthetic deltas pass `renull=False`, and a new test pins the defaults
+(`tests/test_sim_renull.py`).
+
+S3, S4, S7 and S13 were rerun in full mode for dDTF and GPDC, with the full-run seeds, the default of no per-window
+detrending, and `OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1`.
+
+**Where the files are:**
+- Old results: `Results/<est>/S_NN_pre_renull/` and `Results/comparison_pre_renull/` (local); Drive
+  `Results_pre_renull/` and `Figures_pre_renull/`.
+- Tables: `checks_2026-11/renull/{S03_within_group,S04_design_B,S07_within_group,S13,criteria_changes,unchanged_check}.csv`,
+  built by `dDTF/CHK_renull_compare.py`.
+
+Every cell that `renull` must not change is identical (maximum |difference| 0.000): S3 under the other nulls and at the
+study level, S4 design A, and S7 under the other nulls.
+
+### S3: group contrast, within-group null (no coupling)
+
+Per-edge n = studies × 8 edges; max-T n = studies. 1000 studies at N = 10 and N = 16, 200 otherwise.
+
+| cell | dDTF old | dDTF new | GPDC old | GPDC new |
+|---|---|---|---|---|
+| 5 vs 5, 60 s, per-edge | 0.070 (0.065–0.076) | 0.049 (0.045–0.054) | 0.082 (0.076–0.088) | 0.047 (0.043–0.052) |
+| 5 vs 5, 120 s, per-edge | 0.068 (0.062–0.073) | 0.045 (0.040–0.050) | 0.083 (0.077–0.090) | 0.046 (0.042–0.051) |
+| 5 vs 5, 300 s, per-edge | 0.074 (0.068–0.080) | 0.050 (0.045–0.055) | 0.083 (0.077–0.089) | 0.050 (0.045–0.054) |
+| 8 vs 8, 60 s, per-edge | 0.059 (0.054–0.064) | 0.052 (0.048–0.058) | 0.072 (0.067–0.078) | 0.051 (0.047–0.056) |
+| 12 vs 13, 60 s, per-edge | 0.052 (0.042–0.064) | 0.047 (0.038–0.058) | 0.062 (0.052–0.075) | 0.047 (0.038–0.058) |
+| 25 vs 25, 300 s, per-edge | 0.046 (0.036–0.057) | 0.046 (0.036–0.057) | 0.069 (0.057–0.082) | 0.059 (0.048–0.071) |
+| 5 vs 5, 60 s, max-T | 0.097 (0.080–0.117) | 0.059 (0.046–0.075) | 0.118 (0.099–0.139) | 0.051 (0.039–0.066) |
+| 5 vs 5, 300 s, max-T | 0.124 (0.105–0.146) | 0.053 (0.041–0.069) | 0.131 (0.111–0.153) | 0.065 (0.051–0.082) |
+| 8 vs 8, 60 s, max-T | 0.062 (0.049–0.079) | 0.052 (0.040–0.068) | 0.102 (0.085–0.122) | 0.049 (0.037–0.064) |
+| 12 vs 13, 120 s, max-T | 0.055 (0.031–0.096) | 0.080 (0.050–0.126) | 0.085 (0.054–0.132) | 0.065 (0.038–0.108) |
+
+All 20 cells are in the CSV. With `renull`, every per-edge rate lies in 0.045–0.059. The max-T rates lie in 0.015–0.080,
+all within Monte Carlo error of 0.05. The one cell at 0.080 (dDTF, 12 vs 13, 120 s, 200 studies) has an interval
+(0.050–0.126) that includes 0.05.
+
+### S4 design B: group contrast of the planted edge (half the dyads coupled), within-group null
+
+Gain 0 is the false-positive rate. 200 studies per cell; 5 vs 5 at 60 s has 1000 studies at gains 0 and 0.2.
+
+| cell | gain | dDTF old | dDTF new | GPDC old | GPDC new |
+|---|---|---|---|---|---|
+| 5 vs 5, 60 s | 0 | 0.063 (0.050–0.080) | 0.036 (0.026–0.049) | 0.088 (0.072–0.107) | 0.045 (0.034–0.060) |
+| 12 vs 13, 60 s | 0 | 0.085 (0.054–0.132) | 0.065 (0.038–0.108) | 0.120 (0.082–0.172) | 0.090 (0.058–0.138) |
+| 25 vs 25, 60 s | 0 | 0.035 (0.017–0.070) | 0.040 (0.020–0.077) | 0.065 (0.038–0.108) | 0.050 (0.027–0.090) |
+| 12 vs 13, 60 s | 0.1 | 0.275 (0.218–0.341) | 0.290 (0.232–0.356) | 0.285 (0.227–0.351) | 0.240 (0.186–0.304) |
+| 12 vs 13, 60 s | 0.2 | 0.945 (0.904–0.969) | 0.945 (0.904–0.969) | 0.930 (0.886–0.958) | 0.910 (0.862–0.942) |
+| 25 vs 25, 60 s | 0.1 | 0.455 (0.387–0.524) | 0.460 (0.392–0.529) | 0.370 (0.306–0.439) | 0.360 (0.297–0.429) |
+| 25 vs 25, 60 s | 0.2 | 1.000 | 1.000 | 1.000 | 1.000 |
+| 12 vs 13, 60 s, max-T | 0.2 | 0.685 (0.618–0.745) | 0.680 (0.612–0.741) | 0.755 (0.691–0.809) | 0.680 (0.612–0.741) |
+| 5 vs 5, 60 s | 0.2 | 0.477 (0.446–0.508) | 0.427 (0.397–0.458) | 0.519 (0.488–0.550) | 0.407 (0.377–0.438) |
+| 5 vs 5, 300 s | 0.1 | 0.770 (0.707–0.823) | 0.700 (0.633–0.759) | 0.805 (0.745–0.854) | 0.665 (0.597–0.727) |
+
+**Power cost at gains 0.1 and 0.2:**
+- 12 vs 13 and 25 vs 25: within Monte Carlo error, from −4.5 to +3 points uncorrected. One max-T exception: GPDC at
+  12 vs 13, gain 0.2 drops 7.5 points (0.755 → 0.680).
+- 5 vs 5: 5–14 points lower. This is the removal of the liberal excess (the null rate there drops from 6–9% to 4–5%),
+  not a loss relative to a calibrated test.
+
+All S4 criteria concern design A and are unchanged.
+
+### S7: group contrast with the within-group null (no coupling; groups differ in stimulus gain)
+
+Here the fixed-delta test was **conservative** whenever the stimulus mattered. When the groups' null medians differ
+systematically, relabelling mixes the two medians and inflates the permutation spread; this is the A2 mechanism in the
+other direction. Same-film null, 800 dyad-edge rates per cell:
+
+| gain, sd_log | dDTF old (range over ratio 1–3) | dDTF new | GPDC old | GPDC new |
+|---|---|---|---|---|
+| 0, 0 | 0.035–0.048 | 0.041–0.046 | 0.058–0.059 | 0.043–0.050 |
+| 0.5, 0.5 | 0.010–0.019 | 0.049–0.052 | 0.019–0.030 | 0.037 |
+| 1.0, 0.5 | 0.001–0.005 | 0.034–0.050 | 0.021–0.030 | 0.043–0.054 |
+| 2.0, 0 | 0.013–0.015 | 0.048–0.069 | 0.019–0.024 | 0.044–0.052 |
+| 2.0, 0.5 | 0.001–0.005 | 0.037–0.058 | 0.015–0.024 | 0.049–0.060 |
+
+With `renull`, all 48 cells lie in 0.034–0.069. The S7 criterion (within-group FPR ≤ 0.10 in every cell) passes in both
+versions. The other S7 criteria use other nulls and are unchanged.
+
+### S13 (100 studies per scenario; delta DV)
+
+| measure | dDTF old | dDTF new | GPDC old | GPDC new |
+|---|---|---|---|---|
+| a: group, max-T within film (300 film × study) | 0.050 (0.031–0.081) | 0.067 (0.044–0.101) | 0.070 (0.046–0.105) | 0.053 (0.033–0.085) |
+| a: group, max-T over 24 | 0.070 (0.034–0.137) | 0.090 (0.048–0.162) | 0.090 (0.048–0.162) | 0.070 (0.034–0.137) |
+| a: group, max-T on the film mean | 0.020 (0.006–0.070) | 0.040 (0.016–0.098) | 0.090 (0.048–0.162) | 0.080 (0.041–0.150) |
+| a: interaction, max-T | 0.080 (0.041–0.150) | 0.050 (0.022–0.112) | 0.050 (0.022–0.112) | 0.040 (0.016–0.098) |
+| a: film effect, sign-flip max-T (unaffected) | 0.050 | 0.050 | 0.060 | 0.060 |
+| c: power, max-T within film (300) | 0.970 (0.944–0.984) | 0.977 (0.953–0.989) | 0.990 (0.971–0.997) | 0.977 (0.953–0.989) |
+| d: power, max-T within film | 0.963 | 0.967 | 0.970 | 0.970 |
+| e: interaction power, max-T | 0.910 (0.838–0.952) | 0.910 | 0.950 (0.888–0.978) | 0.900 (0.826–0.945) |
+
+Every change is within its Monte Carlo interval (100 studies). The S13 criterion "scenario a: max-T interaction within
+(0.03, 0.07)" now passes for dDTF (0.08 → 0.05); the GPDC criteria passed before and still do.
+
+### Criteria that changed outcome
+
+| sim | estimator | criterion | old → new |
+|---|---|---|---|
+| S3 | dDTF | group-level FPR within band in every cell (mean over edges) | fail → pass |
+| S3 | GPDC | group-level FPR within band in every cell (mean over edges) | fail → pass |
+| S13 | dDTF | [proposed] scenario a: max-T interaction within (0.03, 0.07) | fail → pass |
+
+### Verdict
+
+`renull` brings every within-group contrast to the nominal rate:
+- **S3:** liberal at small groups before, now 4.5–6% per edge.
+- **S4 design B:** the null rate at 5 vs 5 dyads drops from 6–9% to 4–5%.
+- **S7:** conservative before (0.1–3%), now 3.4–6.9%.
+
+The power cost is within Monte Carlo error from 12 vs 13 dyads up. At 5 vs 5 the cost reflects the removed false
+positives.
+
+### Figures (Drive `Figures/`, redrawn from the new results)
+
+| Manuscript | File on Drive | Simulation |
+|---|---|---|
+| Fig. 4 (power) | `fig07_power` | S4 |
+| Fig. 5 (confounds) | `fig09_confounds` | S7 (+ S5, S6) |
+| Fig. 7 (group and film effects) | `fig14_group_film` | S13 |
+| Supplementary Fig. S5 (calibration, supplement S4.2) | `fig06_calibration` | S3 |
+
+All manuscript figures were redrawn by `figures_manuscript.py all`; those that do not read S3, S4, S7 or S13 are
+unchanged. The S-script diagnostic figures of S3, S4, S7 and S13 were copied to `Figures/`.
+
+**Manuscript numbers that change:**
+- the S3 group contrast at small N (e.g. 8 vs 8: 5.9% / 7.2% → 5.2% / 5.1%);
+- S4 design B null and power at 5 vs 5;
+- S7 within-group rates;
+- S13 scenario a (per film 5.0% / 7.0% → 6.7% / 5.3%; interaction 8% / 5% → 5% / 4%).
+
+The manuscript is not edited.

@@ -85,7 +85,7 @@ def test_adjusted_p_not_below_unadjusted():
     tables[np.arange(20), np.arange(20), :3] += 0.6
     delta = rng.normal(size=(20, 8))
     delta[10:, :2] += 1.0
-    for out in (pairing_permutation_maxT(tables, rng, 500), group_permutation_maxT(delta, np.repeat([0, 1], 10), rng, 500)):
+    for out in (pairing_permutation_maxT(tables, rng, 500), group_permutation_maxT(delta, np.repeat([0, 1], 10), rng, 500, renull=False)):
         for m in ADJUSTED:
             assert np.all(out[m] >= out["unadjusted"] - 1e-12)
 
@@ -133,7 +133,7 @@ def test_group_maxT_controls_fwer_under_the_global_null():
     rng = np.random.default_rng(16)
     groups = np.repeat([0, 1], 10)
     n_runs = 500
-    hits = sum(bool(np.any(group_permutation_maxT(rng.lognormal(size=(20, 8)), groups, rng, 400)["maxT"] < 0.05))
+    hits = sum(bool(np.any(group_permutation_maxT(rng.lognormal(size=(20, 8)), groups, rng, 400, renull=False)["maxT"] < 0.05))
                for _ in range(n_runs))
     low, high = wilson_interval(int(0.05 * n_runs), n_runs)
     assert low <= hits / n_runs <= high
@@ -200,7 +200,7 @@ def test_exact_relabelling_uses_all_252_once_and_gives_the_exact_p():
     exact = np.mean([stat(m) >= observed - 1e-12 for m in itertools.combinations(range(10), 5)])
     assert np.isclose(permutation_pvalue(a, b, rng, 1000), exact)
     groups = in_one.astype(int)
-    p_group = group_permutation_maxT(pooled[:, None], groups[::-1], rng, 1000)["unadjusted"][0]
+    p_group = group_permutation_maxT(pooled[:, None], groups[::-1], rng, 1000, renull=False)["unadjusted"][0]
     assert np.isclose(p_group, exact)
 
 
@@ -286,7 +286,7 @@ def test_interaction_is_calibrated_when_groups_share_the_film_effect():
     """Both groups have the same film effect (+0.8): the label-permutation interaction test keeps FWER at 0.05."""
     rng = np.random.default_rng(44)
     groups = np.repeat([0, 1], 15)
-    hits = sum(bool(np.any(group_permutation_maxT(correlated_edges(rng, 30) + 0.8, groups, rng, 400)["maxT"] < 0.05))
+    hits = sum(bool(np.any(group_permutation_maxT(correlated_edges(rng, 30) + 0.8, groups, rng, 400, renull=False)["maxT"] < 0.05))
                for _ in range(500))
     low, high = wilson_interval(25, 500)
     assert low <= hits / 500 <= high

@@ -1,0 +1,7 @@
+estimator,cells,max_abs_diff
+dDTF,"S3 fwer/per-edge, not (within_group, group)",0.0
+dDTF,S4 design A power / power_maxT,0.0
+dDTF,"S7 study/group/dyad FPR, other nulls; study FPR within_group",0.0
+GPDC,"S3 fwer/per-edge, not (within_group, group)",0.0
+GPDC,S4 design A power / power_maxT,0.0
+GPDC,"S7 study/group/dyad FPR, other nulls; study FPR within_group",0.0
