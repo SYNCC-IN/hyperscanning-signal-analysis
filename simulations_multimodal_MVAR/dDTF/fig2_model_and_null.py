@@ -76,7 +76,7 @@ def panel_b(ax):
         y = 46 - w * 3.3
         ax.add_patch(Rectangle((T0 + 5 * w * TW, y), 10 * TW, 2.4,
                      fc=RED if w == 4 else TEAL, alpha=0.35 if w == 4 else 0.25, ec="none"))
-    ax.text(T0, 8.5, "11 windows × 10 s, 50% overlap,\neach linearly detrended",
+    ax.text(T0, 8.5, "11 windows × 10 s, 50% overlap,\nfitted as cut (no detrending)",
             fontsize=6.5, va="top")
     wy = 46 - 4 * 3.3 + 1.2
     xs = T0 + (20 + np.arange(25) * 0.4) * TW

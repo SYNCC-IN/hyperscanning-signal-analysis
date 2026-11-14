@@ -1,0 +1,8 @@
+sim,criterion,estimator,old,new
+S_03,"max-T family-wise FPR within band in every cell (study level, 8 cross-person edges)",GPDC,False,True
+S_05,"omitted driver: 5-node [est] with Z, both heart-heart edges <= 0.1 (gain 0.4)",GPDC,False,True
+S_06,"artefact grows with smoothness (smoothest > roughest, z-scored)",GPDC,False,True
+S_06,artefact present: uncorrected asymmetry > 0 at the smoothest level (z-scored),GPDC,False,True
+S_06b,[proposed] no coupling: |corrected asymmetry| <= 0.02 in every condition,GPDC,True,False
+S_13,"[proposed] scenario a: max-T family-wise group-contrast rate (8 edges within film) within (0.03, 0.07)",GPDC,False,True
+S_13,"[proposed] scenario a: max-T family-wise interaction rate (8 edges) within (0.03, 0.07)",GPDC,False,True

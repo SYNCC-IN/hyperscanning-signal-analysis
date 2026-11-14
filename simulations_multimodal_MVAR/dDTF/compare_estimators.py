@@ -71,7 +71,7 @@ def sim_dir(estimator, sim):
 
 def summary_files(estimator):
     """(label, summary.json path) of every run of one estimator, variants after their simulation."""
-    labels = sorted({p.parent.name for p in RESULTS.glob(f"{estimator}/S_*/summary.json")} | set(VARIANT_DIRS))
+    labels = sorted({p.parent.name for p in RESULTS.glob(f"{estimator}/S_[0-9][0-9]/summary.json")} | set(VARIANT_DIRS))   # not S_xx_<suffix> copies
     return [(sim, sim_dir(estimator, sim) / "summary.json") for sim in labels if (sim_dir(estimator, sim) / "summary.json").exists()]
 
 

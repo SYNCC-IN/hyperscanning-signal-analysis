@@ -435,15 +435,15 @@ def fig07():
 
 S8_ORDER = ["baseline", "estimator=DTF", "estimator=ffDTF", "estimator=dDTF", "estimator=GPDC", "order=2", "order=3", "order=6",
             "order=8", "order=AIC", "order=HQ", "order=SC", "window=6s", "window=15s", "window=20s", "window=whole segment",
-            "overlap=0.25", "overlap=0.75", "fit=Yule-Walker", "fit=Yule-Walker, window=20s", "detrend=constant", "box-cox=none",
-            "band=0.05-0.15", "band=0.1-0.3", "band=0.3-0.5"]
+            "overlap=0.25", "overlap=0.75", "fit=Yule-Walker", "fit=Yule-Walker, window=20s", "detrend=linear", "detrend=constant",
+            "box-cox=none", "band=0.05-0.15", "band=0.1-0.3", "band=0.3-0.5"]
 S8_LABEL = {"baseline": "default", "estimator=DTF": "DTF",
             "estimator=ffDTF": "ffDTF", "estimator=dDTF": "dDTF (GPDC run)", "estimator=GPDC": "GPDC (dDTF run)", "order=2": "p = 2",
             "order=3": "p = 3", "order=6": "p = 6", "order=8": "p = 8", "order=AIC": "p by AIC", "order=HQ": "p by HQ",
             "order=SC": "p by SC", "window=6s": "6 s windows", "window=15s": "15 s windows", "window=20s": "20 s windows",
             "window=whole segment": "no windows", "overlap=0.25": "25% overlap", "overlap=0.75": "75% overlap",
             "fit=Yule-Walker": "Yule–Walker, 10 s", "fit=Yule-Walker, window=20s": "Yule–Walker, 20 s",
-            "detrend=constant": "constant detrending", "box-cox=none": "no Box–Cox", "band=0.05-0.15": "band 0.05–0.15 Hz",
+            "detrend=linear": "linear detrending", "detrend=constant": "constant detrending", "box-cox=none": "no Box–Cox", "band=0.05-0.15": "band 0.05–0.15 Hz",
             "band=0.1-0.3": "band 0.1–0.3 Hz", "band=0.3-0.5": "band 0.3–0.5 Hz"}
 
 

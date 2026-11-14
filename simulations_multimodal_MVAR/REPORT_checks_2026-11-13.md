@@ -355,3 +355,119 @@ with recording length.
 **Not rerun:** S2, S4, S4b, S6, S6b, S7, S9–S13, the Drive copy of the results and the manuscript figures. They still
 reflect per-window linear detrending. `fig2_model_and_null.py` also still annotates the windows as "each linearly
 detrended".
+
+---
+
+## Full rerun of all simulations with the new default (2026-11-14)
+
+All remaining simulations were rerun in full mode for dDTF and GPDC with the full-run seeds:
+- S2, S4, S4b, S6, S6b, S7, S9, S10, S11, S12;
+- S13: 100 replicates per scenario, in 4 chunks of 25;
+- `gain_conversion.py` and `compare_estimators.py`.
+
+`renull` stays off. Every job after the first three ran with `OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1`.
+
+**Where the files are:**
+- **Local:** old results in `dDTF/Results/<est>/S_NN_linear_detrend/` and `dDTF/Results/comparison_linear_detrend/` (not in git). Drivers: `Results/run_nodetrend_rest.sh`, continued by `run_nodetrend_rest2.sh`.
+- **Drive:** the old `Results/` and `Figures/` are copied to `Results_linear_detrend/` and `Figures_linear_detrend/`. `Results/` now mirrors the new local results, including S1/S3/S5/S8 and `comparison/`.
+- **Figures:** the 64 S-script diagnostic figures are copied to `Figures/` under their usual names. `figures_manuscript.py all` and `fig2_model_and_null.py` were run (Fig. 2 label: "fitted as cut (no detrending)"; Fig. 10 now also shows the `detrend=linear` variant).
+- **Diff tables:** `dDTF/CHK_nodetrend_full_compare.py` writes `checks_2026-11/nodetrend/full_criteria_changes.csv` (criteria that changed outcome), `full_changes.csv` (every cell that moved beyond Monte Carlo noise, with Wilson intervals for rates) and `full_change_counts.csv`.
+
+`compare_estimators.py` now ignores `S_NN_<suffix>` folders. Before this fix it counted the backups as extra simulations.
+
+### Criteria that changed outcome (all GPDC; dDTF: none)
+
+| sim | criterion | old → new |
+|---|---|---|
+| S3 | max-T family-wise FPR within band in every cell (study level) | fail → pass |
+| S5 | omitted driver: 5-node with Z, both heart–heart edges ≤ 0.1 (gain 0.4) | fail → pass |
+| S6 | artefact present: uncorrected asymmetry > 0 at the smoothest level | fail → pass |
+| S6 | artefact grows with smoothness | fail → pass |
+| S6b | [proposed] no coupling: \|corrected asymmetry\| ≤ 0.02 in every condition | pass → fail (0.021 at noise 0) |
+| S13 | [proposed] scenario a: max-T group contrast within film within 3–7% | fail → pass |
+| S13 | [proposed] scenario a: max-T interaction within 3–7% | fail → pass |
+
+### Key numbers per simulation (old → new; 200 studies per cell unless stated)
+
+- **S1:** unchanged. Detection is 100% (0.981–1.000) on every planted edge, and absent edges are ≤ 2%.
+- **S2:** identical, by construction. S2 fits the whole segment as one window (`win_len=None`), which was never detrended. So **Fig. S4 is unchanged**:
+
+  | Fig. S4 check value | old | new |
+  |---|---|---|
+  | amplitude/envelope relative_fwd, dDTF / GPDC | 1.000–1.067 / 0.987–1.006 | same |
+  | amplitude/phase, dDTF: first gap with relative_fwd < 0.05 | 5 Hz (0.043) | same |
+  | amplitude/phase, GPDC: relative_fwd at 9.5 Hz | 0.167 | same |
+  | fixed grid, GPDC: max → value at 9.5 Hz | 2.466 → 0.300 | same |
+  | none, direction index, phase path: dDTF min / GPDC max | −0.999 / 0.524 | same |
+  | none, direction index, envelope: dDTF / GPDC | −0.078..0.032 / −0.065..0.015 | same |
+
+- **S3:** see the rerun section above. The cell quoted in the text (group contrast, within-group null, 8 vs 8, 1000 studies) is dDTF 0.058 → 0.059 and GPDC 0.074 → 0.072.
+- **S4 (design A, N = 25, 60 s, gain 0.1):**
+  - Power, dDTF: 0.795 (0.734–0.845) → 0.840 (0.783–0.884).
+  - Power, GPDC: 0.715 (0.649–0.773) → 0.790 (0.728–0.841).
+  - Power after max-T: dDTF 0.50 → 0.59, GPDC 0.405 → 0.515.
+  - At gain ≥ 0.2, power is 1.00 in both versions.
+
+  Non-planted edges after max-T, GPDC, 300 s:
+  - The reverse edge child:ROI→cg:ROI was falsely detected at up to 0.550 (0.481–0.617) (N = 50, gain 0.5) and is now 0.000 in every cell. For dDTF it was already ~0.
+- **S4, design B (group contrast, within-group null), null cell N = 25, 60 s, gain 0:**
+  - GPDC: 0.075 → **0.120** (0.082–0.172); after max-T 0.005 → 0.035.
+  - dDTF: 0.065 → 0.085.
+  - 5 vs 5 (1000 studies) at gain 0: dDTF 0.056 → 0.063, GPDC 0.074 → 0.088 (0.072–0.107).
+
+  This is the liberal within-group contrast of A2; `renull` addresses it and is not used here. Power in design B rises by 3–15 points at gain 0.1–0.2.
+- **S4b:** power is equal or higher.
+  - partial_time 25% at gain 0.3, GPDC: 0.455 → 0.570.
+  - partial_dyads 25% at gain 0.3, after max-T: dDTF 0.815 → 0.885, GPDC 0.485 → 0.575.
+- **S5:** see the rerun section above (omitted-driver growth removed).
+- **S6 (z-scored), GPDC:**
+  - Uncorrected asymmetry at radius 0.8 / 0.9 / 0.95: 0.026 / 0.011 / −0.031 → 0.071 / 0.055 / 0.008. The smoothness artefact is now visible for GPDC as well.
+  - The corrected asymmetry stays ≤ 0.021, and the false-positive rate after correction is 0.04–0.065.
+  - dDTF is unchanged (uncorrected 0.253 → 0.265 at 0.95).
+- **S6b:**
+  - No coupling: the corrected asymmetry for GPDC is ≤ 0.021 (old ≤ 0.014), and the false-positive rates are 0.02–0.095.
+  - Coupled, heart edge at noise SD 1.0, GPDC reverse rate: 0.19 → 0.37 (0.30–0.44).
+- **S7:** mostly lower false-positive rates where the stimulus matters.
+  - dDTF group contrast, pooled same-film null, gain 2, ratio 3: 0.261 → 0.130.
+  - GPDC, other-film null, study level: 0.94 → 0.87.
+  - One increase: GPDC group contrast, same-film pooled/exclude null, gain 2, ratio 3: 0.42 / 0.44 → 0.52 / 0.54.
+  - All four S7 criteria are unchanged (pass).
+- **S9 (Level 2, cardiac):** forward rates are unchanged. The GPDC reverse-edge rate under pulling falls sharply (mid band, gaps 0 / 0.05 / 0.1 Hz: 0.81 / 0.87 / 0.56 → 0.27 / 0.34 / 0.21; wide band 0.98 → 0.56). dDTF is unchanged (reverse ~1.00).
+- **S10:** forward rates are unchanged.
+  - Reverse rates fall: option A, linear 0.3, dDTF 0.95 → 0.78; GPDC linear 0.6 / 1.0: 0.34 / 0.56 → 0.17 / 0.32.
+  - One reverse rate rises: option B, linear 1.0, GPDC 0.75 → 0.84.
+  - Criterion outcomes are unchanged.
+- **S11:** unchanged. The 4-node absent indirect edge is dDTF 1.00 and GPDC 0.02 → 0.01, and the null under a common stimulus is 0.06 / 0.055 → 0.07 / 0.05.
+- **S12:** within noise. Example: brain 0.3/0.2 asymmetry, dDTF 0.475 → 0.545; brain 0.3/0.0 reverse, GPDC 0.060 → 0.030.
+- **S13 (100 studies per scenario):**
+  - Scenario a, group contrast, max-T within film, per film × study (300):
+    - dDTF: 0.057 (0.036–0.089) → 0.050 (0.031–0.081).
+    - GPDC: **0.103 (0.074–0.143) → 0.070 (0.046–0.105)**.
+  - Interaction, max-T over 8 edges:
+    - dDTF: 0.080 → 0.080.
+    - GPDC: 0.120 (0.070–0.198) → 0.050 (0.022–0.112).
+  - Scenario c, power (max-T within film, planted edge, per film × study): dDTF 0.963 → 0.970, GPDC 0.977 → 0.990. Bayesian M4 detects the group effect in 100% in both versions.
+  - The Bayesian summaries (detection, shrinkage, gate) moved in some cells; the flagged cells are in `full_changes.csv`.
+- **Gain conversion (S4 brain→brain):**
+  - F and PI are identical, since they come from the true model.
+  - Median delta at 60 s, gain 0.4: dDTF 0.472 → 0.468, GPDC 0.852 → 0.889.
+
+### Manuscript numbers that change noticeably (not edited)
+
+1. **S5 omitted driver with Z (text and figure):**
+   - Gain 0.4: 60 / 120 / 300 s went from 6.5 / 18 / 71% (dDTF) and 10.5 / 36 / 86% (GPDC) to 3 / 4 / 1% and 7.5 / 9.5 / 8.5%.
+   - Gain 0.6: 52.5 → 16.5% (dDTF) and 64 → 14% (GPDC) at 60 s; 100 → 15% / 16% at 300 s.
+   - Main run at 60 s, gain 0.4: 6.5 → 4.0% (dDTF) and 13.5 → 7.5% (GPDC).
+   - Any sentence on "growth with recording length" or "residual coupling" needs rewording.
+2. **S13 scenario a, per film:** 5.7% / 10.3% → 5.0% / 7.0%. Interaction: 8% / 12% → 8% / 5%.
+3. **S4 design B null cell (N = 25, gain 0):** GPDC 7.5% → 12.0%, if quoted.
+4. **S4 non-planted edges after max-T (GPDC, 300 s):** reverse ROI edge up to 55% → 0%, if quoted (Fig. 7/8 material).
+5. **S9 GPDC reverse-edge rate under pulling:** e.g. 81% → 27% at gap 0 (Fig. 12 material).
+6. **S6 GPDC smoothness artefact:** now present (uncorrected asymmetry 0.07 at radius 0.8). A statement that GPDC shows no smoothness artefact would no longer hold.
+7. **S4 power at gain 0.1, N = 25, 60 s:** dDTF 79.5 → 84%, GPDC 71.5 → 79%, if quoted. Power at gain ≥ 0.2 is unchanged.
+8. **Methods text:** "each window is linearly detrended" no longer describes the pipeline.
+
+### Caption sentences that name linear detrending (`Figures/captions.md`, not edited)
+
+- **Fig. 2, panel B:** "The segment is cut into 11 overlapping 10 s windows (50% overlap), and each window is linearly detrended." The figure now reads "fitted as cut (no detrending)". The editing tool refused an in-place edit of the Drive file, so the caption is left for the author.
+- **Fig. 10:** "the default (highlighted) and 24 variants" is now 25 variants (the added `detrend=linear`). The list "(..., detrending, ...)" still fits. The default is now no detrending.

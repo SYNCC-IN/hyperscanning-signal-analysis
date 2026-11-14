@@ -1,0 +1,692 @@
+table,measure,estimator,cell,old,new,change,old_ci,new_ci
+S_03_summary.csv,group_fpr,dDTF,"n_dyads=25, seg_s=60, mode=exclude, edge=cg:ROI->child:ROI",0.03,0.075,0.045,0.030 (0.014-0.064),0.075 (0.046-0.120)
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=60, mode=exclude, edge=cg:HRV->child:ROI",-0.023983729463926,-0.0036570192477417,0.0203267102161843,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=60, mode=exclude, edge=child:ROI->cg:HRV",-0.022822436436265,0.0012683789279387,0.0240908153642037,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=60, mode=pooled, edge=cg:HRV->child:ROI",-0.0148397478852404,0.0106679267928526,0.025507674678093,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=60, mode=within_group, edge=child:ROI->cg:ROI",0.0405235762303965,0.0159513691504405,-0.024572207079956,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=120, mode=within_group, edge=child:HRV->cg:ROI",-0.0019335641919678,-0.0362284432788942,-0.0342948790869264,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=120, mode=within_group, edge=child:ROI->cg:HRV",-0.0241116334911097,0.0124353466341507,0.0365469801252604,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=exclude, edge=cg:HRV->child:HRV",0.0346078518438367,0.0025961373347191,-0.0320117145091176,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=exclude, edge=cg:HRV->child:ROI",0.0506278283646171,0.0268268512545792,-0.0238009771100379,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=exclude, edge=child:HRV->cg:ROI",0.0057773111491017,0.0364662238192579,0.030688912670156197,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=pooled, edge=cg:HRV->child:HRV",0.032503834794494,-0.0066868737499994,-0.0391907085444934,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=within_group, edge=cg:HRV->child:HRV",0.0379333689832012,0.0067762018510007,-0.031157167132200504,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=within_group, edge=cg:HRV->child:ROI",0.0422087508082232,0.0201810239037281,-0.0220277269044951,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=10, seg_s=300, mode=within_group, edge=child:ROI->cg:HRV",0.0089403918774923,0.0289624065051994,0.0200220146277071,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=16, seg_s=60, mode=exclude, edge=child:ROI->cg:HRV",-0.0141802207066248,0.0142633936040959,0.028443614310720698,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=16, seg_s=60, mode=pooled, edge=cg:ROI->child:ROI",0.0109062207374378,-0.0093463120586444,-0.0202525327960822,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=16, seg_s=60, mode=pooled, edge=child:ROI->cg:HRV",-0.01302589413334,0.0135959154011099,0.0266218095344499,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=16, seg_s=60, mode=within_group, edge=cg:ROI->child:ROI",0.0186239357733822,-0.0053615613439207,-0.023985497117302898,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=exclude, edge=cg:ROI->child:HRV",-0.0184474090563292,0.0164358282101712,0.0348832372665004,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=exclude, edge=child:HRV->cg:HRV",0.0021209582134587,-0.0266556704582738,-0.0287766286717325,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=exclude, edge=child:HRV->cg:ROI",-0.0204503240896859,0.011565964645273,0.0320162887349589,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=pooled, edge=child:HRV->cg:HRV",0.0110785717308426,-0.0264243081492784,-0.037502879880121,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=pooled, edge=child:HRV->cg:ROI",-0.0239249009355308,0.0064547955167408,0.0303796964522716,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=within_group, edge=cg:ROI->child:HRV",-0.0236218617278026,-0.0030683984409875,0.0205534632868151,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=within_group, edge=cg:ROI->child:ROI",-0.0154738521870227,-0.037849451696515,-0.0223755995094923,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=within_group, edge=child:ROI->cg:HRV",0.0653878838676738,0.0420942391659647,-0.023293644701709103,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=60, mode=within_group, edge=child:ROI->cg:ROI",-0.0308306216327285,-0.0508750592379069,-0.020044437605178402,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=exclude, edge=cg:HRV->child:HRV",0.006812450201874,0.0338277975113077,0.027015347309433696,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=exclude, edge=cg:ROI->child:HRV",0.0219013618387976,-0.0094043682866531,-0.031305730125450695,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=exclude, edge=child:ROI->cg:HRV",-0.0360725535250428,-0.0082479633882,0.0278245901368428,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:HRV->child:HRV",0.0121549492127959,0.0343028045797078,0.0221478553669119,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:HRV->child:ROI",-0.0022858519051353,-0.0276831227484091,-0.0253972708432738,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:ROI->child:HRV",0.0192830623280772,-0.0062064884121389,-0.0254895507402161,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:ROI->child:ROI",0.0245298902338814,0.0599809348922153,0.0354510446583339,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=child:ROI->cg:HRV",-0.0399882646687839,-0.0121726493791551,0.0278156152896288,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=pooled, edge=child:ROI->cg:ROI",0.0643548123470593,0.0417544339206312,-0.0226003784264281,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=120, mode=within_group, edge=child:ROI->cg:HRV",-0.03711629610378,-0.0084390087835748,0.0286772873202052,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=exclude, edge=cg:HRV->child:ROI",-0.0110044950592607,0.0133444253745972,0.0243489204338579,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=exclude, edge=child:HRV->cg:HRV",0.0292566511155895,-0.0348339303173029,-0.0640905814328924,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=pooled, edge=cg:HRV->child:HRV",-0.0156075449975304,0.0108014855362279,0.0264090305337583,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=pooled, edge=child:HRV->cg:HRV",0.030158727601229,-0.0371756133907625,-0.06733434099199151,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=pooled, edge=child:ROI->cg:ROI",-0.0052171569314812,-0.0263688765806706,-0.021151719649189403,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=within_group, edge=child:HRV->cg:HRV",0.0460457737774156,0.0012325203260509,-0.0448132534513647,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=25, seg_s=300, mode=within_group, edge=child:HRV->cg:ROI",0.0143592659705323,-0.0160126344032752,-0.0303719003738075,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=60, mode=exclude, edge=cg:HRV->child:HRV",0.0098593894468571,-0.021578463413599,-0.0314378528604561,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=60, mode=pooled, edge=cg:HRV->child:HRV",0.009705902852581,-0.0188691788799776,-0.0285750817325586,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=exclude, edge=cg:HRV->child:HRV",-0.004610937267073,-0.0412786675174208,-0.0366677302503478,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=exclude, edge=child:ROI->cg:ROI",0.0033039792344618,-0.0215546538725684,-0.0248586331070302,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=pooled, edge=cg:HRV->child:HRV",-0.0059270139808235,-0.0393783958494823,-0.0334513818686588,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=pooled, edge=cg:ROI->child:ROI",0.0071374979474437,-0.0165573960001314,-0.0236948939475751,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=pooled, edge=child:ROI->cg:ROI",0.0030208963911424,-0.0227918897327722,-0.025812786123914598,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=within_group, edge=cg:HRV->child:HRV",-0.002041278573511,-0.0348684989601434,-0.0328272203866324,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=120, mode=within_group, edge=cg:ROI->child:ROI",0.0221110534527196,-0.0109142449323922,-0.0330252983851118,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=300, mode=exclude, edge=cg:ROI->child:ROI",-0.0384335687639254,-0.0111854843163112,0.0272480844476142,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=300, mode=pooled, edge=cg:ROI->child:ROI",-0.0398638647112994,-0.0119602958621209,0.027903568849178502,,
+S_03_summary.csv,median_z,dDTF,"n_dyads=50, seg_s=300, mode=within_group, edge=cg:ROI->child:HRV",-0.0156351854498086,0.0154909412819535,0.0311261267317621,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=60, mode=exclude, edge=cg:ROI->child:ROI",0.0122163355855754,-0.007957399520758,-0.0201737351063334,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=60, mode=within_group, edge=cg:ROI->child:HRV",-0.0126755190972215,-0.0347324028474805,-0.022056883750259,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=60, mode=within_group, edge=child:HRV->cg:HRV",-0.006845438804942,-0.0308695723463103,-0.0240241335413683,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=120, mode=exclude, edge=child:ROI->cg:ROI",0.0106807320509105,-0.0210691971161564,-0.0317499291670669,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=120, mode=pooled, edge=child:ROI->cg:ROI",0.0117807688724407,-0.0151513875366081,-0.0269321564090488,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=120, mode=within_group, edge=child:HRV->cg:ROI",-0.0231084335544058,-0.0467149826514821,-0.0236065490970763,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=120, mode=within_group, edge=child:ROI->cg:ROI",0.0334621709359319,-0.0142471871426328,-0.047709358078564704,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=300, mode=exclude, edge=cg:ROI->child:HRV",0.0109627432022657,-0.0128112311399694,-0.023773974342235098,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=300, mode=exclude, edge=child:ROI->cg:HRV",-0.011063333217349,0.0117935558674543,0.0228568890848033,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=300, mode=exclude, edge=child:ROI->cg:ROI",0.0039435474798478,-0.0162673742432265,-0.020210921723074298,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=300, mode=pooled, edge=cg:ROI->child:HRV",0.006977474848569,-0.0135106243976157,-0.0204880992461847,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=10, seg_s=300, mode=within_group, edge=cg:HRV->child:ROI",-0.0016190758542361,0.0305099624090956,0.0321290382633317,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=16, seg_s=60, mode=within_group, edge=cg:HRV->child:ROI",-0.0008107149836043,0.0203190886543185,0.0211298036379228,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=16, seg_s=60, mode=within_group, edge=child:HRV->cg:HRV",0.0204013843079912,-0.0078679065719666,-0.0282692908799578,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=60, mode=exclude, edge=child:ROI->cg:HRV",0.0103879312792084,0.0686275907838922,0.0582396595046838,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=60, mode=pooled, edge=child:ROI->cg:HRV",0.0097724465228431,0.0677819042340849,0.058009457711241795,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=60, mode=within_group, edge=child:HRV->cg:HRV",-0.0102855644633586,0.0155591065389802,0.025844671002338802,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=60, mode=within_group, edge=child:ROI->cg:HRV",0.0278462974933724,0.0599197802329435,0.0320734827395711,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=60, mode=within_group, edge=child:ROI->cg:ROI",-0.0231909523788923,0.0166034989216416,0.0397944513005339,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=exclude, edge=cg:HRV->child:ROI",0.0376106026808238,-0.0024685150483199,-0.0400791177291437,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=exclude, edge=cg:ROI->child:HRV",0.023217634863915,-0.0110329927839338,-0.0342506276478488,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=exclude, edge=cg:ROI->child:ROI",0.0402405406207543,0.0775216749508521,0.037281134330097804,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=exclude, edge=child:HRV->cg:ROI",-0.0517133734257724,-0.031314469548863,0.020398903876909402,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=exclude, edge=child:ROI->cg:HRV",-0.0323837748020192,-0.0112551367951553,0.021128638006863897,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:HRV->child:ROI",0.0319994409401953,-0.0059152901670456,-0.037914731107240904,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:ROI->child:HRV",0.0241333614132656,-0.01241900062998,-0.0365523620432456,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=pooled, edge=cg:ROI->child:ROI",0.0426463464867935,0.0708465302552679,0.028200183768474392,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=pooled, edge=child:ROI->cg:HRV",-0.0292675071890758,-0.0075641954858107,0.0217033117032651,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=cg:HRV->child:HRV",0.0013582323432131,0.0301113062516415,0.0287530739084284,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=cg:HRV->child:ROI",0.0145834711411389,-0.0060292969093825,-0.0206127680505214,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=cg:ROI->child:HRV",0.0157373890043124,-0.0170152864618417,-0.032752675466154096,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=cg:ROI->child:ROI",0.0373740687034651,0.0664956480003469,0.02912157929688179,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=child:HRV->cg:HRV",-0.010895442854593,-0.0403769610679893,-0.0294815182133963,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=child:ROI->cg:HRV",-0.0392236040947261,0.0022383169641884,0.0414619210589145,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=120, mode=within_group, edge=child:ROI->cg:ROI",0.0173730638018621,-0.007910429461536,-0.0252834932633981,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=exclude, edge=cg:HRV->child:HRV",-0.0334316757600876,-0.0119138173178971,0.0215178584421905,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=exclude, edge=child:HRV->cg:HRV",0.0288864238623428,-0.0024714087329569,-0.0313578325952997,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=exclude, edge=child:HRV->cg:ROI",0.0117217177480362,-0.0165387828813986,-0.028260500629434797,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=pooled, edge=child:HRV->cg:HRV",0.0335399311124238,0.0066665329795882,-0.026873398132835603,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=pooled, edge=child:HRV->cg:ROI",0.012214869641092,-0.0223048621492481,-0.034519731790340104,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=pooled, edge=child:ROI->cg:ROI",0.0249356019836088,0.0019063503782005,-0.0230292516054083,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=within_group, edge=cg:HRV->child:HRV",-0.0387201480181541,-0.0152667045116273,0.023453443506526797,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=within_group, edge=cg:HRV->child:ROI",0.0106109579549492,0.0343912545365526,0.023780296581603397,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=within_group, edge=cg:ROI->child:HRV",0.0200021535556191,-0.0121144468634355,-0.0321166004190546,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=within_group, edge=child:HRV->cg:HRV",0.0367493837631925,-0.0146120344086001,-0.0513614181717926,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=25, seg_s=300, mode=within_group, edge=child:HRV->cg:ROI",0.0022035387550901,-0.0210889985412431,-0.0232925372963332,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=exclude, edge=cg:HRV->child:HRV",0.0171217861230664,-0.0092031024853274,-0.0263248886083938,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=exclude, edge=cg:ROI->child:HRV",-0.0250422534522007,-0.0041598463465958,0.020882407105604902,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=exclude, edge=child:ROI->cg:ROI",-0.0112266463439366,0.0109400024325287,0.0221666487764653,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=pooled, edge=cg:HRV->child:HRV",0.0170809490389106,-0.0119914253021362,-0.0290723743410468,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=pooled, edge=cg:ROI->child:HRV",-0.0276540591544528,-0.0032382372753915,0.0244158218790613,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=pooled, edge=child:ROI->cg:ROI",-0.0106825783519459,0.0110672262239528,0.0217498045758987,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=within_group, edge=cg:HRV->child:HRV",0.01044743369023,-0.0125989419985666,-0.0230463756887966,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=within_group, edge=cg:HRV->child:ROI",-0.0189921932504875,0.0093249598856564,0.0283171531361439,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=within_group, edge=cg:ROI->child:HRV",-0.0229645068939644,0.0037158911464545,0.026680398040418902,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=120, mode=within_group, edge=child:ROI->cg:ROI",-0.0172916899206113,0.0054420547657098,0.0227337446863211,,
+S_03_summary.csv,median_z,GPDC,"n_dyads=50, seg_s=300, mode=within_group, edge=cg:ROI->child:ROI",-0.0247067668473754,-0.0012569595507995,0.0234498072965759,,
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=exclude, level=group, method=bonferroni",0.07,0.025,-0.045000000000000005,0.070 (0.042-0.114),0.025 (0.011-0.057)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=exclude, level=group, method=minP",0.07,0.025,-0.045000000000000005,0.070 (0.042-0.114),0.025 (0.011-0.057)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=pooled, level=group, method=bonferroni",0.075,0.03,-0.045,0.075 (0.046-0.120),0.030 (0.014-0.064)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=pooled, level=group, method=maxT",0.085,0.035,-0.05,0.085 (0.054-0.132),0.035 (0.017-0.070)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=pooled, level=group, method=maxT_single_step",0.085,0.035,-0.05,0.085 (0.054-0.132),0.035 (0.017-0.070)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=60, mode=pooled, level=group, method=minP",0.075,0.03,-0.045,0.075 (0.046-0.120),0.030 (0.014-0.064)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=120, mode=pooled, level=group, method=bonferroni",0.02,0.06,0.039999999999999994,0.020 (0.008-0.050),0.060 (0.035-0.102)
+S_03_summary_fwer.csv,fwer,GPDC,"n_dyads=25, seg_s=120, mode=pooled, level=group, method=minP",0.02,0.06,0.039999999999999994,0.020 (0.008-0.050),0.060 (0.035-0.102)
+S_04_summary.csv,power,dDTF,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.94,0.985,0.04500000000000004,0.940 (0.898-0.965),0.985 (0.957-0.995)
+S_04_summary.csv,power,GPDC,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.92,0.97,0.04999999999999993,0.920 (0.874-0.950),0.970 (0.936-0.986)
+S_04_summary.csv,power,GPDC,"design=B, n_dyads=10, seg_s=300, gain=0.1",0.72,0.805,0.08500000000000008,0.720 (0.654-0.778),0.805 (0.745-0.854)
+S_04_summary.csv,power_maxT,dDTF,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.83,0.905,0.07500000000000007,0.830 (0.772-0.876),0.905 (0.856-0.938)
+S_04_summary.csv,power_maxT,dDTF,"design=B, n_dyads=50, seg_s=120, gain=0.1",0.59,0.685,0.09500000000000008,0.590 (0.521-0.656),0.685 (0.618-0.745)
+S_04_summary.csv,power_maxT,GPDC,"design=A, n_dyads=25, seg_s=60, gain=0.1",0.405,0.515,0.10999999999999999,0.405 (0.339-0.474),0.515 (0.446-0.583)
+S_04_summary.csv,power_maxT,GPDC,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.8,0.89,0.08999999999999997,0.800 (0.739-0.850),0.890 (0.839-0.926)
+S_04_summary.csv,power_maxT,GPDC,"design=B, n_dyads=10, seg_s=120, gain=0.2",0.52,0.635,0.11499999999999999,0.520 (0.451-0.588),0.635 (0.566-0.699)
+S_04_summary.csv,power_maxT,GPDC,"design=B, n_dyads=25, seg_s=60, gain=0.0",0.005,0.035,0.030000000000000002,0.005 (0.001-0.028),0.035 (0.017-0.070)
+S_04_summary.csv,power_maxT,GPDC,"design=B, n_dyads=25, seg_s=60, gain=0.2",0.61,0.755,0.14500000000000002,0.610 (0.541-0.675),0.755 (0.691-0.809)
+S_04_summary.csv,power_maxT,GPDC,"design=B, n_dyads=25, seg_s=300, gain=0.1",0.92,0.97,0.04999999999999993,0.920 (0.874-0.950),0.970 (0.936-0.986)
+S_04_summary.csv,power_maxT,GPDC,"design=B, n_dyads=50, seg_s=120, gain=0.1",0.615,0.715,0.09999999999999998,0.615 (0.546-0.680),0.715 (0.649-0.773)
+S_04_summary.csv,power_minP,dDTF,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.82,0.895,0.07500000000000007,0.820 (0.761-0.867),0.895 (0.845-0.930)
+S_04_summary.csv,power_minP,GPDC,"design=A, n_dyads=25, seg_s=60, gain=0.1",0.375,0.505,0.13,0.375 (0.311-0.444),0.505 (0.436-0.574)
+S_04_summary.csv,power_minP,GPDC,"design=A, n_dyads=50, seg_s=60, gain=0.1",0.79,0.89,0.09999999999999998,0.790 (0.728-0.841),0.890 (0.839-0.926)
+S_04_summary.csv,power_minP,GPDC,"design=B, n_dyads=25, seg_s=60, gain=0.2",0.605,0.735,0.13,0.605 (0.536-0.670),0.735 (0.670-0.791)
+S_04_summary.csv,power_minP,GPDC,"design=B, n_dyads=50, seg_s=120, gain=0.1",0.585,0.69,0.10499999999999998,0.585 (0.516-0.651),0.690 (0.623-0.750)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=10, seg_s=300, gain=0.3, edge=child:ROI->cg:ROI",0.06,0.005,-0.055,0.060 (0.035-0.102),0.005 (0.001-0.028)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=10, seg_s=300, gain=0.4, edge=child:ROI->cg:ROI",0.1,0.0,-0.1,0.100 (0.066-0.149),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=10, seg_s=300, gain=0.5, edge=child:ROI->cg:ROI",0.09,0.0,-0.09,0.090 (0.058-0.138),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=25, seg_s=300, gain=0.2, edge=child:ROI->cg:ROI",0.035,0.0,-0.035,0.035 (0.017-0.070),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=25, seg_s=300, gain=0.3, edge=child:ROI->cg:ROI",0.12,0.0,-0.12,0.120 (0.082-0.172),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=25, seg_s=300, gain=0.4, edge=child:ROI->cg:ROI",0.185,0.0,-0.185,0.185 (0.137-0.245),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=25, seg_s=300, gain=0.5, edge=child:ROI->cg:ROI",0.225,0.0,-0.225,0.225 (0.173-0.288),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=50, seg_s=300, gain=0.2, edge=child:ROI->cg:ROI",0.07,0.0,-0.07,0.070 (0.042-0.114),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=50, seg_s=300, gain=0.3, edge=child:ROI->cg:ROI",0.225,0.0,-0.225,0.225 (0.173-0.288),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=50, seg_s=300, gain=0.4, edge=child:ROI->cg:ROI",0.415,0.0,-0.415,0.415 (0.349-0.484),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=A, n_dyads=50, seg_s=300, gain=0.5, edge=child:ROI->cg:ROI",0.55,0.0,-0.55,0.550 (0.481-0.617),0.000 (0.000-0.019)
+S_04_summary_nonplanted_maxT.csv,rate_maxT,GPDC,"design=B, n_dyads=50, seg_s=300, gain=0.5, edge=child:ROI->cg:ROI",0.05,0.015,-0.035,0.050 (0.027-0.090),0.015 (0.005-0.043)
+S_04_summary_small_n_group.csv,power_maxT,dDTF,"design=B, n_dyads=10, seg_s=60, gain=0.4",0.841,0.879,0.038000000000000034,0.841 (0.817-0.862),0.879 (0.857-0.898)
+S_04_summary_small_n_group.csv,power_maxT,GPDC,"design=B, n_dyads=10, seg_s=60, gain=0.4",0.858,0.894,0.03600000000000003,0.858 (0.835-0.878),0.894 (0.873-0.912)
+S_04b_summary.csv,power,GPDC,"variant=partial_time, level=0.25, gain=0.3",0.455,0.57,0.11499999999999994,0.455 (0.387-0.524),0.570 (0.501-0.637)
+S_04b_summary.csv,power_maxT,dDTF,"variant=partial_dyads, level=0.25, gain=0.3",0.815,0.885,0.07000000000000006,0.815 (0.755-0.863),0.885 (0.833-0.922)
+S_04b_summary.csv,reverse_rate,GPDC,"variant=partial_dyads, level=0.25, gain=0.4",0.075,0.025,-0.049999999999999996,0.075 (0.046-0.120),0.025 (0.011-0.057)
+S_05_summary.csv,dyad_rate,GPDC,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent, edge_label=cg:HRV->child:HRV",0.1274,0.0622,-0.06520000000000001,0.127 (0.086-0.178),0.062 (0.035-0.102)
+S_05_summary.csv,dyad_rate,GPDC,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent reverse, edge_label=child:HRV->cg:HRV",0.0838,0.0283999999999999,-0.0554000000000001,0.084 (0.054-0.132),0.028 (0.014-0.064)
+S_05_summary.csv,study_rate,dDTF,"scenario=common_driver, gain=0.2, analysis=4-node ffDTF, role=absent, edge_label=cg:HRV->child:ROI",0.035,0.0,-0.035,0.035 (0.017-0.070),0.000 (0.000-0.019)
+S_05_summary.csv,study_rate,dDTF,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent, edge_label=cg:HRV->child:HRV",0.455,0.08,-0.375,0.455 (0.387-0.524),0.080 (0.050-0.126)
+S_05_summary.csv,study_rate,dDTF,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent reverse, edge_label=child:HRV->cg:HRV",0.21,0.005,-0.205,0.210 (0.159-0.272),0.005 (0.001-0.028)
+S_05_summary.csv,study_rate,GPDC,"scenario=common_driver, gain=0.2, analysis=4-node ffDTF, role=absent, edge_label=cg:HRV->child:ROI",0.035,0.0,-0.035,0.035 (0.017-0.070),0.000 (0.000-0.019)
+S_05_summary.csv,study_rate,GPDC,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent, edge_label=cg:HRV->child:HRV",0.625,0.13,-0.495,0.625 (0.556-0.689),0.130 (0.090-0.184)
+S_05_summary.csv,study_rate,GPDC,"scenario=omitted_driver, gain=0.6, analysis=5-node [est] (Z included), role=absent reverse, edge_label=child:HRV->cg:HRV",0.09,0.0,-0.09,0.090 (0.058-0.138),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=60, p=2, analysis=5-node [est] (Z included), role=absent",0.135,0.03,-0.10500000000000001,0.135 (0.094-0.189),0.030 (0.014-0.064)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=60, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.05,0.01,-0.04,0.050 (0.027-0.090),0.010 (0.003-0.036)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent",0.18,0.04,-0.13999999999999999,0.180 (0.133-0.239),0.040 (0.020-0.077)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.115,0.02,-0.095,0.115 (0.078-0.167),0.020 (0.008-0.050)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent",0.71,0.01,-0.7,0.710 (0.644-0.768),0.010 (0.003-0.036)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.4, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.44,0.0,-0.44,0.440 (0.373-0.509),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=2, analysis=5-node [est] (Z included), role=absent",0.645,0.115,-0.53,0.645 (0.577-0.708),0.115 (0.078-0.167)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=2, analysis=5-node [est] (Z included), role=absent reverse",0.3,0.01,-0.29,0.300 (0.241-0.367),0.010 (0.003-0.036)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=4, analysis=5-node [est] (Z included), role=absent",0.525,0.165,-0.36,0.525 (0.456-0.593),0.165 (0.120-0.223)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.21,0.005,-0.205,0.210 (0.159-0.272),0.005 (0.001-0.028)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=6, analysis=5-node [est] (Z included), role=absent",0.18,0.075,-0.105,0.180 (0.133-0.239),0.075 (0.046-0.120)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=60, p=6, analysis=5-node [est] (Z included), role=absent reverse",0.01,0.045,0.034999999999999996,0.010 (0.003-0.036),0.045 (0.024-0.083)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent",0.825,0.175,-0.6499999999999999,0.825 (0.766-0.871),0.175 (0.129-0.234)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.46,0.005,-0.455,0.460 (0.392-0.529),0.005 (0.001-0.028)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent",1.0,0.15,-0.85,1.000 (0.981-1.000),0.150 (0.107-0.206)
+S_05_summary_sweep.csv,study_rate,dDTF,"gain=0.6, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.985,0.0,-0.985,0.985 (0.957-0.995),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.4, seg_s=60, p=6, analysis=5-node [est] (Z included), role=absent",0.185,0.07,-0.11499999999999999,0.185 (0.137-0.245),0.070 (0.042-0.114)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.4, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent",0.36,0.095,-0.265,0.360 (0.297-0.429),0.095 (0.062-0.144)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.4, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.055,0.0,-0.055,0.055 (0.031-0.096),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.4, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent",0.86,0.085,-0.775,0.860 (0.805-0.901),0.085 (0.054-0.132)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.4, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.435,0.005,-0.43,0.435 (0.368-0.504),0.005 (0.001-0.028)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=60, p=2, analysis=5-node [est] (Z included), role=absent",0.29,0.06,-0.22999999999999998,0.290 (0.232-0.356),0.060 (0.035-0.102)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=60, p=4, analysis=5-node [est] (Z included), role=absent",0.64,0.14,-0.5,0.640 (0.571-0.703),0.140 (0.099-0.195)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=60, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.105,0.0,-0.105,0.105 (0.070-0.155),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=60, p=6, analysis=5-node [est] (Z included), role=absent",0.54,0.115,-0.42500000000000004,0.540 (0.471-0.608),0.115 (0.078-0.167)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent",0.95,0.14,-0.8099999999999999,0.950 (0.910-0.973),0.140 (0.099-0.195)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=120, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.485,0.0,-0.485,0.485 (0.417-0.554),0.000 (0.000-0.019)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent",1.0,0.16,-0.84,1.000 (0.981-1.000),0.160 (0.116-0.217)
+S_05_summary_sweep.csv,study_rate,GPDC,"gain=0.6, seg_s=300, p=4, analysis=5-node [est] (Z included), role=absent reverse",0.975,0.0,-0.975,0.975 (0.943-0.989),0.000 (0.000-0.019)
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.8, zscore=False",0.0149064873419046,0.062721713244209,0.0478152259023044,,
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.8, zscore=True",0.0259004030849176,0.0706848005608732,0.0447843974759556,,
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.9, zscore=False",-0.008436840931842,0.0495208271577879,0.0579576680896299,,
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.9, zscore=True",0.0112391677624492,0.0547346871517344,0.0434955193892852,,
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.95, zscore=False",-0.0145431952399879,0.0252971802055077,0.039840375445495596,,
+S_06_summary.csv,uncorrected_asymmetry,GPDC,"radius=0.95, zscore=True",-0.0305750796564841,0.0084360535046662,0.039011133161150305,,
+S_06b_summary_coupled.csv,reverse_rate,GPDC,"noise_sd=1.0, edge=cg:HRV->child:HRV",0.19,0.37,0.18,0.190 (0.142-0.250),0.370 (0.306-0.439)
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=cg_heart, noise_sd=0.0",0.0112391677624492,0.0547346871517344,0.0434955193892852,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=cg_heart, noise_sd=0.25",-0.0129154987750418,0.0386897716554482,0.05160527043049,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=cg_heart, noise_sd=0.5",-0.0193569760383638,0.0317949269699237,0.051151903008287494,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=cg_heart, noise_sd=1.0",-0.0131936240860422,0.0268206378521667,0.0400142619382089,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=child_brain, noise_sd=0.0",0.0112391677624492,0.0547346871517344,0.0434955193892852,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=child_brain, noise_sd=0.25",0.0124768144906504,0.0570515943402927,0.0445747798496423,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=child_brain, noise_sd=0.5",0.0193542166049448,0.0686532386390981,0.0492990220341533,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=child_brain, noise_sd=1.0",0.0369135608266177,0.0880421150498879,0.0511285542232702,,
+S_06b_summary_no_coupling.csv,uncorrected_asymmetry,GPDC,"noise_set=child_brain, noise_sd=2.0",0.0634295654547291,0.1080812603951464,0.044651694940417305,,
+S_07_summary.csv,dyad_fpr,dDTF,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=2.0",0.55975,0.4434583333333333,-0.11629166666666668,0.560 (0.491-0.627),0.443 (0.378-0.514)
+S_07_summary.csv,dyad_fpr,dDTF,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.596125,0.4211249999999999,-0.1750000000000001,0.596 (0.526-0.661),0.421 (0.354-0.489)
+S_07_summary.csv,dyad_fpr,dDTF,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.5, ratio=3.0",0.5080502873563219,0.3859166666666667,-0.12213362068965516,0.508 (0.441-0.578),0.386 (0.320-0.454)
+S_07_summary.csv,dyad_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=2.0",0.2187083333333333,0.136875,-0.08183333333333331,0.219 (0.168-0.282),0.137 (0.094-0.189)
+S_07_summary.csv,dyad_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.2232083333333333,0.0836666666666666,-0.13954166666666667,0.223 (0.173-0.288),0.084 (0.054-0.132)
+S_07_summary.csv,dyad_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.5, ratio=3.0",0.2332140804597701,0.1117916666666666,-0.1214224137931035,0.233 (0.182-0.298),0.112 (0.074-0.161)
+S_07_summary.csv,group_fpr,dDTF,"null_source=other film, mode=pooled, gain=1.0, sd_log=0.0, ratio=3.0",0.37,0.27125,-0.09875,0.370 (0.306-0.439),0.271 (0.213-0.335)
+S_07_summary.csv,group_fpr,dDTF,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=2.0",0.175,0.0875,-0.0875,0.175 (0.129-0.234),0.087 (0.058-0.138)
+S_07_summary.csv,group_fpr,dDTF,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.25625,0.12375,-0.13249999999999998,0.256 (0.200-0.320),0.124 (0.086-0.178)
+S_07_summary.csv,group_fpr,dDTF,"null_source=same film, mode=exclude, gain=1.0, sd_log=0.0, ratio=3.0",0.38875,0.28,-0.10874999999999996,0.389 (0.325-0.459),0.280 (0.222-0.346)
+S_07_summary.csv,group_fpr,dDTF,"null_source=same film, mode=exclude, gain=2.0, sd_log=0.0, ratio=2.0",0.18,0.08875,-0.09125,0.180 (0.133-0.239),0.089 (0.058-0.138)
+S_07_summary.csv,group_fpr,dDTF,"null_source=same film, mode=exclude, gain=2.0, sd_log=0.0, ratio=3.0",0.275,0.13375,-0.14125000000000001,0.275 (0.218-0.341),0.134 (0.094-0.189)
+S_07_summary.csv,group_fpr,dDTF,"null_source=same film, mode=pooled, gain=2.0, sd_log=0.0, ratio=2.0",0.1825,0.08625,-0.09625,0.182 (0.133-0.239),0.086 (0.054-0.132)
+S_07_summary.csv,group_fpr,dDTF,"null_source=same film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.26125,0.13,-0.13124999999999998,0.261 (0.204-0.325),0.130 (0.090-0.184)
+S_07_summary.csv,group_fpr,GPDC,"null_source=same film, mode=exclude, gain=2.0, sd_log=0.0, ratio=3.0",0.43875,0.5375,0.09875,0.439 (0.373-0.509),0.537 (0.471-0.608)
+S_07_summary.csv,group_fpr,GPDC,"null_source=same film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.4175,0.52125,0.10375000000000001,0.417 (0.354-0.489),0.521 (0.451-0.588)
+S_07_summary.csv,study_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=2.0",0.9425,0.865,-0.07750000000000001,0.943 (0.898-0.965),0.865 (0.811-0.906)
+S_07_summary.csv,study_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.0, ratio=3.0",0.94375,0.865,-0.07874999999999999,0.944 (0.904-0.969),0.865 (0.811-0.906)
+S_07_summary.csv,study_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.5, ratio=2.0",0.9475,0.8925,-0.05500000000000005,0.948 (0.910-0.973),0.892 (0.839-0.926)
+S_07_summary.csv,study_fpr,GPDC,"null_source=other film, mode=pooled, gain=2.0, sd_log=0.5, ratio=3.0",0.94125,0.87,-0.07125000000000004,0.941 (0.898-0.965),0.870 (0.816-0.910)
+S_09_summary.csv,reverse_rate,dDTF,"truth=none, gap=0.15, band=mid",0.01,0.05,0.04,0.010 (0.003-0.036),0.050 (0.027-0.090)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.0, band=mid",0.81,0.27,-0.54,0.810 (0.750-0.858),0.270 (0.213-0.335)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.0, band=narrow",0.29,0.07,-0.21999999999999997,0.290 (0.232-0.356),0.070 (0.042-0.114)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.0, band=wide",0.98,0.56,-0.41999999999999993,0.980 (0.950-0.992),0.560 (0.491-0.627)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.05, band=mid",0.87,0.34,-0.53,0.870 (0.816-0.910),0.340 (0.278-0.408)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.05, band=narrow",0.26,0.03,-0.23,0.260 (0.204-0.325),0.030 (0.014-0.064)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.05, band=wide",0.98,0.59,-0.39,0.980 (0.950-0.992),0.590 (0.521-0.656)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.1, band=mid",0.56,0.21,-0.3500000000000001,0.560 (0.491-0.627),0.210 (0.159-0.272)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.1, band=narrow",0.12,0.0,-0.12,0.120 (0.082-0.172),0.000 (0.000-0.019)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.1, band=wide",0.79,0.31,-0.48000000000000004,0.790 (0.728-0.841),0.310 (0.250-0.377)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.15, band=mid",0.1,0.03,-0.07,0.100 (0.066-0.149),0.030 (0.014-0.064)
+S_09_summary.csv,reverse_rate,GPDC,"truth=pulling, gap=0.15, band=wide",0.24,0.1,-0.13999999999999999,0.240 (0.186-0.304),0.100 (0.066-0.149)
+S_10_summary.csv,dyad_rate,dDTF,"option=Aprime, truth=amp_to_eeg, strength=0.6",0.8672,0.9416,0.07440000000000002,0.867 (0.811-0.906),0.942 (0.898-0.965)
+S_10_summary.csv,dyad_rate,dDTF,"option=Aprime, truth=linear, strength=1.0",0.5376,0.6439999999999999,0.10639999999999994,0.538 (0.471-0.608),0.644 (0.577-0.708)
+S_10_summary.csv,dyad_rate,GPDC,"option=Aprime, truth=amp_to_eeg, strength=0.6",0.8907999999999998,0.9556,0.06480000000000019,0.891 (0.839-0.926),0.956 (0.917-0.976)
+S_10_summary.csv,dyad_rate,GPDC,"option=Aprime, truth=amp_to_eeg, strength=1.0",0.9399999999999996,0.9791999999999998,0.039200000000000235,0.940 (0.898-0.965),0.979 (0.950-0.992)
+S_10_summary.csv,forward_rate,dDTF,"option=Aprime, truth=linear, strength=0.6",0.91,0.96,0.04999999999999993,0.910 (0.862-0.942),0.960 (0.923-0.980)
+S_10_summary.csv,forward_rate,GPDC,"option=Aprime, truth=linear, strength=0.6",0.9,0.97,0.06999999999999995,0.900 (0.851-0.934),0.970 (0.936-0.986)
+S_10_summary.csv,reverse_rate,dDTF,"option=A, truth=linear, strength=0.3",0.95,0.78,-0.16999999999999993,0.950 (0.910-0.973),0.780 (0.718-0.832)
+S_10_summary.csv,reverse_rate,dDTF,"option=B, truth=none, strength=0.0",0.06,0.02,-0.039999999999999994,0.060 (0.035-0.102),0.020 (0.008-0.050)
+S_10_summary.csv,reverse_rate,GPDC,"option=A, truth=linear, strength=0.6",0.34,0.17,-0.17,0.340 (0.278-0.408),0.170 (0.124-0.228)
+S_10_summary.csv,reverse_rate,GPDC,"option=A, truth=linear, strength=1.0",0.56,0.32,-0.24000000000000005,0.560 (0.491-0.627),0.320 (0.259-0.388)
+S_10_summary.csv,reverse_rate,GPDC,"option=B, truth=amp_to_eeg, strength=0.3",0.69,0.57,-0.12,0.690 (0.623-0.750),0.570 (0.501-0.637)
+S_10_summary.csv,reverse_rate,GPDC,"option=B, truth=linear, strength=1.0",0.75,0.84,0.08999999999999997,0.750 (0.686-0.805),0.840 (0.783-0.884)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_edge, dv=delta_std, edge=cg:ROI->child:HRV, effect=film",0.06,0.0,-0.06,0.060 (0.028-0.125),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=group",0.0,0.1111111111111111,0.1111111111111111,0.000 (0.000-0.037),0.111 (0.063-0.186)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=interaction",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_edge, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.01,0.08,0.07,0.010 (0.002-0.054),0.080 (0.041-0.150)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.0,0.04,0.04,0.000 (0.000-0.037),0.040 (0.016-0.098)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=group",0.0,0.1,0.1,0.000 (0.000-0.037),0.100 (0.055-0.174)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=interaction",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=group",0.0,0.1428571428571428,0.1428571428571428,0.000 (0.000-0.037),0.143 (0.085-0.221)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=film",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=group",0.875,1.0,0.125,0.875 (0.802-0.930),1.000 (0.963-1.000)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=group",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=group",0.0,0.2,0.2,0.000 (0.000-0.037),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=group",0.1818181818181818,0.0,-0.1818181818181818,0.182 (0.117-0.267),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=film",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=perm_film_maxT, dv=delta, edge=child:ROI->cg:ROI, effect=group",0.47,0.62,0.15000000000000002,0.470 (0.375-0.567),0.620 (0.522-0.709)
+S_13_summary_detection.csv,rate,dDTF,"scenario=d, method=perm_film_maxT, dv=z, edge=child:ROI->cg:ROI, effect=group",0.45,0.59,0.13999999999999996,0.450 (0.356-0.548),0.590 (0.492-0.681)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=group",0.0769230769230769,0.0,-0.0769230769230769,0.077 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=group",0.4615384615384615,0.2,-0.2615384615384615,0.462 (0.366-0.557),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=group",0.0769230769230769,0.0,-0.0769230769230769,0.077 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=film",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=group",0.2307692307692307,0.0,-0.2307692307692307,0.231 (0.158-0.322),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff, dv=delta_std, edge=cg:HRV->child:HRV, effect=film",0.07,0.01,-0.060000000000000005,0.070 (0.034-0.137),0.010 (0.002-0.054)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=group",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=group",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=film",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=interaction",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,dDTF,"scenario=f, method=perm_contrast_unadj, dv=z, edge=cg:HRV->child:ROI, effect=film",0.12,0.04,-0.07999999999999999,0.120 (0.070-0.198),0.040 (0.016-0.098)
+S_13_summary_detection.csv,rate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=group",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=group",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_detection.csv,rate,GPDC,"scenario=a, method=perm_film_maxT, dv=z, edge=cg:ROI->child:ROI, effect=group",0.09,0.02,-0.06999999999999999,0.090 (0.048-0.162),0.020 (0.006-0.070)
+S_13_summary_detection.csv,rate,GPDC,"scenario=a, method=perm_interaction_maxT, dv=delta, edge=child:ROI->cg:HRV, effect=interaction",0.04,0.0,-0.04,0.040 (0.016-0.098),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=a, method=perm_interaction_maxT, dv=z, edge=child:ROI->cg:HRV, effect=interaction",0.04,0.0,-0.04,0.040 (0.016-0.098),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=group",0.0769230769230769,0.0,-0.0769230769230769,0.077 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=b, method=perm_film_maxT, dv=z, edge=cg:ROI->child:ROI, effect=group",0.13,0.24,0.10999999999999999,0.130 (0.078-0.210),0.240 (0.167-0.332)
+S_13_summary_detection.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=group",0.0,0.1428571428571428,0.1428571428571428,0.000 (0.000-0.037),0.143 (0.085-0.221)
+S_13_summary_detection.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=group",0.0,0.1428571428571428,0.1428571428571428,0.000 (0.000-0.037),0.143 (0.085-0.221)
+S_13_summary_detection.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=group",0.4285714285714285,0.0,-0.4285714285714285,0.429 (0.337-0.528),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=group",0.2857142857142857,0.0,-0.2857142857142857,0.286 (0.210-0.385),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=group",0.2857142857142857,0.0,-0.2857142857142857,0.286 (0.210-0.385),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=group",0.1,0.0,-0.1,0.100 (0.055-0.174),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=interaction",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff, dv=delta_std, edge=child:HRV->cg:ROI, effect=film",0.0,0.06,0.06,0.000 (0.000-0.037),0.060 (0.028-0.125)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:HRV, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=group",0.0833333333333333,0.0,-0.0833333333333333,0.083 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:HRV->child:ROI, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:HRV, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=group",0.1666666666666666,0.4,0.23333333333333342,0.167 (0.109-0.255),0.400 (0.309-0.498)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=cg:ROI->child:ROI, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:HRV, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:HRV->cg:ROI, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:HRV, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=group",0.0833333333333333,0.0,-0.0833333333333333,0.083 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, edge=child:ROI->cg:ROI, effect=interaction",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_detection.csv,rate,GPDC,"scenario=e, method=perm_mean_maxT, dv=z, edge=cg:ROI->child:ROI, effect=group",0.48,0.63,0.15000000000000002,0.480 (0.385-0.577),0.630 (0.532-0.718)
+S_13_summary_detection.csv,rate,GPDC,"scenario=f, method=perm_film_maxT, dv=delta, edge=cg:HRV->child:HRV, effect=group",0.0,0.04,0.04,0.000 (0.000-0.037),0.040 (0.016-0.098)
+S_13_summary_detection.csv,rate,GPDC,"scenario=f, method=perm_film_maxT, dv=delta, edge=child:ROI->cg:HRV, effect=group",0.01,0.07,0.060000000000000005,0.010 (0.002-0.054),0.070 (0.034-0.137)
+S_13_summary_detection.csv,rate,GPDC,"scenario=f, method=perm_film_maxT, dv=z, edge=child:ROI->cg:HRV, effect=group",0.01,0.07,0.060000000000000005,0.010 (0.002-0.054),0.070 (0.034-0.137)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.0,0.1111111111111111,0.1111111111111111,0.000 (0.000-0.037),0.111 (0.063-0.186)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0,0.1111111111111111,0.1111111111111111,0.000 (0.000-0.037),0.111 (0.063-0.186)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=all null edges",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=null edges except reverse of planted",0.125,0.0,-0.125,0.125 (0.070-0.198),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.0,0.1,0.1,0.000 (0.000-0.037),0.100 (0.055-0.174)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0,0.1,0.1,0.000 (0.000-0.037),0.100 (0.055-0.174)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=all null edges",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=null edges except reverse of planted",0.1111111111111111,0.0,-0.1111111111111111,0.111 (0.063-0.186),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=all null edges",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=null edges except reverse of planted",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.875,1.0,0.125,0.875 (0.802-0.930),1.000 (0.963-1.000)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.125,0.2857142857142857,0.1607142857142857,0.125 (0.070-0.198),0.286 (0.210-0.385)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=all null edges",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=null edges except reverse of planted",0.0909090909090909,0.2,0.10909090909090911,0.091 (0.048-0.162),0.200 (0.133-0.289)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.3636363636363636,0.6,0.2363636363636364,0.364 (0.273-0.458),0.600 (0.502-0.691)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=all null edges",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=null edges except reverse of planted",0.2307692307692307,0.4,0.16923076923076932,0.231 (0.158-0.322),0.400 (0.309-0.498)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.3076923076923077,0.0,-0.3076923076923077,0.308 (0.228-0.406),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.1538461538461538,0.0,-0.1538461538461538,0.154 (0.093-0.233),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=all null edges",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=film, scope=null edges except reverse of planted",1.0,0.5454545454545454,-0.4545454545454546,1.000 (0.963-1.000),0.545 (0.452-0.644)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=all null edges",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_familywise_null.csv,rate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=null edges except reverse of planted",0.0,0.0909090909090909,0.0909090909090909,0.000 (0.000-0.037),0.091 (0.048-0.162)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.0,0.1818181818181818,0.1818181818181818,0.000 (0.000-0.037),0.182 (0.117-0.267)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0,0.1818181818181818,0.1818181818181818,0.000 (0.000-0.037),0.182 (0.117-0.267)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.0769230769230769,0.0,-0.0769230769230769,0.077 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0769230769230769,0.0,-0.0769230769230769,0.077 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=b, method=perm_film_maxT, dv=z, effect=group, scope=all null edges",0.28,0.44,0.15999999999999998,0.280 (0.201-0.375),0.440 (0.347-0.538)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=b, method=perm_film_maxT, dv=z, effect=group, scope=null edges except reverse of planted",0.28,0.44,0.15999999999999998,0.280 (0.201-0.375),0.440 (0.347-0.538)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.7142857142857143,0.2857142857142857,-0.4285714285714286,0.714 (0.615-0.790),0.286 (0.210-0.385)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.7142857142857143,0.2857142857142857,-0.4285714285714286,0.714 (0.615-0.790),0.286 (0.210-0.385)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=all null edges",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=null edges except reverse of planted",0.0,0.1176470588235294,0.1176470588235294,0.000 (0.000-0.037),0.118 (0.070-0.198)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=all null edges",0.1666666666666666,0.0,-0.1666666666666666,0.167 (0.109-0.255),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=group, scope=null edges except reverse of planted",0.0833333333333333,0.0,-0.0833333333333333,0.083 (0.041-0.150),0.000 (0.000-0.037)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=all null edges",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, dv=delta_std, effect=interaction, scope=null edges except reverse of planted",0.3333333333333333,0.2,-0.1333333333333333,0.333 (0.246-0.427),0.200 (0.133-0.289)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=f, method=perm_24_maxT, dv=z, effect=group, scope=all null edges",0.06,0.16,0.1,0.060 (0.028-0.125),0.160 (0.101-0.244)
+S_13_summary_familywise_null.csv,rate,GPDC,"scenario=f, method=perm_24_maxT, dv=z, effect=group, scope=null edges except reverse of planted",0.06,0.16,0.1,0.060 (0.028-0.125),0.160 (0.101-0.244)
+S_13_summary_gate.csv,fail_share,dDTF,"scenario=d, model=bayes_pooled_eff_fallback",0.1818181818181817,0.0,-0.1818181818181817,0.182 (0.117-0.267),0.000 (0.000-0.037)
+S_13_summary_gate.csv,fail_share,dDTF,"scenario=e, model=bayes_pooled_eff_fallback",0.0,0.1999999999999999,0.1999999999999999,0.000 (0.000-0.037),0.200 (0.133-0.289)
+S_13_summary_gate.csv,fail_share,dDTF,"scenario=f, model=bayes_pooled_eff_fallback",0.2857142857142857,0.0909090909090909,-0.19480519480519481,0.286 (0.210-0.385),0.091 (0.048-0.162)
+S_13_summary_gate.csv,fail_share,GPDC,"scenario=b, model=bayes_pooled_eff",0.13,0.05,-0.08,0.130 (0.078-0.210),0.050 (0.022-0.112)
+S_13_summary_gate.csv,fail_share,GPDC,"scenario=b, model=bayes_pooled_eff_fallback",0.1538461538461538,0.0,-0.1538461538461538,0.154 (0.093-0.233),0.000 (0.000-0.037)
+S_13_summary_gate.csv,fail_share,GPDC,"scenario=b, model=bayes_pooled_int",0.04,0.0,-0.04,0.040 (0.016-0.098),0.000 (0.000-0.037)
+S_13_summary_gate.csv,fail_share,GPDC,"scenario=c, model=bayes_pooled_eff_fallback",0.0,0.1428571428571429,0.1428571428571429,0.000 (0.000-0.037),0.143 (0.085-0.221)
+S_13_summary_gate.csv,fail_share,GPDC,"scenario=e, model=bayes_pooled_eff_fallback",0.25,0.0,-0.25,0.250 (0.175-0.343),0.000 (0.000-0.037)
+S_13_summary_gate.csv,mean_seconds,dDTF,"scenario=c, model=bayes_pooled_eff_fallback",37.81614664196968,30.061477865491593,-7.754668776478088,,
+S_13_summary_gate.csv,mean_seconds,dDTF,"scenario=d, model=bayes_pooled_eff_fallback",39.607106642289594,30.972086000442506,-8.635020641847088,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0543481480597614,-0.02578524021999,0.028562907839771404,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",-0.0908817511369061,-0.0434137795357425,0.047467971601163596,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.1063569030605341,-0.0449529719669272,0.061403931093606895,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0633028587406718,0.0327320073218934,0.0960348660625652,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",-0.0763128821792035,-0.0301432864186568,0.0461695957605467,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0437593468853982,-0.0693480508147853,-0.025588703929387106,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0049322663414379,-0.0254047361588192,-0.0204724698173813,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0842503737469777,0.0035162772605571,-0.0807340964864206,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0349819508747722,-0.0278393771484758,-0.062821328023248,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",-0.0343383480848553,0.0271954349514429,0.0615337830362982,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0552644708234402,-0.0048536591441711,-0.0601181299676113,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0966244044894829,0.047591755053712,0.1442161595431949,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0530898294153588,0.062054713719698,0.1151445431350568,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0035186242289281,0.0710748243360499,0.06755620010712181,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.1085105338954841,-0.0392518275500171,-0.1477623614455012,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.1896964035318871,0.1138096651369953,-0.07588673839489181,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0525902966615216,0.0772758876337972,0.1298661842953188,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.1181973225475771,-0.1084944629013093,-0.2266917854488864,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0324163609654935,0.09782801508665,0.06541165412115649,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0822372908698796,0.1389649120767041,0.05672762120682451,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0682493590020861,-0.0487990743039556,-0.1170484333060417,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.0927486909994472,0.1049962146961282,0.1977449056955754,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.036205743944115,-0.0013064266243294,-0.0375121705684444,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0197795316838297,-0.0047284043305855,-0.0245079360144152,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.1035059700205682,0.0813319422171417,0.1848379122377099,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0133811644665328,0.0568930668089382,0.0435119023424054,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0668928134677893,-0.0868892684315365,-0.1537820818993258,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",-0.0514855962735574,-0.0833904865473862,-0.031904890273828805,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.1258328647628266,0.2173433985230562,0.0915105337602296,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0936854109360137,-0.0636229439163106,0.030062467019703096,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0388764863004439,0.0921118751836086,0.053235388883164696,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0255078909229706,0.0540304638708562,0.0285225729478856,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.001504188632575,0.0528431676875721,0.0513389790549971,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.0101135544701434,0.1123723461510739,0.12248590062121731,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0094097546562389,0.050767998382722,0.0413582437264831,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0078574756257707,0.0808496959562686,0.0729922203304979,,
+S_13_summary_shrinkage.csv,bias,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0542235966820783,0.015935247797438,0.0701588444795163,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0291591419192591,0.0994946106034223,0.0703354686841632,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0178666738653574,-0.0023317170288488,-0.0201983908942062,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",-0.054670935553329,0.0026629918160343,0.0573339273693633,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0158654402699452,0.0621360295583359,0.0462705892883907,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0058759596043623,0.0306954539663039,0.0248194943619416,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.040637811171666,-0.0006600066849343,-0.0412978178566003,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=a, method=bayes_pooled_int, edge=child:ROI->cg:HRV",-0.0048651226818469,-0.025837720726878,-0.0209725980450311,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0447299562671863,-0.0792550087394973,-0.034525052472310996,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0261099365656967,-0.0054979475336135,-0.0316078840993102,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0184502973470011,-0.0225363557883324,-0.0409866531353335,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.0482934130169731,-0.0226816575955206,-0.0709750706124937,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0046105319847489,0.0317395727263198,0.027129040741570895,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0281988915915509,0.0011649198091351,-0.0270339717824158,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0435884190746259,-0.0134434373999991,0.0301449816746268,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0851808233900689,0.056519332042538,0.1417001554326069,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0203400170108907,-0.0827687980867899,-0.1031088150976806,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.104056869064653,0.0826141278379477,-0.021442741226705295,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0753785334640369,0.0354421227302776,0.1108206561943145,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",-0.0955012596611621,0.1217139785962032,0.2172152382573653,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0048662631009496,-0.0717995184171945,-0.06693325531624489,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=c, method=bayes_pooled_int, edge=child:ROI->cg:ROI",-0.1423920350222406,-0.1838649224515872,-0.0414728874293466,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.1138874656448971,0.0673678621950466,-0.0465196034498505,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",-0.0633074351853732,-0.017462784197748,0.0458446509876252,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0415261797798876,-0.0215385266983674,-0.063064706478255,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0238949397923123,0.0542181434324291,0.030323203640116803,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0420509143670299,-0.0057493865039215,-0.0478003008709514,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0227514417918571,-0.0609538938317158,-0.0382024520398587,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.0523634359570719,-0.0019198688691202,0.0504435670879517,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0633350436586612,0.0144610693962096,0.0777961130548708,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0516805442981302,-0.1021793135732227,-0.050498769275092496,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",-0.0192401837667805,-0.0953563119234653,-0.07611612815668481,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0291698271080295,-0.0694073073511062,-0.0985771344591357,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=e, method=bayes_pooled_int, edge=child:ROI->cg:ROI",-0.0624683490957547,-0.0995411513335984,-0.03707280223784369,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0620512444348886,-0.0015899037402507,-0.0636411481751393,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0858499098070875,-0.0140573237447876,-0.0999072335518751,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0309164865664416,-0.0237621855074689,-0.0546786720739105,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.061978124966261,0.0180761215742869,-0.0439020033919741,,
+S_13_summary_shrinkage.csv,bias,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0131823729927865,-0.0185180391572513,-0.0317004121500378,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_edge, edge=cg:ROI->child:ROI",0.0125321318455997,0.0358181386455991,0.0232860067999994,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.1093095709754833,-0.0702094962585501,0.039100074716933206,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",-0.0418203626280556,0.0059395816525478,0.0477599442806034,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.1209979199323836,-0.0411322889514781,0.07986563098090549,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.1139665674650658,-0.015857073257092,0.0981094942079738,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0608442511606266,-0.039596688149351,0.021247563011275596,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",-0.0343917542394473,0.0262291033735648,0.0606208576130121,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=a, method=sample_mean_diff, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.011432173898941,-0.0372858003222792,-0.025853626423338195,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0473305215602368,-0.0221293538038753,-0.0694598753641121,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0205071990202364,-0.0530848207215138,-0.0735920197417502,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",-0.0404188262807941,0.0103638357824041,0.0507826620631982,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.019506602033855,-0.0396616728457097,-0.0591682748795647,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0776234599771778,0.051636490452946,0.1292599504301238,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0108507203967363,0.1032899135247872,0.1141406339215235,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0855915380123145,0.1590139101100006,0.0734223720976861,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0837927594422563,-0.057133670640482,-0.1409264300827383,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0402598304792122,0.0991472430491475,0.1394070735283597,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.1281664242588357,-0.101003767658625,-0.22917019191746069,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0201213751564373,0.0789475174516166,0.058826142295179296,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_edge, edge=cg:ROI->child:HRV",0.0796998738784266,0.0467019887713251,-0.0329978851071015,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_edge, edge=child:ROI->cg:HRV",0.0764130738368771,0.048627113988061,-0.027785959848816093,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff, edge=cg:ROI->child:HRV",0.0424239707455458,0.0098440982310892,-0.0325798725144566,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:HRV",0.0389651567873324,0.0108182653861247,-0.0281468914012077,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1554396115549075,0.0419074773469826,-0.11353213420792488,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0013076206283476,0.1657131240384363,0.1644055034100887,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0211266698728655,0.2043601151506359,0.1832334452777704,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.625876306716528,-0.7916228779566653,-0.16574657124013725,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=sample_mean_diff, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0565453997662792,-0.0860053501528598,-0.0294599503865806,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",-0.0355497724222473,-0.0762711347498477,-0.0407213623276004,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",-0.3580985333679161,-0.2621656491724078,0.09593288419550827,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0501985510664869,-0.019196366750967,0.0310021843155199,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.203551769341338,-0.1317119779266033,0.0718397914147347,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0310352640966944,0.0647823524678847,0.03374708837119031,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0131972741476869,0.0676416335968801,0.054444359449193194,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.0352326954889142,0.0821926448100306,0.1174253402989448,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0007505453005944,0.0475478619736646,0.046797316673070195,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0285586923940348,0.0574772630914737,0.08603595548550849,,
+S_13_summary_shrinkage.csv,mean_estimate,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.03531566601293,0.0305209341131304,0.06583660012606041,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=bayes_edge, edge=child:ROI->cg:HRV",0.0076967201294478,0.0356456798244995,0.027948959695051703,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0061844159791362,0.0717979868053051,0.0779824027844413,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",-0.0226879623137937,0.0419196147472745,0.0646075770610682,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0169662260394184,0.0239398334182053,0.0409060594576237,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0172403005027716,0.0441246821770584,0.026884381674286802,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=a, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0310946173793801,-0.0875073859810542,-0.0564127686016741,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0004723887914454,-0.0218484667426414,-0.0223208555340868,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0078635701278026,-0.0469817981929051,-0.0548453683207077,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.0384347965502041,-0.0440491011503781,-0.0824838977005822,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0036899294046903,0.0353388313569271,0.039028760761617404,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0054217426766884,-0.0241548278176022,-0.0295765704942906,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=b, method=sample_mean_diff, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415568,-0.021887716129363,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_edge, edge=child:ROI->cg:ROI",-0.0189133678912586,0.0233537349240458,0.042267102815304394,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff, edge=child:ROI->cg:ROI",-0.0368672598834887,0.0009539943487852,0.0378212542322739,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0393929999375366,0.1113594651711092,0.15075246510864582,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0012661497591577,-0.0846586924641021,-0.0859248422232598,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0421235212043538,0.0082668953580633,-0.033856625846290504,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0910357527153072,0.0095726467935126,0.1006083995088198,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",-0.0557098185112598,0.1487108436176205,0.2044206621288803,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0229194659907415,-0.0465042487869052,-0.0235847827961637,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=c, method=sample_mean_diff, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_edge, edge=cg:ROI->child:HRV",0.1245137287350706,0.0983344012250663,-0.026179327510004305,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_edge, edge=child:HRV->cg:HRV",0.1526322125855498,0.1929260568876822,0.0402938443021324,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_edge, edge=child:ROI->cg:HRV",0.0544489217680601,0.0303031318828793,-0.024145789885180798,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_edge, edge=child:ROI->cg:ROI",-0.0046188767650452,0.0389636073834039,0.043582484148449105,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff, edge=cg:ROI->child:HRV",0.0983836646281193,0.0747417188225868,-0.0236419458055325,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:HRV->cg:HRV",0.1282923270385335,0.1675000015035134,0.039207674464979914,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:HRV",0.0367126727972789,0.0119170311903162,-0.024795641606962696,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:ROI",-0.0221867553257673,0.0197090993492076,0.041895854674974906,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1209950974567303,0.1868583524244818,0.06586325496775149,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.1668816432782258,0.07703251657551,-0.0898491267027158,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.1492108236196255,0.1817824804850705,0.032571656865445,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0847181481928922,0.0426260305376707,-0.04209211765522149,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=sample_mean_diff, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=sample_mean_diff, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_edge, edge=child:ROI->cg:ROI",0.0114983350319648,0.0436804625837072,0.03218212755174239,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",-0.0314509988439634,-0.0823675476790488,-0.0509165488350854,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",-0.0196087709755224,0.0208182372822376,0.04042700825776,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",-0.0223358644533216,0.0412114869461196,0.0635473513994412,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",-0.0197018735174825,-0.0679865324156398,-0.04828465889815731,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0231030858559454,-0.0683000834618538,-0.09140316931779921,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0405742320986454,-0.0247030077485758,-0.0652772398472212,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=e, method=sample_mean_diff, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0755720895378114,0.0122473898988111,-0.06332469963900031,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0691131127989056,-0.0353964903153044,-0.10450960311421001,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0327607325478712,-0.0170360499343506,-0.0497967824822218,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0107917686268175,-0.0167173476961647,-0.027509116322982197,,
+S_13_summary_shrinkage.csv,mean_estimate,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0339743027359222,-0.0051536449505502,-0.0391279476864724,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=a, method=bayes_edge, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=a, method=bayes_pooled_eff, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=a, method=bayes_pooled_int, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=a, method=sample_mean_diff, edge=cg:ROI->child:ROI",0.0158097934912529,0.0392850884599844,0.023475294968731502,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_edge, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_edge, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_eff, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_int, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=bayes_pooled_int, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=sample_mean_diff, edge=cg:ROI->child:HRV",0.0940563116277949,0.060716909342308,-0.0333394022854869,,
+S_13_summary_shrinkage.csv,reference,dDTF,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0813849045372184,0.0533801909690416,-0.028004713568176805,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=a, method=bayes_edge, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=a, method=bayes_pooled_eff, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=a, method=bayes_pooled_int, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=a, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0062822931210863,0.0339489657599321,0.0276666726388458,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=b, method=bayes_edge, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415569,-0.021887716129363098,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=b, method=bayes_pooled_eff, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415569,-0.021887716129363098,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415569,-0.021887716129363098,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=b, method=bayes_pooled_int, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415569,-0.021887716129363098,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=b, method=sample_mean_diff, edge=cg:HRV->child:HRV",0.0136353388878062,-0.0082523772415569,-0.021887716129363098,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=c, method=bayes_edge, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=c, method=bayes_pooled_eff, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=c, method=bayes_pooled_int, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=c, method=sample_mean_diff, edge=child:ROI->cg:ROI",-0.0180532028897918,0.0252952696302892,0.043348472520081005,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_edge, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_edge, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_edge, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_edge, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_int, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_int, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_int, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=bayes_pooled_int, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=sample_mean_diff, edge=cg:ROI->child:HRV",0.1253554634983382,0.0985710432738775,-0.026784420224460703,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=sample_mean_diff, edge=child:HRV->cg:HRV",0.1553011698394644,0.1939051468401625,0.03860397700069809,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:HRV",0.0549691161679521,0.0299406901613604,-0.025028426006591702,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=d, method=sample_mean_diff, edge=child:ROI->cg:ROI",-0.0077644881636878,0.0332886752620787,0.0410531634257665,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=e, method=bayes_edge, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=e, method=bayes_pooled_eff, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=e, method=bayes_pooled_int, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,reference,GPDC,"scenario=e, method=sample_mean_diff, edge=child:ROI->cg:ROI",0.0114044049906158,0.0447042996025303,0.0332998946119145,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0899336335120085,0.1210831547812478,0.031149521269239297,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1098679903787504,0.1632535465190804,0.053385556140329984,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.1230837086379572,0.1646574855072994,0.04157377686934219,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1696321695886956,0.1306058342704517,-0.0390263353182439,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0590547395711696,0.1050204797984121,0.0459657402272425,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.1055093281638229,0.1561830480207356,0.0506737198569127,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.1481533653130308,0.1069300025841029,-0.041223362728927904,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1323938402211239,0.1934382880354938,0.06104444781436988,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.2086507873829644,0.1166098367624637,-0.09204095062050069,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.1839680541233582,0.2261566555706205,0.0421886014472623,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.1677449293540782,0.2028247904385501,0.03507986108447189,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.073968632490629,0.0472313078719791,-0.026737324618649902,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.0945726440312272,0.1227831275531901,0.028210483521962898,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.1186586049166881,0.1509758266108717,0.03231722169418359,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.2096110584033305,0.134961396048472,-0.07464966235485851,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.2123464454457233,0.1426055321945372,-0.06974091325118609,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.1780953303288574,0.1383582178403156,-0.03973711248854181,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.19997724803532,0.2675912204519957,0.06761397241667569,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.2046001546629743,0.1213703859271286,-0.0832297687358457,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.177497605803768,0.1276244182527639,-0.04987318755100409,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.1576411868400506,0.0747621137253999,-0.0828790731146507,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0566053593206669,0.1345228599060255,0.0779175005853586,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0992159150139027,0.1595070792910202,0.060291164277117504,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0816476637516243,0.1408527252223187,0.0592050614706944,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.1014121203643233,0.1277122423031522,0.0263001219388289,,
+S_13_summary_shrinkage.csv,rmse,dDTF,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.1243575862794592,0.0828020070212949,-0.041555579258164305,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0558772842801794,0.1888408020270141,0.13296351774683468,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.0831667450575713,0.14278731043043,0.0596205653728587,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=a, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.1259973888861753,0.0839990582306768,-0.04199833065549849,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.0739640278803854,0.0960373820487448,0.0220733541683594,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.1040349799029576,0.0545186779123315,-0.0495163019906261,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.2062423249351367,0.0856389967148966,-0.1206033282202401,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.0697102960886399,0.1175604133596583,0.0478501172710184,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0787916875637281,0.1066532991759446,0.027861611612216494,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=b, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:ROI",0.0865406305216557,0.1159761055620868,0.029435475040431106,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.1912479140884862,0.2427399285296133,0.05149201444112708,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.1035534899684247,0.1532452986858734,0.04969180871744869,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:HRV",0.1864329189063539,0.2885196989922446,0.1020867800858907,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.3000951182084823,0.1923669577304814,-0.10772816047800088,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.2836280314586522,0.1457463815450331,-0.13788164991361906,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.3151595346978112,0.2425736132479185,-0.0725859214498927,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=c, method=bayes_pooled_int, edge=child:ROI->cg:ROI",0.1593815080448204,0.1984506803797442,0.039069172334923796,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:HRV",0.1488996793035798,0.0925787989300634,-0.0563208803735164,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.1141286033140148,0.0907819159937737,-0.02334668732024109,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.2674554320821626,0.1950019067979783,-0.0724535252841843,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=d, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.2533390457577267,0.1571411371597021,-0.0961979085980246,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.1320458296302017,0.1663968775380566,0.0343510479078549,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=e, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:ROI",0.1318219201132418,0.1660534274859454,0.03423150737270361,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=e, method=bayes_pooled_int, edge=child:ROI->cg:ROI",0.0932415195624752,0.1183891777613097,0.025147658198834494,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:HRV->child:ROI",0.0564934923485988,0.1244063098322589,0.0679128174836601,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=cg:ROI->child:ROI",0.0736841308986097,0.0940210568293971,0.020336925930787397,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:HRV->cg:HRV",0.0769050808356069,0.101345050555719,0.0244399697201121,,
+S_13_summary_shrinkage.csv,rmse,GPDC,"scenario=f, method=bayes_pooled_eff_fallback, edge=child:ROI->cg:HRV",0.0692140774943451,0.0973638933625253,0.02814981586818019,,
