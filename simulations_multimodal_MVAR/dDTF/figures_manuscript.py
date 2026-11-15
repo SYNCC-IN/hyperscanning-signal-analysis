@@ -10,6 +10,7 @@ fig02_model_and_null    : Fig. 2 (schematic, drawn by fig2_model_and_null.py).
 fig06 ... fig14         : publication figures of the results (S3-S13), SVG + PNG (300 dpi), from the summary and raw
                           CSVs of the full runs; no simulation is run here.
 figS4_frequency_gap     : Fig. S4 (Supplement S3): S2 edge value relative to gap 0 and direction index vs. frequency gap.
+figS10_group_film_bayes : Fig. S10 (Supplement S4.10): S13 with the optional Bayesian models.
 
 Usage: python figures_manuscript.py [all | NAME ...] [OUT_DIR [RESULTS_DIR]]
   NAME is a function name below (level1, level2, fig3, fig_gain_conversion, fig02, fig06 ... fig14); default all.
@@ -806,64 +807,115 @@ S13_MARK = {"perm_film_maxT": ("o", "0.15"), "perm_24_maxT": ("s", "0.35"), "per
             "bayes_edge": ("o", "#c0392b"), "bayes_pooled_eff": ("s", "#e67e22"), "bayes_pooled_int": ("^", "#f1c40f")}
 
 
-def fig14():
-    det = {est: pd.read_csv(RES / est / "S_13" / "summary_detection.csv") for est in EST}
-    fwn = comparison("S_13_summary_familywise_null.csv")
-    shr = comparison("S_13_summary_shrinkage.csv")
-    cats = [("c", "group", "c: group"), ("d", "group", "d: group\n(2 edges)"), ("e", "group", "e: group\n(film 1)"),
+S13_CATS = [("c", "group", "c: group"), ("d", "group", "d: group\n(2 edges)"), ("e", "group", "e: group\n(film 1)"),
             ("e", "film", "e: film"), ("e", "interaction", "e: interaction"), ("f", "film", "f: film")]
-    methods = {"group": S13_GROUP + S13_BAYES, "film": S13_FILM + S13_BAYES, "interaction": S13_INTER + S13_BAYES}
+S13_NULL_ROWS = {"perm_film_maxT": ("group", "group, within film"), "perm_24_maxT": ("group", "group, over 24"),
+                 "perm_mean_maxT": ("group", "group, film mean"), "perm_contrast_maxT": ("film", "film, sign-flip"),
+                 "perm_interaction_maxT": ("interaction", "interaction"), "bayes_edge": ("group", "per-edge Bayes"),
+                 "bayes_pooled_eff": ("group", "pooled Bayes"), "bayes_pooled_int": ("group", "(1|edge)")}
+
+
+def s13_marker_style(m):
+    """Marker, colour and face colour of an S13 method (filled for permutation tests, open for Bayesian models)."""
+    mk, col = S13_MARK[m]
+    return mk, col, col if m.startswith("perm") else "white"
+
+
+def s13_detection_panels(fig, spec, methods, letter):
+    """S13 detection of the planted effects (dDTF and GPDC side by side) for the given methods per effect.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+    spec : matplotlib.gridspec.SubplotSpec
+        Space for the two panels.
+    methods : dict
+        Effect ('group', 'film', 'interaction') -> list of (method, label).
+    letter : str
+        Panel letter of the left panel.
+    """
+    det = {est: pd.read_csv(RES / est / "S_13" / "summary_detection.csv") for est in EST}
+    top = spec.subgridspec(1, 2, wspace=0.12)
+    for j, est in enumerate(EST):
+        ax = fig.add_subplot(top[j]); d = det[est]
+        planted = d[d.planted & d.dv.isin(["delta", "delta_std"])]
+        for c, (sc, effect, _) in enumerate(S13_CATS):
+            ms_ = methods[effect]
+            for k, (m, lab) in enumerate(ms_):
+                sub = planted[(planted.scenario == sc) & (planted.effect == effect) & (planted.method == m)]
+                if sub.empty:
+                    continue
+                rate = sub.rate.mean()
+                mk, col, mfc = s13_marker_style(m)
+                ax.errorbar(c + dodge(k, len(ms_), 0.75), rate, yerr=wilson_err([rate], 100 * len(sub)), fmt=mk, ms=3, lw=0.6, color=col,
+                            mfc=mfc, mew=0.8)
+        ax.set_xticks(range(len(S13_CATS))); ax.set_xticklabels([c[2] for c in S13_CATS], fontsize=6.2); ax.set_ylim(-0.02, 1.05)
+        ax.set_title(f"{est}: planted effects detected")
+        if j == 0:
+            ax.set_ylabel("detection rate"); panel(ax, letter, x=-0.12)
+        else:
+            ax.set_yticklabels([])
+
+
+def s13_method_legend(fig, methods, **kwargs):
+    """Figure legend with one marker per S13 method (list of (method, label))."""
+    handles = [matplotlib.lines.Line2D([], [], ls="", marker=s13_marker_style(m)[0], color=s13_marker_style(m)[1], ms=3.5,
+                                       mfc=s13_marker_style(m)[2], label=lab) for m, lab in methods]
+    fig.legend(handles=handles, columnspacing=0.8, handletextpad=0.2, **kwargs)
+
+
+def s13_null_panel(ax, methods, letter, letter_x=-0.25):
+    """S13 scenario a: share of studies with at least one null edge flagged, per method (list of method keys)."""
+    fpr_guides(ax)
+    fwn = comparison("S_13_summary_familywise_null.csv")
+    raw = {est: pd.concat([pd.read_csv(f) for f in sorted((RES / est / "S_13").glob("raw_results_full_reps_*.csv"))]) for est in EST}
+    for k, est in enumerate(EST):
+        vals = []
+        for m in methods:
+            effect = S13_NULL_ROWS[m][0]
+            if m == "perm_film_maxT":                  # family-wise rate per film (mean over the three films)
+                r = raw[est]; r = r[(r.scenario == "a") & (r.method == m) & (r.dv == "delta")]
+                vals.append(r.groupby(["rep", "film"]).detected.any().mean())
+            else:
+                sel = fwn[(fwn.scenario == "a") & (fwn.method == m) & (fwn.effect == effect) & fwn.dv.isin(["delta", "delta_std"])
+                          & (fwn.scope == "all null edges")]
+                vals.append(sel[f"rate {est}"].iloc[0])
+        vals = np.array(vals)
+        n = np.array([300 if m == "perm_film_maxT" else 100 for m in methods])
+        ax.errorbar(np.arange(len(methods)) + dodge(k, 2, 0.4), vals, yerr=wilson_err(vals, n), fmt="o", ms=3, lw=0.6, color=EST_COL[est], label=est)
+    ax.set_xticks(range(len(methods))); ax.set_xticklabels([S13_NULL_ROWS[m][1] for m in methods], rotation=50, ha="right", fontsize=5.8)
+    ax.set_ylabel("any null edge flagged"); ax.set_title("no effect (scenario a)"); ax.legend(fontsize=6, loc="upper left")
+    panel(ax, letter, x=letter_x)
+
+
+def fig14():
+    """Fig. 7 (S13): detection of group and film effects and family-wise rate with no effect, permutation tests only."""
+    perm = S13_GROUP + S13_FILM + S13_INTER
+    with plt.rc_context(PUB):
+        fig = plt.figure(figsize=(FULL_W, 5.4))
+        gs = fig.add_gridspec(2, 1, hspace=0.6, left=0.08, right=0.98, top=0.94, bottom=0.17)
+        s13_detection_panels(fig, gs[0], {"group": S13_GROUP, "film": S13_FILM, "interaction": S13_INTER}, "A")
+        bottom = gs[1].subgridspec(1, 2, wspace=0.3, width_ratios=[1.1, 1])
+        ax = fig.add_subplot(bottom[0])
+        s13_null_panel(ax, [m for m, _ in perm], "B", letter_x=-0.12); ax.set_ylim(0, 0.2)
+        s13_method_legend(fig, perm, loc="center left", ncol=1, fontsize=6.5, bbox_to_anchor=(0.6, 0.3), title="test (panel A)",
+                          title_fontsize=6.5)
+        save(fig, "fig14_group_film")
+
+
+def figS10():
+    """Fig. S10 (S13): the optional Bayesian models: detection, family-wise rate, estimates vs. truth and leakage."""
+    shr = comparison("S_13_summary_shrinkage.csv")
+    fwn = comparison("S_13_summary_familywise_null.csv")
     with plt.rc_context(PUB):
         fig = plt.figure(figsize=(FULL_W, 6.6))
         gs = fig.add_gridspec(2, 1, hspace=0.55, left=0.08, right=0.98, top=0.95, bottom=0.14)
-        top = gs[0].subgridspec(1, 2, wspace=0.12)
-        for j, est in enumerate(EST):
-            ax = fig.add_subplot(top[j]); d = det[est]
-            planted = d[d.planted & d.dv.isin(["delta", "delta_std"])]
-            for c, (sc, effect, _) in enumerate(cats):
-                ms_ = methods[effect]
-                for k, (m, lab) in enumerate(ms_):
-                    sub = planted[(planted.scenario == sc) & (planted.effect == effect) & (planted.method == m)]
-                    if sub.empty:
-                        continue
-                    rate = sub.rate.mean()
-                    mk, col = S13_MARK[m]
-                    ax.errorbar(c + dodge(k, len(ms_), 0.75), rate, yerr=wilson_err([rate], 100 * len(sub)), fmt=mk, ms=3, lw=0.6, color=col,
-                                mfc=col if m.startswith("perm") else "white", mew=0.8)
-            ax.set_xticks(range(len(cats))); ax.set_xticklabels([c[2] for c in cats], fontsize=6.2); ax.set_ylim(-0.02, 1.05)
-            ax.set_title(f"{est}: planted effects detected")
-            if j == 0:
-                ax.set_ylabel("detection rate"); panel(ax, "A", x=-0.12)
-            else:
-                ax.set_yticklabels([])
-        handles = [matplotlib.lines.Line2D([], [], ls="", marker=S13_MARK[m][0], color=S13_MARK[m][1], ms=3.5,
-                                           mfc=S13_MARK[m][1] if m.startswith("perm") else "white", label=lab)
-                   for m, lab in S13_GROUP + S13_FILM + S13_INTER + S13_BAYES]
-        fig.legend(handles=handles, loc="upper center", ncol=8, fontsize=5.6, bbox_to_anchor=(0.53, 0.555), columnspacing=0.8, handletextpad=0.2)
-        bottom = gs[1].subgridspec(1, 3, wspace=0.4, width_ratios=[1.3, 1, 1])
+        s13_detection_panels(fig, gs[0], {"group": S13_BAYES, "film": S13_BAYES, "interaction": S13_BAYES}, "A")
+        s13_method_legend(fig, S13_BAYES, loc="upper center", ncol=3, fontsize=6, bbox_to_anchor=(0.53, 0.555))
+        bottom = gs[1].subgridspec(1, 3, wspace=0.4, width_ratios=[0.8, 1, 1])
         # B: family-wise rate on null edges, scenario a
-        ax = fig.add_subplot(bottom[0]); fpr_guides(ax)
-        raw = {est: pd.concat([pd.read_csv(f) for f in sorted((RES / est / "S_13").glob("raw_results_full_reps_*.csv"))]) for est in EST}
-        rows = [("perm_film_maxT", "group", "group, within film"), ("perm_24_maxT", "group", "group, over 24"),
-                ("perm_mean_maxT", "group", "group, film mean"), ("perm_contrast_maxT", "film", "film, sign-flip"),
-                ("perm_interaction_maxT", "interaction", "interaction"), ("bayes_edge", "group", "per-edge Bayes"),
-                ("bayes_pooled_eff", "group", "pooled Bayes"), ("bayes_pooled_int", "group", "(1|edge)")]
-        for k, est in enumerate(EST):
-            vals = []
-            for m, effect, _ in rows:
-                if m == "perm_film_maxT":                  # family-wise rate per film (mean over the three films)
-                    r = raw[est]; r = r[(r.scenario == "a") & (r.method == m) & (r.dv == "delta")]
-                    vals.append(r.groupby(["rep", "film"]).detected.any().mean())
-                else:
-                    sel = fwn[(fwn.scenario == "a") & (fwn.method == m) & (fwn.effect == effect) & fwn.dv.isin(["delta", "delta_std"])
-                              & (fwn.scope == "all null edges")]
-                    vals.append(sel[f"rate {est}"].iloc[0])
-            vals = np.array(vals)
-            n = np.array([300 if m == "perm_film_maxT" else 100 for m, _, _ in rows])
-            ax.errorbar(np.arange(len(rows)) + dodge(k, 2, 0.4), vals, yerr=wilson_err(vals, n), fmt="o", ms=3, lw=0.6, color=EST_COL[est], label=est)
-        ax.set_xticks(range(len(rows))); ax.set_xticklabels([r[2] for r in rows], rotation=50, ha="right", fontsize=5.8)
-        ax.set_ylim(0, 0.5); ax.set_ylabel("any null edge flagged"); ax.set_title("no effect (scenario a)"); ax.legend(fontsize=6, loc="upper left")
-        panel(ax, "B", x=-0.25)
+        ax = fig.add_subplot(bottom[0])
+        s13_null_panel(ax, [m for m, _ in S13_BAYES], "B"); ax.set_ylim(0, 0.6)
         # C: estimated vs. true group effect on planted edges
         ax = fig.add_subplot(bottom[1]); ax.plot([-1.7, 0.2], [-1.7, 0.2], color="0.6", lw=0.5)
         planted_edges = {"c": ["cg:ROI->child:ROI"], "d": ["cg:ROI->child:ROI", "cg:HRV->child:HRV"], "e": ["cg:ROI->child:ROI"]}
@@ -891,7 +943,7 @@ def fig14():
         ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
         ax.set_ylabel("group effect on any null edge"); ax.set_title("leakage (scenario c)")
         ax.legend(fontsize=5, loc="upper left", labelspacing=0.15); panel(ax, "D", x=-0.3)
-        save(fig, "fig14_group_film")
+        save(fig, "figS10_group_film_bayes")
 
 
 S2_BANDWIDTH_HZ = 1.5                                 # BANDWIDTH_HZ of S02_envelope_vs_phase.py
@@ -950,7 +1002,7 @@ def figS4():
 
 FIGURES = {"level1": level1, "level2": level2, "fig3": fig3, "fig_gain_conversion": fig_gain_conversion,
            "fig02": fig02, "fig06": fig06, "fig07": fig07, "fig08": fig08, "fig09": fig09,
-           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4}
+           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4, "figS10": figS10}
 
 if __name__ == "__main__":
     for name in (list(FIGURES) if not NAMES or NAMES == ["all"] else NAMES):
