@@ -2,8 +2,9 @@
 
 Both estimators analyse the same simulated studies (same seeds), so every row is a paired comparison.
 Reads Results/<estimator>/S_xx/ and writes Results/comparison/:
-  criteria.csv         - every acceptance criterion, met (True/False) per estimator, and `status`: 'pass' (met by
-                         every estimator) or 'fail', prefixed 'proposed: ' for criteria marked [proposed] (thresholds
+  criteria.csv         - every acceptance criterion, met (True/False, or 'descriptive' where a criterion does not apply
+                         to an estimator) per estimator, and `status`: 'pass' (met by every estimator for which it is
+                         not descriptive) or 'fail', prefixed 'proposed: ' for criteria marked [proposed] (thresholds
                          not yet fixed);
   runs.csv             - mode and replication count of each run (check both estimators come from the same protocol);
   S_xx_<table>.csv     - the main readouts of each summary table, one column per estimator;
@@ -55,7 +56,9 @@ TABLES = {
     "S_13": [("summary_detection.csv", ["scenario", "method", "dv", "edge", "effect"], ["rate"]),
              ("summary_familywise_null.csv", ["scenario", "method", "dv", "effect", "scope"], ["rate"]),
              ("summary_shrinkage.csv", ["scenario", "method", "edge"], ["reference", "mean_estimate", "bias", "rmse"]),
-             ("summary_gate.csv", ["scenario", "model"], ["fail_share", "mean_seconds"])],
+             ("summary_gate.csv", ["scenario", "model"], ["fail_share", "mean_seconds"]),
+             ("summary_fl_omnibus.csv", ["scenario", "variant", "covariate_in_Z", "term"], ["rate", "ci_low", "ci_high", "n"]),
+             ("summary_fl_edge.csv", ["scenario", "variant", "term", "edge"], ["rate_unadj", "rate_maxF", "n"])],
 }
 
 
@@ -76,8 +79,8 @@ def summary_files(estimator):
 
 
 def criterion_status(row):
-    """'pass' if every estimator met the criterion, else 'fail'; prefixed 'proposed: ' for criteria marked [proposed]."""
-    verdict = "pass" if all(row[e] is True for e in ESTIMATORS) else "fail"
+    """'pass' if every estimator met the criterion (or has it as 'descriptive'), else 'fail'; prefixed 'proposed: ' for [proposed]."""
+    verdict = "pass" if all(row[e] is True or row[e] == "descriptive" for e in ESTIMATORS) else "fail"
     return f"proposed: {verdict}" if "[proposed]" in row["criterion"] else verdict
 
 

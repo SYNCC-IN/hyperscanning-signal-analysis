@@ -376,6 +376,19 @@ Small, generic statistics helpers with no pipeline-stage-specific logic.
 
 - `mean_and_sem(values, axis=0)` — mean and standard error of the mean (SEM) across realizations.
 
+### `src/perm_anova.py`
+Factorial permutation ANOVA for dyad-level repeated-measures designs: Freedman–Lane, whole-dyad rearrangements, pooled (trace) F. Rearrangements and max-T come from `src/sim_inference.py` (`caregiver_permutations`, `sign_flips`, `maxT_adjust`/`family_pvalues`); used by `simulations_multimodal_MVAR/dDTF/S13_group_film_bayes.py`.
+
+- `helmert_contrasts(k)` — orthonormal Helmert contrasts (k × k−1) of one factor.
+- `rm_contrasts(levels, term, custom=None)` — orthonormal contrast matrix of a within-dyad term over the cell layout (`levels` dict order, first factor slowest; e.g. film-major).
+- `edge_factor_contrasts(edge_names, factor)` — 8 × 1 contrast of `direction`/`source`/`target` parsed from `"<role>:<signal>-><role>:<signal>"`; asserts a complete 2 × 2 × 2 layout.
+- `residual_ss(Y, M)` — trace residual sum of squares of Y ~ M (batched).
+- `f_statistic(Y, X, Z)` — pooled F of the columns X in Y ~ [X Z] (sphericity-assumed RM-ANOVA F; batched).
+- `rearrangement_matrix(n, n_perm, mode, rng, groups=None)` — row permutations or sign vectors, exhaustive when ≤ `n_perm` exist.
+- `freedman_lane(Y, X, Z, rearrangements, mode)` — `(F_obs, F_perm)`: residuals of Y ~ Z permuted or sign-flipped, full model refitted.
+- `labels_from_permutations(in_one, perms)` — group labels implied by permuting data rows against fixed labels.
+- `relabel_renull_test(y_fn, labels, rearrangements, term_fn)` — raw-label permutation of group terms whose data are recomputed for every relabelling (e.g. delta against re-nulled within-group nulls).
+
 ---
 
 ## SECORE (cardiac / H10) sub-pipeline

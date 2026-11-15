@@ -288,7 +288,8 @@ def simulate_dyads(rng, n_dyads, n_samples, fs, pole_radius_ranges, f0_ranges, e
     return np.stack(out, axis=0)
 
 
-def simulate_dyads_fixed_params(rng, pole_radius, f0_hz, n_samples, fs, edges_per_dyad, n_lags):
+def simulate_dyads_fixed_params(rng, pole_radius, f0_hz, n_samples, fs, edges_per_dyad, n_lags, stimulus=None,
+                                stimulus_gain=None):
     """Simulate dyads whose per-person node parameters are given (e.g. kept across films).
 
     Each dyad gets its own planted edges, so coupling can differ between groups or films while
@@ -304,13 +305,18 @@ def simulate_dyads_fixed_params(rng, pole_radius, f0_hz, n_samples, fs, edges_pe
     edges_per_dyad : list of list of tuple
         ``edges_per_dyad[d]`` = ``[(source, target, lag, gain), ...]`` of dyad d.
     n_lags : int
+    stimulus : np.ndarray, shape (n_samples,), optional
+        Common input time course (same for all dyads), as in `simulate_dyads`; the drive draws nothing from `rng`.
+    stimulus_gain : np.ndarray, shape (n_dyads, k), optional
+        Gain of the stimulus on each node of each dyad (needed with `stimulus`).
 
     Returns
     -------
     np.ndarray, shape (n_dyads, k, n_samples)
         Raw (not z-scored) signals.
     """
-    return np.stack([simulate_var(build_coupling(pole_radius[d], f0_hz[d], fs, edges, n_lags), n_samples, rng)
+    drives = [None] * len(edges_per_dyad) if stimulus is None else [g[:, None] * stimulus[None, :] for g in stimulus_gain]
+    return np.stack([simulate_var(build_coupling(pole_radius[d], f0_hz[d], fs, edges, n_lags), n_samples, rng, drive=drives[d])
                      for d, edges in enumerate(edges_per_dyad)])
 
 

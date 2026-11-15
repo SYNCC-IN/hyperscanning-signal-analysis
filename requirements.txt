@@ -8,6 +8,7 @@ scikit-learn==1.8.0
 
 # Statistics (Ljung-Box residual whiteness test, src/mvar_diag.py)
 statsmodels==0.15.0
+pyarrow==26.0.1
 
 # Signal processing and neurophysiology
 neurokit2==0.2.12

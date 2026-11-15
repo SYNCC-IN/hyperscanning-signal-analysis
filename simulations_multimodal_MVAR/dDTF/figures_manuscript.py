@@ -11,6 +11,8 @@ fig06 ... fig14         : publication figures of the results (S3-S13), SVG + PNG
                           CSVs of the full runs; no simulation is run here.
 figS4_frequency_gap     : Fig. S4 (Supplement S3): S2 edge value relative to gap 0 and direction index vs. frequency gap.
 figS10_group_film_bayes : Fig. S10 (Supplement S4.10): S13 with the optional Bayesian models.
+figS11_fl_anova         : Fig. S11: S13 factorial permutation ANOVA (Freedman-Lane, max-F): null rates, power, per-edge
+                          detection and leakage, and the nuisance covariate (scenario i).
 
 Usage: python figures_manuscript.py [all | NAME ...] [OUT_DIR [RESULTS_DIR]]
   NAME is a function name below (level1, level2, fig3, fig_gain_conversion, fig02, fig06 ... fig14); default all.
@@ -946,6 +948,89 @@ def figS10():
         save(fig, "figS10_group_film_bayes")
 
 
+FL_TERMS = ["G", "F", "E", "FxE", "GxF", "GxE", "Gxdirection", "Gxsource", "Gxtarget", "GxFxE"]
+FL_TERM_LABELS = {"G": "G", "F": "F", "E": "E", "FxE": "F×E", "GxF": "G×F", "GxE": "G×E", "Gxdirection": "G×dir",
+                  "Gxsource": "G×src", "Gxtarget": "G×tgt", "GxFxE": "G×F×E"}
+FL_EDGE_LABELS = {"cg:ROI->child:ROI": "cg→ch\nbrain", "child:ROI->cg:ROI": "ch→cg\nbrain", "cg:HRV->child:HRV": "cg→ch\nheart",
+                  "child:HRV->cg:HRV": "ch→cg\nheart", "cg:HRV->child:ROI": "cg heart\n→ch brain", "child:HRV->cg:ROI": "ch heart\n→cg brain",
+                  "cg:ROI->child:HRV": "cg brain\n→ch heart", "child:ROI->cg:HRV": "ch brain\n→cg heart"}
+
+
+def fl_point(table, est, scenario, term, variant, covariate_in_Z=False):
+    """(rate, lower error, upper error) of one omnibus row of S_13_summary_fl_omnibus for one estimator (NaN if absent)."""
+    row = table[(table.scenario == scenario) & (table.term == term) & (table.variant == variant) & (table.covariate_in_Z == covariate_in_Z)]
+    if row.empty:
+        return np.nan, np.nan, np.nan
+    r = row.iloc[0]
+    return r[f"rate {est}"], r[f"rate {est}"] - r[f"ci_low {est}"], r[f"ci_high {est}"] - r[f"rate {est}"]
+
+
+def fl_series(ax, table, series, terms, n_slots):
+    """Dodged Wilson error bars of omnibus rates: series = [(label, colour, scenario, variant, covariate_in_Z or None)].
+
+    variant None takes 'renull' for group terms and 'fixed' otherwise. Filled markers dDTF, open GPDC.
+    """
+    k = 0
+    for label, colour, scenario, variant, cov in series:
+        for est in EST:
+            pts = np.array([fl_point(table, est, scenario, t, variant or ("renull" if t.startswith("G") else "fixed"), bool(cov))
+                            for t in terms])
+            ax.errorbar(np.arange(len(terms)) + dodge(k, n_slots, 0.8), pts[:, 0], yerr=pts[:, 1:].T, fmt="o", ms=3, lw=0.6,
+                        color=colour, mfc="white" if est == "GPDC" else colour, mew=0.8, label=label if est == "dDTF" else None)
+            k += 1
+    ax.set_xticks(range(len(terms))); ax.set_xticklabels([FL_TERM_LABELS[t] for t in terms])
+
+
+def figS11():
+    """Fig. S11 (S13): factorial permutation ANOVA: A null rates (a, h, i), B power (c, e, f, g), C per-edge max-F in c, D scenario i."""
+    omni = comparison("S_13_summary_fl_omnibus.csv")
+    edge = comparison("S_13_summary_fl_edge.csv")
+    summary = {est: pd.read_json(RES / est / "S_13" / "summary.json", typ="series") for est in EST}
+    with plt.rc_context(PUB):
+        fig = plt.figure(figsize=(FULL_W, 6.4))
+        gs = fig.add_gridspec(2, 3, hspace=0.6, wspace=0.38, left=0.07, right=0.99, top=0.95, bottom=0.13, width_ratios=[1, 1.2, 1])
+        # A: omnibus rates under the null
+        ax = fig.add_subplot(gs[0, :]); fpr_guides(ax)
+        null = [("a, fixed", "#1b9e77", "a", "fixed", False), ("a, renull", "#66c2a5", "a", "renull", False),
+                ("h, fixed", "#d95f02", "h", "fixed", False), ("h, renull", "#fc8d62", "h", "renull", False),
+                ("i, fixed, c in Z", "#7570b3", "i", "fixed", True)]
+        fl_series(ax, omni, null, FL_TERMS, 2 * len(null))
+        ax.set_ylim(0, 0.2); ax.set_ylabel("rejection rate"); ax.set_title("omnibus terms under the null (filled dDTF, open GPDC)")
+        ax.legend(fontsize=6, ncol=5, loc="upper center"); panel(ax, "A", x=-0.06)
+        # B: power in c, e, f, g
+        ax = fig.add_subplot(gs[1, 0]); fpr_guides(ax)
+        power = [("c", "#e7298a", "c", None, False), ("e", "#66a61e", "e", None, False), ("f", "#e6ab02", "f", None, False),
+                 ("g", "#a6761d", "g", None, False)]
+        terms = ["G", "F", "GxF", "GxE", "Gxdirection"]
+        fl_series(ax, omni, power, terms, 2 * len(power))
+        ax.axhline(0.8, color="0.3", ls=":", lw=0.6); ax.set_ylim(-0.02, 1.02); ax.set_ylabel("rejection rate")
+        ax.set_title("power (G terms renull)"); ax.legend(fontsize=5.5, ncol=2, loc="center right"); panel(ax, "B", x=-0.3)
+        # C: per-edge max-F G in c, and leakage into any null edge
+        ax = fig.add_subplot(gs[1, 1]); fpr_guides(ax)
+        edges = list(FL_EDGE_LABELS)
+        for k, est in enumerate(EST):
+            sub = edge[(edge.scenario == "c") & (edge.term == "G") & (edge.variant == "renull")].set_index("edge").reindex(edges)
+            rate, n = sub[f"rate_maxF {est}"].to_numpy(), sub[f"n {est}"].to_numpy()
+            ax.errorbar(np.arange(len(edges)) + dodge(k, 2, 0.5), rate, yerr=wilson_err(rate, n), fmt="o", ms=3, lw=0.6,
+                        color=EST_COL[est], mfc="white" if est == "GPDC" else EST_COL[est], mew=0.8, label=est)
+            leak = summary[est]["criterion_values"]["c_edge_G_renull_leakage"]
+            for j, (scope, mk) in enumerate([("all null edges", "s"), ("null edges except reverse of planted", "D")]):
+                v = leak[scope]
+                ax.errorbar(len(edges) + j + dodge(k, 2, 0.5), v["rate"], yerr=[[v["rate"] - v["ci_low"]], [v["ci_high"] - v["rate"]]],
+                            fmt=mk, ms=3, lw=0.6, color=EST_COL[est], mfc="white" if est == "GPDC" else EST_COL[est], mew=0.8)
+        ax.set_xticks(range(len(edges) + 2))
+        ax.set_xticklabels([FL_EDGE_LABELS[e] for e in edges] + ["any null\nedge", "any null\nexcl. reverse"], fontsize=5, rotation=90)
+        ax.axhline(0.8, color="0.3", ls=":", lw=0.6); ax.set_ylim(-0.02, 1.02); ax.set_ylabel("per-edge max-F G detection")
+        ax.set_title("scenario c: planted cg→ch brain"); ax.legend(fontsize=5.5, loc="upper right"); panel(ax, "C", x=-0.25)
+        # D: scenario i with and without the covariate in Z
+        ax = fig.add_subplot(gs[1, 2]); fpr_guides(ax)
+        terms = [t for t in FL_TERMS if t.startswith("G")]
+        fl_series(ax, omni, [("c in Z", "#7570b3", "i", "fixed", True), ("c omitted", "#e7298a", "i", "fixed", False)], terms, 4)
+        ax.set_ylim(-0.02, 1.02); ax.set_ylabel("rejection rate"); ax.set_title("scenario i: nuisance covariate")
+        ax.tick_params(axis="x", labelsize=5.5, rotation=90); ax.legend(fontsize=5.5, loc="upper right"); panel(ax, "D", x=-0.3)
+        save(fig, "figS11_fl_anova")
+
+
 S2_BANDWIDTH_HZ = 1.5                                 # BANDWIDTH_HZ of S02_envelope_vs_phase.py
 S2_PATHS = [("envelope", EEG_COL, "o", "envelope"), ("phase", "#b8460b", "s", "raw signal, widening grid"),
             ("phase_fixedgrid", "#56b4e9", "^", "raw signal, fixed grid")]
@@ -1002,7 +1087,8 @@ def figS4():
 
 FIGURES = {"level1": level1, "level2": level2, "fig3": fig3, "fig_gain_conversion": fig_gain_conversion,
            "fig02": fig02, "fig06": fig06, "fig07": fig07, "fig08": fig08, "fig09": fig09,
-           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4, "figS10": figS10}
+           "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4, "figS10": figS10,
+           "figS11": figS11}
 
 if __name__ == "__main__":
     for name in (list(FIGURES) if not NAMES or NAMES == ["all"] else NAMES):
