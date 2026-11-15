@@ -13,6 +13,9 @@ figS4_frequency_gap     : Fig. S4 (Supplement S3): S2 edge value relative to gap
 figS10_group_film_bayes : Fig. S10 (Supplement S4.10): S13 with the optional Bayesian models.
 figS11_fl_anova         : Fig. S11: S13 factorial permutation ANOVA (Freedman-Lane, max-F): null rates, power, per-edge
                           detection and leakage, and the nuisance covariate (scenario i).
+figS11_fl_anova_v2      : S13 factorial-ANOVA follow-up: null rates of renull + ss_hyp (a, h at 1000 replicates; j), power
+                          vs the existing S13 tests (c, e, g), scenario j (covariate + unequal reactivity), and within-dyad
+                          terms on delta vs T_real.
 
 Usage: python figures_manuscript.py [all | NAME ...] [OUT_DIR [RESULTS_DIR]]
   NAME is a function name below (level1, level2, fig3, fig_gain_conversion, fig02, fig06 ... fig14); default all.
@@ -1031,6 +1034,96 @@ def figS11():
         save(fig, "figS11_fl_anova")
 
 
+def ci_bars(ax, x, rows, est, colour, marker="o", alpha=1.0, label=None, ms=3):
+    """Wilson error bars of comparison-table rows (columns 'rate/ci_low/ci_high <est>') at positions x."""
+    rate = rows[f"rate {est}"].to_numpy(float)
+    err = np.vstack([rate - rows[f"ci_low {est}"].to_numpy(float), rows[f"ci_high {est}"].to_numpy(float) - rate])
+    ax.errorbar(x, rate, yerr=err, fmt=marker, ms=ms, lw=0.6, color=colour, alpha=alpha, mew=0.8,
+                mfc="white" if est == "GPDC" else colour, label=label)
+
+
+def figS11_v2():
+    """S13 factorial-ANOVA follow-up: A null rates (renull + ss_hyp), B power, C scenario j, D within terms on delta vs T_real."""
+    prec = comparison("S_13_S_13_follow_precision.csv")
+    power = comparison("S_13_S_13_follow_power.csv")
+    jtab = comparison("S_13_S_13_follow_j.csv")
+    within = comparison("S_13_S_13_follow_within.csv")
+    terms = [("omnibus", t) for t in FL_TERMS if t.startswith("G")] + [("per-edge max-F", "G"), ("per-edge max-F", "GxF")]
+    labels = [FL_TERM_LABELS[t] if sc == "omnibus" else f"edge {FL_TERM_LABELS[t]}" for sc, t in terms]
+    with plt.rc_context(PUB):
+        fig = plt.figure(figsize=(FULL_W, 6.6))
+        gs = fig.add_gridspec(2, 3, hspace=0.62, wspace=0.4, left=0.07, right=0.99, top=0.95, bottom=0.14, width_ratios=[1.25, 0.8, 1])
+        # A: null rates
+        ax = fig.add_subplot(gs[0, :]); fpr_guides(ax)
+        series = [("a", "renull", "ss_hyp", "#1b9e77", 1.0), ("h", "renull", "ss_hyp", "#d95f02", 1.0),
+                  ("a", "renull", "F", "#1b9e77", 0.3), ("h", "renull", "F", "#d95f02", 0.3),
+                  ("a", "fixed", "F", "#1b9e77", 0.15), ("h", "fixed", "F", "#d95f02", 0.15)]
+        n_slots = 2 * (len(series) + 1)
+        k = 0
+        for scenario, variant, statistic, colour, alpha in series:
+            for est in EST:
+                rows = pd.concat([prec[(prec.scenario == scenario) & (prec.variant == variant) & (prec.statistic == statistic)
+                                       & (prec.scope == sc) & (prec.term == t)] for sc, t in terms])
+                ci_bars(ax, np.arange(len(terms)) + dodge(k, n_slots, 0.85), rows, est, colour, alpha=alpha,
+                        label=f"{scenario}, {variant} + {statistic}" if est == "dDTF" else None)
+                k += 1
+        for est in EST:
+            rows = jtab[(jtab.method == "hybrid_renull_cov") & (jtab.statistic == "ss_hyp")]
+            x = [labels.index("G"), labels.index("edge G")]
+            ci_bars(ax, np.array(x) + dodge(k, n_slots, 0.85), pd.concat([rows[rows.scope == "omnibus"], rows[rows.scope == "per-edge max-F"]]),
+                    est, "#7570b3", marker="s", label="j, hybrid + ss_hyp" if est == "dDTF" else None)
+            k += 1
+        ax.set_xticks(range(len(terms))); ax.set_xticklabels(labels); ax.set_ylim(0, 0.32); ax.set_ylabel("rejection rate")
+        ax.set_title("group terms under the null (a, h: 1000 replicates; j: 200; filled dDTF, open GPDC; faint: comparators)")
+        ax.legend(fontsize=5.5, ncol=4, loc="upper center"); panel(ax, "A", x=-0.06)
+        # B: power
+        ax = fig.add_subplot(gs[1, 0])
+        cats = [("c", "renull+ss_hyp", "omnibus term", "GxE", None, "c: G×E"), ("c", "renull+ss_hyp", "planted edge", "G", None, "c: edge G"),
+                ("c", "perm_mean_maxT", "planted edge", "perm_mean_maxT", None, "c: S13 mean"),
+                ("c", "perm_film_maxT", "planted edge", "perm_film_maxT", None, "c: S13 film"),
+                ("e", "renull+ss_hyp", "planted edge", "GxF", None, "e: edge G×F"), ("e", "renull+ss_hyp", "omnibus term", "GxFxE", None, "e: G×F×E"),
+                ("e", "renull+ss_hyp", "omnibus term", "GxF", None, "e: G×F*"),
+                ("e", "perm_interaction_maxT", "planted edge", "perm_interaction_maxT", None, "e: S13 inter."),
+                ("g", "renull+ss_hyp", "omnibus term", "Gxdirection", None, "g: G×dir"),
+                ("g", "perm_mean_maxT", "planted edge", "perm_mean_maxT", None, "g: S13 mean†")]
+        for i, (scenario, method, kind, term, _, _) in enumerate(cats):
+            sub = power[(power.scenario == scenario) & (power.method == method) & (power.kind == kind) & (power.term == term)]
+            colour = "#e7298a" if method == "renull+ss_hyp" else "0.45"
+            for k, est in enumerate(EST):
+                mean = sub[[f"rate {est}", f"ci_low {est}", f"ci_high {est}"]].mean().to_frame().T     # g: mean over planted edges
+                ci_bars(ax, [i + dodge(k, 2, 0.4)], mean, est, colour)
+        ax.axhline(0.8, color="0.3", ls=":", lw=0.6); ax.set_ylim(-0.02, 1.05)
+        ax.set_xticks(range(len(cats))); ax.set_xticklabels([c[5] for c in cats], rotation=90, fontsize=5.5)
+        ax.set_ylabel("detection rate"); ax.set_title("power: renull + ss_hyp (pink) vs S13 tests (grey)", fontsize=6.5)
+        fig.text(0.005, 0.47, "B", fontsize=11, fontweight="bold")
+        # C: scenario j
+        ax = fig.add_subplot(gs[1, 1]); fpr_guides(ax)
+        jm = [("hybrid_renull_cov", "ss_hyp", "hybrid ss"), ("hybrid_renull_cov", "F", "hybrid F"), ("hybrid_renull_cov", "beta", "hybrid β"),
+              ("fixed_FL_cov", "F", "FL c F"), ("fixed_FL_cov", "ss_hyp", "FL c ss"), ("renull_no_cov", "ss_hyp", "no c ss")]
+        for i, (method, statistic, _) in enumerate(jm):
+            for k, (scope, marker) in enumerate([("omnibus", "o"), ("per-edge max-F", "s")]):
+                rows = jtab[(jtab.method == method) & (jtab.statistic == statistic) & (jtab.scope == scope)]
+                for m, est in enumerate(EST):
+                    ci_bars(ax, [i + dodge(2 * k + m, 4, 0.7)], rows, est, EST_COL[est], marker=marker)
+        ax.set_xticks(range(len(jm))); ax.set_xticklabels([j[2] for j in jm], rotation=90, fontsize=5.5); ax.set_ylim(0, 0.5)
+        ax.set_ylabel("G rejection rate"); ax.set_title("scenario j (circle omnibus, square edge)", fontsize=6.5); panel(ax, "C", x=-0.35)
+        # D: within terms on delta vs T_real
+        ax = fig.add_subplot(gs[1, 2]); fpr_guides(ax)
+        wc = [(sc, t) for sc in ("a", "h") for t in ("F", "FxE", "E", "film contrast")]
+        dvs = [("delta", "#e7298a"), ("T_real", "#1b9e77"), ("T_real_minus_pooled", "#7570b3")]
+        for i, (scenario, term) in enumerate(wc):
+            for k, (dv, colour) in enumerate(dvs):
+                rows = within[(within.scenario == scenario) & (within.term == term) & (within.dv == dv)
+                              & within.statistic.isin(["F", "maxT"])]
+                for m, est in enumerate(EST):
+                    ci_bars(ax, [i + dodge(2 * k + m, 6, 0.8)], rows, est, colour,
+                            label=dv.replace("_", " ") if (i == 0 and est == "dDTF") else None)
+        ax.set_xticks(range(len(wc))); ax.set_xticklabels([f"{sc}: {t.replace('film contrast', 'film c.')}" for sc, t in wc], rotation=90, fontsize=5.5)
+        ax.set_ylim(0, 0.3); ax.set_ylabel("rejection rate (F; film contrast max-T)"); ax.set_title("within terms by DV (E on T_real not null)", fontsize=6.5)
+        ax.legend(fontsize=5, loc="upper left"); panel(ax, "D", x=-0.3)
+        save(fig, "figS11_fl_anova_v2")
+
+
 S2_BANDWIDTH_HZ = 1.5                                 # BANDWIDTH_HZ of S02_envelope_vs_phase.py
 S2_PATHS = [("envelope", EEG_COL, "o", "envelope"), ("phase", "#b8460b", "s", "raw signal, widening grid"),
             ("phase_fixedgrid", "#56b4e9", "^", "raw signal, fixed grid")]
@@ -1088,7 +1181,7 @@ def figS4():
 FIGURES = {"level1": level1, "level2": level2, "fig3": fig3, "fig_gain_conversion": fig_gain_conversion,
            "fig02": fig02, "fig06": fig06, "fig07": fig07, "fig08": fig08, "fig09": fig09,
            "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4, "figS10": figS10,
-           "figS11": figS11}
+           "figS11": figS11, "figS11_v2": figS11_v2}
 
 if __name__ == "__main__":
     for name in (list(FIGURES) if not NAMES or NAMES == ["all"] else NAMES):

@@ -13,7 +13,8 @@ Step 3  group terms (omnibus G, GxF, GxE, Gxdirection, Gxsource, Gxtarget, GxFxE
         Y ~ group + c), statistics F, ss_hyp and beta (squared group coefficient).
 Step 4  G main effect in a and h: SS_hyp and SS_err at the observed labels and over the rearrangements.
 
-Usage: python S13_fl_diagnostics.py full [dDTF|GPDC]
+Usage: python S13_fl_diagnostics.py full [dDTF|GPDC] [summarize]
+  summarize      rebuild S_13_diag_statistic.csv and S_13_diag_covariate.csv from S_13_diag_raw.csv (no simulation)
   SIM_NJOBS=<n>  parallel processes (default 8)
 Writes Results/<estimator>/S_13/: S_13_diag_statistic.csv, S_13_diag_ss.csv, S_13_diag_covariate.csv,
 S_13_diag_raw.csv (one row per study and test), S_13_diag_identity.csv (Step 2, per study), T_bc64_<scenario>_*.npz.
@@ -48,6 +49,7 @@ from src.sim_inference import family_pvalues, renull_delta, wilson_interval
 # ---------------------------------------------------------------------------
 MODE, ESTIMATOR = sys.argv[1], sys.argv[2]
 assert MODE == "full", "the diagnostics read the full `fl` run"
+SUMMARIZE_ONLY = len(sys.argv) > 3 and sys.argv[3] == "summarize"
 N_JOBS = int(os.environ.get("SIM_NJOBS", 8))
 OUT_DIR = HERE / "Results" / ESTIMATOR / "S_13"
 RUN_TAG = "full_flrun_reps_0-199"                     # files of the `fl` run
@@ -208,16 +210,21 @@ def rate_row(flags):
     return {"rate": k / n, "ci_low": low, "ci_high": high, "n": n, "in_band": bool(FWER_BAND[0] <= k / n <= FWER_BAND[1])}
 
 
-def summarize(raw, ss):
-    """Step 3 rate tables (omnibus rejection, per-edge max-F family-wise rate) and Step 4 ratio table."""
+def rate_tables(raw):
+    """Step 3 rate tables (omnibus rejection, per-edge max-F family-wise rate); every cell is a true null."""
     raw = raw.assign(detected=raw.p < ALPHA)
     grid = raw[raw.scenario.isin(GRID_SCENARIOS)]
     rows = []
     for (scenario, variant, statistic, scope, term), sub in grid.groupby(["scenario", "method", "statistic", "scope", "term"]):
         rows.append({"estimator": ESTIMATOR, "scenario": scenario, "variant": variant, "statistic": statistic, "term": term,
-                     "scope": scope, **rate_row(sub.groupby("rep").detected.any())})
-    cov = [{"estimator": ESTIMATOR, "scenario": COVARIATE_SCENARIO, "method": m, "statistic": s, **rate_row(sub.detected)}
+                     "scope": scope, "null_cell": True, **rate_row(sub.groupby("rep").detected.any())})
+    cov = [{"estimator": ESTIMATOR, "scenario": COVARIATE_SCENARIO, "method": m, "statistic": s, "null_cell": True, **rate_row(sub.detected)}
            for (m, s), sub in raw[raw.scenario == COVARIATE_SCENARIO].groupby(["method", "statistic"])]
+    return pd.DataFrame(rows), pd.DataFrame(cov)
+
+
+def ss_table(ss):
+    """Step 4 ratio table: medians over studies of permuted / observed SS_err and SS_hyp."""
     ratios = []
     for (scenario, variant), sub in ss.groupby(["scenario", "variant"]):
         r = {"estimator": ESTIMATOR, "scenario": scenario, "variant": variant, "n": len(sub),
@@ -226,11 +233,16 @@ def summarize(raw, ss):
         for q in PERCENTILES:
             r[f"median_ss_err_perm_p{q}_over_obs"] = float(np.median(sub[f"ss_err_perm_p{q}"] / sub.ss_err_obs))
         ratios.append(r)
-    return pd.DataFrame(rows), pd.DataFrame(cov), pd.DataFrame(ratios)
+    return pd.DataFrame(ratios)
 
 
 def main():
     """Run the diagnostics for one estimator and write the tables."""
+    if SUMMARIZE_ONLY:
+        statistic, covariate = rate_tables(pd.read_csv(OUT_DIR / "S_13_diag_raw.csv"))
+        statistic.to_csv(OUT_DIR / "S_13_diag_statistic.csv", index=False)
+        covariate.to_csv(OUT_DIR / "S_13_diag_covariate.csv", index=False)
+        return
     sim_progress.begin(f"S13 fl diagnostics {ESTIMATOR}", HERE / "Results", mode=MODE)
     delta = saved_run()[0]
     seeds = spawn_seeds(s13.BASE_SEED, len(s13.SCENARIOS) * s13.N_REP_MAX)
@@ -255,7 +267,8 @@ def main():
             for film, (real, values) in res["tables"].items():
                 arrays[f"{key}_{film}_real"], arrays[f"{key}_{film}_values"] = real, values
         np.savez_compressed(OUT_DIR / f"T_bc64_{scenario}_{RUN_TAG}.npz", edges=np.array(EDGES), **arrays)
-    statistic, covariate, ratios = summarize(raw, ss)
+    statistic, covariate = rate_tables(raw)
+    ratios = ss_table(ss)
     statistic.to_csv(OUT_DIR / "S_13_diag_statistic.csv", index=False)
     covariate.to_csv(OUT_DIR / "S_13_diag_covariate.csv", index=False)
     ratios.to_csv(OUT_DIR / "S_13_diag_ss.csv", index=False)

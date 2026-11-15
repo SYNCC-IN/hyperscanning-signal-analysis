@@ -148,13 +148,15 @@ SCENARIOS = {
           "child:ROI->cg:ROI": [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]], "child:HRV->cg:HRV": [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]]},
     "h": {},
     "i": {"cg:ROI->child:ROI": [[0.2, 0.2, 0.2], [0.2, 0.2, 0.2]]},     # base gain; + slope * c (COVARIATE_SCENARIOS)
+    "j": {"cg:ROI->child:ROI": [[0.2, 0.2, 0.2], [0.2, 0.2, 0.2]]},     # i + the stimulus of h (S13_fl_followup.py)
 }
 # common stimulus (S7 mechanism and STIM_RADIUS / STIM_F0 / sd_log of S7): a new stimulus time course per film, the same for
 # all dyads of the film; person-specific gains (log-normal) drawn once per study, multiplied by `ratio` in ASD
 STIM_RADIUS, STIM_F0 = 0.7, 0.3
-STIMULUS_SCENARIOS = {"h": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}}
+STIMULUS_SCENARIOS = {"h": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}, "j": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}}
 # dyad-level covariate c ~ N(group_means[group], sd); gain of `edge` = max(0, base + slope * c) (D5)
-COVARIATE_SCENARIOS = {"i": {"edge": "cg:ROI->child:ROI", "group_means": (-0.5, 0.5), "sd": 1.0, "slope": 0.1}}
+COVARIATE_SCENARIOS = {"i": {"edge": "cg:ROI->child:ROI", "group_means": (-0.5, 0.5), "sd": 1.0, "slope": 0.1},
+                       "j": {"edge": "cg:ROI->child:ROI", "group_means": (-0.5, 0.5), "sd": 1.0, "slope": 0.1}}
 ALPHA = 0.05
 N_PERM = 1000
 HDI_PROB = 0.95
@@ -207,6 +209,7 @@ FL_EDGE = {      # per-edge terms on the 3-film vector of one edge, max-F over t
 }
 FL_MODES = {"between": "permute", "within": "signflip"}
 FL_PLANTED_KEY = {"G": "group", "F": "film", "GxF": "interaction"}        # per-edge term -> key of `planted_effects`
+REPORT_ONLY = "[proposed: mis-specified for localized effects — report only]"   # omnibus criteria on 1-edge / 1-film effects
 CONSISTENCY_RTOL = 1e-9              # rounding only; p-values can differ by 1 / (1 + N_PERM) per exact tie with F_obs
 DESCRIPTIVE_ONLY = {"dDTF": ["c leakage", "g"]}   # D6: reverse edges inherit the forward coupling (symmetric |kappa|)
 
@@ -251,6 +254,19 @@ def check_planted_stability(radii, f0s, edges_per_dyad, scenario, film):
         _, max_root, stable = ar_root_stability(build_coupling(radii[d], f0s[d], FS, edges, N_LAGS))
         if not stable:
             raise ValueError(f"unstable planted VAR: scenario {scenario}, film {film}, dyad {d}, max root {max_root:.4f}, edges {edges}")
+
+
+def planted_terms(scenario):
+    """Omnibus factorial-ANOVA terms with a planted effect in the VAR gains of SCENARIOS (base gains, covariate slope aside).
+
+    A group term is planted if its contrast of the group difference of the gain table (film x edge, film-major) is
+    non-zero; a within-dyad term if its contrast of the group mean of the gain table is non-zero.
+    """
+    gains = np.zeros((len(GROUPS), len(FILMS), len(EDGES)))
+    for edge, g in SCENARIOS[scenario].items():
+        gains[:, :, list(EDGES).index(edge)] = g
+    difference, mean = (gains[1] - gains[0]).ravel(), gains.mean(axis=0).ravel()
+    return {t for t, (C, kind) in FL_OMNIBUS.items() if np.linalg.norm(C.T @ (difference if kind == "between" else mean)) > 1e-12}
 
 
 def simulate_delta_table(rng, scenario, n_per_group, est):
@@ -800,12 +816,13 @@ def fl_variant(method):
 
 
 def fl_omnibus_table(fl):
-    """Omnibus rejection rate (Wilson CI) per scenario, variant, covariate in Z and term."""
+    """Omnibus rejection rate (Wilson CI) per scenario, variant, covariate in Z and term; `null_cell` marks true nulls."""
     rows = []
     for (scenario, method, term), sub in fl[fl.method.str.startswith("fl_omnibus")].groupby(["scenario", "method", "effect"]):
+        nocov = method == "fl_omnibus_fixed_nocov"            # omitted covariate: expected inflated, not a null cell
         rows.append({"estimator": ESTIMATOR, "scenario": scenario, "variant": fl_variant(method),
                      "covariate_in_Z": method == "fl_omnibus_fixed" and scenario in COVARIATE_SCENARIOS, "term": term,
-                     **rate_row(sub.detected)})
+                     "null_cell": not nocov and term not in planted_terms(scenario), **rate_row(sub.detected)})
     return pd.DataFrame(rows)
 
 
@@ -852,9 +869,9 @@ def fl_criteria(fl, omnibus):
     def omni(scenario, method, term):
         return rate_row(fl_select(fl, scenario, method, term, "all").detected)
 
-    def put(key, text, met, value, descriptive_key=None):
+    def put(key, text, met, value, descriptive_key=None, label="[proposed]"):
         values[key] = value
-        criteria[f"[proposed] {text}"] = "descriptive" if descriptive_key in descriptive else bool(met)
+        criteria[f"{label} {text}"] = "descriptive" if descriptive_key in descriptive else bool(met)
 
     if "a" in present:
         for method in ("fl_omnibus_fixed", "fl_omnibus_renull"):
@@ -879,13 +896,14 @@ def fl_criteria(fl, omnibus):
             "for the measure whose reverse edges inherit the forward coupling, D6)", leak["all null edges"]["rate"] <= LEAKAGE_MAX, leak, "c leakage")
     if "e" in present:
         v = omni("e", "fl_omnibus_renull", "GxF")
-        put("e_GxF_renull", f"scenario e: omnibus GxF detected >= {POWER_TARGET:.0%} (renull)", v["rate"] >= POWER_TARGET, v)
+        put("e_GxF_renull", f"scenario e: omnibus GxF detected >= {POWER_TARGET:.0%} (renull)", v["rate"] >= POWER_TARGET, v,
+            label=REPORT_ONLY)
         v = rate_row(fl_select(fl, "e", "fl_edge_renull_maxF", "GxF", planted_effects("e")["interaction"][0]).detected)
         put("e_edge_GxF_renull_maxF_power", f"scenario e: per-edge max-F GxF detects the planted edge >= {POWER_TARGET:.0%} (renull)",
             v["rate"] >= POWER_TARGET, v)
     if "f" in present:
         v = omni("f", "fl_omnibus_fixed", "F")
-        put("f_F", f"scenario f: omnibus F detected >= {POWER_TARGET:.0%}", v["rate"] >= POWER_TARGET, v)
+        put("f_F", f"scenario f: omnibus F detected >= {POWER_TARGET:.0%}", v["rate"] >= POWER_TARGET, v, label=REPORT_ONLY)
         v = omni("f", "fl_omnibus_renull", "GxF")
         put("f_GxF_renull", f"scenario f: omnibus GxF rate within {FWER_BAND} (renull)", in_band(v["rate"]), v)
     if "g" in present:
