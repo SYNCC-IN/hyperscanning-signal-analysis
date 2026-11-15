@@ -995,7 +995,7 @@ def figS11():
                 ("h, fixed", "#d95f02", "h", "fixed", False), ("h, renull", "#fc8d62", "h", "renull", False),
                 ("i, fixed, c in Z", "#7570b3", "i", "fixed", True)]
         fl_series(ax, omni, null, FL_TERMS, 2 * len(null))
-        ax.set_ylim(0, 0.2); ax.set_ylabel("rejection rate"); ax.set_title("omnibus terms under the null (filled dDTF, open GPDC)")
+        ax.set_ylim(0, 0.34); ax.set_ylabel("rejection rate"); ax.set_title("omnibus terms under the null (filled dDTF, open GPDC)")
         ax.legend(fontsize=6, ncol=5, loc="upper center"); panel(ax, "A", x=-0.06)
         # B: power in c, e, f, g
         ax = fig.add_subplot(gs[1, 0]); fpr_guides(ax)
