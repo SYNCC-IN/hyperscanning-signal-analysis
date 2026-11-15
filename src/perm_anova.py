@@ -25,6 +25,10 @@ random ones, or all of them except the observed one when there are no more than 
 p-value. Family-wise control over several tests scored on the same rearrangements (e.g. the 8 edges) uses
 `src.sim_inference.maxT_adjust` (max-T / max-F, standardized, step-down).
 
+Statistics (`term_statistic`): 'F' (above), 'ss_hyp' (tr SS_hyp only, not studentized by SS_err; for a 1-df group
+main effect a monotone function of the squared difference of group means) and 'beta' (sum of squared OLS coefficients
+of X; for one X column and one Y column a monotone function of |beta|).
+
 `relabel_renull_test` is the raw-label (Manly-type) permutation for group terms whose dependent variable itself
 depends on the grouping (delta against a within-group null recomputed for every relabelling).
 """
@@ -150,6 +154,43 @@ def residual_ss(Y, M):
     return ((Y - fitted) ** 2).sum(axis=(-2, -1))
 
 
+def full_design(X, Z):
+    """Full design [X Z] with X and Z broadcast to a common batch shape.
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (..., n, q_x)
+    Z : np.ndarray, shape (..., n, q_z)
+
+    Returns
+    -------
+    np.ndarray, shape (..., n, q_x + q_z)
+    """
+    assert X.shape[-2] == Z.shape[-2], "X and Z must have one row per dyad"
+    batch = np.broadcast_shapes(X.shape[:-2], Z.shape[:-2])
+    return np.concatenate([np.broadcast_to(X, batch + X.shape[-2:]), np.broadcast_to(Z, batch + Z.shape[-2:])], axis=-1)
+
+
+def ss_components(Y, X, Z):
+    """Trace hypothesis and error sums of squares of the columns X in Y ~ [X Z] (batched over leading axes).
+
+    ``SS_hyp = SS_err(Y ~ Z) - SS_err(Y ~ [X Z])``, ``SS_err = SS_err(Y ~ [X Z])``, pooled over the columns of Y.
+
+    Parameters
+    ----------
+    Y : np.ndarray, shape (..., n, k)
+    X : np.ndarray, shape (..., n, q_x)
+    Z : np.ndarray, shape (..., n, q_z)
+
+    Returns
+    -------
+    ss_hyp, ss_err : np.ndarray, shape (...)
+    """
+    assert X.shape[-2] == Y.shape[-2], "X must have one row per dyad"
+    ss_full = residual_ss(Y, full_design(X, Z))
+    return residual_ss(Y, Z) - ss_full, ss_full
+
+
 def f_statistic(Y, X, Z):
     """Pooled (trace) F of the columns X in the OLS model Y ~ [X Z] (batched over leading axes).
 
@@ -169,13 +210,50 @@ def f_statistic(Y, X, Z):
     np.ndarray, shape (...)
     """
     n, q_x, q_z = Y.shape[-2], X.shape[-1], Z.shape[-1]
-    assert X.shape[-2] == n and Z.shape[-2] == n, "X and Z must have one row per dyad"
-    batch = np.broadcast_shapes(X.shape[:-2], Z.shape[:-2])
-    M = np.concatenate([np.broadcast_to(X, batch + X.shape[-2:]), np.broadcast_to(Z, batch + Z.shape[-2:])], axis=-1)
     df_err = n - q_x - q_z
     assert df_err > 0, "no residual degrees of freedom"
-    ss_full, ss_reduced = residual_ss(Y, M), residual_ss(Y, Z)
-    return ((ss_reduced - ss_full) / q_x) / (ss_full / df_err)
+    ss_hyp, ss_err = ss_components(Y, X, Z)
+    return (ss_hyp / q_x) / (ss_err / df_err)
+
+
+def coefficient_ss(Y, X, Z):
+    """Sum of squared OLS coefficients of the columns X in Y ~ [X Z], over all columns of Y (batched).
+
+    Parameters
+    ----------
+    Y : np.ndarray, shape (..., n, k)
+    X : np.ndarray, shape (..., n, q_x)
+    Z : np.ndarray, shape (..., n, q_z)
+
+    Returns
+    -------
+    np.ndarray, shape (...)
+    """
+    beta = np.linalg.pinv(full_design(X, Z)) @ Y
+    return (beta[..., :X.shape[-1], :] ** 2).sum(axis=(-2, -1))
+
+
+def term_statistic(Y, X, Z, statistic):
+    """Statistic of the columns X in Y ~ [X Z]: 'F' (`f_statistic`), 'ss_hyp' (SS_hyp of `ss_components`) or 'beta'
+    (`coefficient_ss`); batched over leading axes.
+
+    Parameters
+    ----------
+    Y : np.ndarray, shape (..., n, k)
+    X : np.ndarray, shape (..., n, q_x)
+    Z : np.ndarray, shape (..., n, q_z)
+    statistic : {'F', 'ss_hyp', 'beta'}
+
+    Returns
+    -------
+    np.ndarray, shape (...)
+    """
+    assert statistic in ("F", "ss_hyp", "beta"), f"unknown statistic {statistic}"
+    if statistic == "F":
+        return f_statistic(Y, X, Z)
+    if statistic == "ss_hyp":
+        return ss_components(Y, X, Z)[0]
+    return coefficient_ss(Y, X, Z)
 
 
 def rearrangement_matrix(n, n_perm, mode, rng, groups=None):
@@ -207,8 +285,8 @@ def rearrangement_matrix(n, n_perm, mode, rng, groups=None):
     return sign_flips(n, rng, n_perm)
 
 
-def freedman_lane(Y, X, Z, rearrangements, mode):
-    """Freedman-Lane permutation (or sign-flip) distribution of the pooled F of the columns X.
+def freedman_lane(Y, X, Z, rearrangements, mode, statistic="F"):
+    """Freedman-Lane permutation (or sign-flip) distribution of a statistic of the columns X (default the pooled F).
 
     The reduced model Y ~ Z is fitted; its residuals are rearranged across dyads (rows permuted, or rows multiplied
     by a sign) and added back to its fitted values; the full model Y ~ [X Z] is refitted on every rearranged data set.
@@ -222,10 +300,13 @@ def freedman_lane(Y, X, Z, rearrangements, mode):
     rearrangements : np.ndarray, shape (B, n)
         From `rearrangement_matrix` (integer indices for 'permute', +1/-1 for 'signflip').
     mode : {'permute', 'signflip'}
+    statistic : {'F', 'ss_hyp', 'beta'}, optional
+        See `term_statistic`.
 
     Returns
     -------
     F_obs : float
+        Observed statistic.
     F_perm : np.ndarray, shape (B,)
     """
     n = Y.shape[0]
@@ -239,7 +320,7 @@ def freedman_lane(Y, X, Z, rearrangements, mode):
     else:
         assert mode == "signflip" and set(np.unique(rearrangements)) <= {-1.0, 1.0}, "signflip mode needs +1/-1 signs"
         rearranged = rearrangements[:, :, None] * resid[None]
-    return float(f_statistic(Y, X, Z)), f_statistic(fitted[None] + rearranged, X, Z)
+    return float(term_statistic(Y, X, Z, statistic)), term_statistic(fitted[None] + rearranged, X, Z, statistic)
 
 
 def labels_from_permutations(in_one, perms):
@@ -260,13 +341,13 @@ def labels_from_permutations(in_one, perms):
     return in_one[np.argsort(perms, axis=1)]
 
 
-def relabel_renull_test(y_fn, labels, rearrangements, term_fn):
+def relabel_renull_test(y_fn, labels, rearrangements, term_fn, statistic="F"):
     """Raw-label permutation of group terms whose dependent variable is recomputed for every relabelling.
 
     For every rearrangement the dyads get the labels `labels_from_permutations` (the same relabelling that a
     Freedman-Lane permutation with an intercept-only Z implies), `y_fn` recomputes the dyad data under those labels
-    (e.g. delta against the within-group nulls of the relabelled groups), and `term_fn` computes the full model's F
-    of every tested term. Not Freedman-Lane: there is no nuisance covariate to residualize.
+    (e.g. delta against the within-group nulls of the relabelled groups), and `term_fn` computes the full model's
+    statistic (`statistic`, see `term_statistic`) of every tested term. Not Freedman-Lane: there is no nuisance covariate to residualize.
 
     Parameters
     ----------
@@ -277,7 +358,9 @@ def relabel_renull_test(y_fn, labels, rearrangements, term_fn):
     rearrangements : np.ndarray of int, shape (B, n)
         Row permutations (`rearrangement_matrix`, mode 'permute').
     term_fn : callable
-        ``term_fn(Y (L, n, n_cells), labels (L, n) bool) -> (L, m)`` F of m tests per labelling.
+        ``term_fn(Y (L, n, n_cells), labels (L, n) bool, statistic) -> (L, m)`` statistic of m tests per labelling.
+    statistic : {'F', 'ss_hyp', 'beta'}, optional
+        Passed to `term_fn`.
 
     Returns
     -------
@@ -287,6 +370,6 @@ def relabel_renull_test(y_fn, labels, rearrangements, term_fn):
     all_labels = np.vstack([labels[None], labels_from_permutations(labels, rearrangements)])
     Y = y_fn(all_labels)
     assert Y.shape[:2] == all_labels.shape, "y_fn must return one (n, n_cells) table per labelling"
-    F = term_fn(Y, all_labels)
+    F = term_fn(Y, all_labels, statistic)
     assert F.ndim == 2 and F.shape[0] == all_labels.shape[0], "term_fn must return (labellings, tests)"
     return F[0], F[1:]

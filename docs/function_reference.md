@@ -383,11 +383,15 @@ Factorial permutation ANOVA for dyad-level repeated-measures designs: Freedman�
 - `rm_contrasts(levels, term, custom=None)` — orthonormal contrast matrix of a within-dyad term over the cell layout (`levels` dict order, first factor slowest; e.g. film-major).
 - `edge_factor_contrasts(edge_names, factor)` — 8 × 1 contrast of `direction`/`source`/`target` parsed from `"<role>:<signal>-><role>:<signal>"`; asserts a complete 2 × 2 × 2 layout.
 - `residual_ss(Y, M)` — trace residual sum of squares of Y ~ M (batched).
+- `full_design(X, Z)` — [X Z] broadcast to a common batch shape.
+- `ss_components(Y, X, Z)` — trace SS_hyp and SS_err of X in Y ~ [X Z] (batched).
 - `f_statistic(Y, X, Z)` — pooled F of the columns X in Y ~ [X Z] (sphericity-assumed RM-ANOVA F; batched).
+- `coefficient_ss(Y, X, Z)` — sum of squared OLS coefficients of X (batched).
+- `term_statistic(Y, X, Z, statistic)` — 'F', 'ss_hyp' (unstudentized) or 'beta'.
 - `rearrangement_matrix(n, n_perm, mode, rng, groups=None)` — row permutations or sign vectors, exhaustive when ≤ `n_perm` exist.
-- `freedman_lane(Y, X, Z, rearrangements, mode)` — `(F_obs, F_perm)`: residuals of Y ~ Z permuted or sign-flipped, full model refitted.
+- `freedman_lane(Y, X, Z, rearrangements, mode, statistic="F")` — `(observed, permuted)` statistic: residuals of Y ~ Z permuted or sign-flipped, full model refitted.
 - `labels_from_permutations(in_one, perms)` — group labels implied by permuting data rows against fixed labels.
-- `relabel_renull_test(y_fn, labels, rearrangements, term_fn)` — raw-label permutation of group terms whose data are recomputed for every relabelling (e.g. delta against re-nulled within-group nulls).
+- `relabel_renull_test(y_fn, labels, rearrangements, term_fn, statistic="F")` — raw-label permutation of group terms whose data are recomputed for every relabelling (e.g. delta against re-nulled within-group nulls).
 
 ---
 

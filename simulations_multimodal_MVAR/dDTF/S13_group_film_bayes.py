@@ -77,7 +77,7 @@ import bambi as bmb
 
 from src.design import window_geometry
 from src.mvar_diag import ar_root_stability
-from src.perm_anova import edge_factor_contrasts, f_statistic, freedman_lane, rearrangement_matrix, relabel_renull_test, rm_contrasts
+from src.perm_anova import edge_factor_contrasts, freedman_lane, rearrangement_matrix, relabel_renull_test, rm_contrasts, term_statistic
 from src.group_model import convergence_row, fit_model_with_priors, standardize_within_edge
 from src.sim_generators import (build_coupling, make_stimulus, sample_node_params, sample_stimulus_gain,
                                 simulate_dyads_fixed_params, zscore_designs)
@@ -391,24 +391,44 @@ def fl_wide(df, n):
     return wide
 
 
-def fl_group_term_F(cells, labels):
-    """F of every group term under one or more labellings: omnibus group terms, then per-edge G and GxF (8 edges each).
+def fl_cells(df, n):
+    """Complete-case dyads and their delta as (n_used, film, edge) and as film-major cell vectors (n_used, 24).
+
+    Returns
+    -------
+    used : np.ndarray of bool, shape (n,)
+    Y : np.ndarray, shape (n_used, n_films, n_edges)
+    cells : np.ndarray, shape (n_used, n_films * n_edges)
+        Film-major (cell f * n_edges + e), the layout of `LEVELS` / `rm_contrasts`.
+    """
+    wide = fl_wide(df, n)
+    used = np.isfinite(wide).all(axis=(1, 2))
+    Y = wide[used]
+    return used, Y, Y.reshape(int(used.sum()), -1)
+
+
+def fl_group_term_F(cells, labels, statistic="F"):
+    """Statistic of every group term under one or more labellings: omnibus group terms, then per-edge G and GxF.
 
     Parameters
     ----------
     cells : np.ndarray, shape (n, 24) or (L, n, 24)
         Film-major delta cell vectors.
     labels : np.ndarray of bool, shape (L, n)
+    statistic : {'F', 'ss_hyp', 'beta'}, optional
+        See `src.perm_anova.term_statistic`.
 
     Returns
     -------
     np.ndarray, shape (L, n_tests)
+        Columns: the 'between' terms of FL_OMNIBUS, then for each 'between' term of FL_EDGE its 8 edges.
     """
     X = np.where(labels, 1.0, -1.0)[:, :, None]
     Z = np.ones((labels.shape[1], 1))
-    cols = [f_statistic(cells @ C, X, Z) for C, kind in FL_OMNIBUS.values() if kind == "between"]
+    cols = [term_statistic(cells @ C, X, Z, statistic) for C, kind in FL_OMNIBUS.values() if kind == "between"]
     per_edge = cells.reshape(cells.shape[:-1] + (len(FILMS), len(EDGES)))
-    cols += [f_statistic(per_edge[..., e] @ C, X, Z) for C, kind in FL_EDGE.values() if kind == "between" for e in range(len(EDGES))]
+    cols += [term_statistic(per_edge[..., e] @ C, X, Z, statistic) for C, kind in FL_EDGE.values() if kind == "between"
+             for e in range(len(EDGES))]
     return np.stack([np.broadcast_to(c, (labels.shape[0],)) for c in cols], axis=1)
 
 
@@ -426,12 +446,8 @@ def fl_records(df, groups, covariate, tables, rng):
     list of dict
         Rows in the raw-results format (method, dv, film, edge, effect, p, detected) plus F and n_dyads.
     """
-    n = len(groups)
-    wide = fl_wide(df, n)
-    used = np.isfinite(wide).all(axis=(1, 2))
+    used, Y, cells = fl_cells(df, len(groups))
     n_used = int(used.sum())
-    Y = wide[used]
-    cells = Y.reshape(n_used, -1)
     arrangements = {kind: rearrangement_matrix(n_used, N_PERM, mode, rng) for kind, mode in FL_MODES.items()}
     out = []
 
