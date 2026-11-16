@@ -1,6 +1,8 @@
 """Stage 0 - Synthetic ground-truth validation of the dDTF connectivity estimator.
 
-Interbrain ffDTF + HRV pipeline, Stage 0 (see DTF_analysis_notes/pipeline_plan.md).
+Interbrain dDTF/GPDC + HRV pipeline, Stage 0 (historical harness; see DTF_analysis_notes/pipeline_plan.md, superseded
+for the analysis settings by the manuscript alignment of 2026-11-16 -- stage00c_end_to_end.py checks the current
+stages 05/07).
 Uses no real data: everything is generated with a known coupling structure, so
 `src.mtmvar.direct_dtf` can be trusted before it ever touches real EEG/HRV
 envelopes.

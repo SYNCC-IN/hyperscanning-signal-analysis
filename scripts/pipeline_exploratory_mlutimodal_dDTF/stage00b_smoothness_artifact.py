@@ -16,11 +16,10 @@ Design (minimal, 2 channels, self-gain as the smoothness axis):
   (`R_ROUGH`); channel 1 is the smooth channel whose `r` is swept
   (`R_SMOOTH_GRID`). The off-diagonal AR coefficients are exactly zero, so the
   ground-truth directed coupling is exactly zero.
-- Everything runs through the REAL Stage 4 estimator path
-  (`src.connectivity.Granger_estimator`) at the pipeline's locked settings
-  (`p=4`, 10 s / 50 % windows, linear per-window detrend, the Stage 4/5
-  frequency grid and 0.2-1.0 Hz coupling band), so the demonstrated behaviour
-  is the pipeline's own, not a parallel re-implementation.
+- Everything runs through `src.connectivity.Granger_estimator` with this demo's own settings (p=2, 10 s / 50 %
+  windows, Yule-Walker fit with linear per-window detrending, coupling band 0.2-1.0 Hz). These are the settings of
+  the EARLIER pipeline, not the manuscript settings the pipeline now uses (OLS, no detrending, p=4, 0.15-0.5 Hz,
+  GPDC and dDTF); the demo is kept as a methods illustration and has not been re-run with them.
 - The cure is the Stage 5 machinery, unmodified: `src.surrogate.surrogate_pairs`
   enumerates foreign pairings (channel 0 from one simulated dyad + channel 1
   from another), which preserve each channel's marginal smoothness but destroy
@@ -72,7 +71,7 @@ from src.mtmvar import example_dyads_figure
 # ---------------------------------------------------------------------------
 OUTPUT_DIR = ensure_dir(PROJECT_ROOT / "Interbrain_ffDTF_analysis"/"00b_smoothness_artifact")
 
-# Estimator settings, locked to the real pipeline (Stage 4/5).
+# Estimator settings of the earlier pipeline (not the current manuscript settings, see the module docstring).
 FS = 2.5
 P = 2
 WIN_LEN_S = 10.0
@@ -81,7 +80,7 @@ DETREND_TYPE = "linear"
 FREQS = np.linspace(0.02, FS / 2 - 0.02, 100)
 COUPLING_BAND_HZ = (0.2, 1.0)
 BOX_COX_LAMBDA = -1  #
-ESTIMATOR = "dDTF"  # the pipeline's default estimator
+ESTIMATOR = "dDTF"
 
 WIN_LEN = round(WIN_LEN_S * FS)
 STEP = round(WIN_LEN * (1 - OVERLAP_FRAC))

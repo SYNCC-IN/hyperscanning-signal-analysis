@@ -1,4 +1,4 @@
-"""Stage 2 - individual-band envelopes for the interbrain ffDTF + HRV pipeline.
+"""Stage 2 - individual-band envelopes for the interbrain dDTF/GPDC + HRV pipeline.
 
 Reads Stage 1's `Interbrain_ffDTF_analysis/01_coverage/coverage.csv` plus the
 hand-curated `included_dyads` list from `pipeline_config.json`'s "shared"

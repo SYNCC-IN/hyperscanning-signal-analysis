@@ -1,6 +1,6 @@
 """Stage 1 - assemble data + coverage table.
 
-First real-data stage of the interbrain ffDTF + HRV pipeline
+First real-data stage of the interbrain dDTF/GPDC + HRV pipeline
 (`DTF_analysis_notes/pipeline_plan.md`). Composes existing loaders
 (`src.io_utils.get_participant_files`, `src.assemble.assemble_dyad`) into a
 per-dyad container per `dyad_id`, then emits one coverage row per

@@ -1,5 +1,15 @@
 # Methodology: Multimodal Interbrain/Intrabrain Connectivity Pipeline (ffDTF + HRV)
 
+> **Superseded settings (2026-11-16).** The analysis now follows the manuscript (Multimodal_MVAR_sym, sections 2.3-2.5,
+> Box 2) and the simulations' code path: OLS on stacked 10 s / 50 % windows, no detrending, fixed p = 4 for real and
+> pseudo-dyads, GPDC and dDTF from one fit, coupling band 0.15-0.5 Hz, Box-Cox 0.25; full pairing tables T per film and
+> estimator (Stage 5); permutation inference with max-T (new Stage 7) as the primary result; the Bayesian model
+> (Stage 6) is an optional effect-size companion without the BH-FDR family or the asymmetry track. Where this
+> document disagrees (Yule-Walker on window-averaged ACF, linear detrending, per-case `p_used`, 0.2-1.0 Hz band,
+> ffDTF, pooled "film" null as reference, BH-FDR primary family), the stage scripts and `pipeline_config.json` are
+> authoritative; see `scripts/pipeline_exploratory_mlutimodal_dDTF/REPORT_pipeline_alignment_2026-11-16.md`.
+
+
 Technical description of the eight-stage pipeline (`stage00`–`stage06`) that estimates
 directed connectivity among an arbitrary, config-declared set of per-role signal
 "nodes" (EEG envelopes, raw IBI, or any further signal type expressed the same way),
