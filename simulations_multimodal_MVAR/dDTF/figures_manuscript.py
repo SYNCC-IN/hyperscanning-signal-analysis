@@ -804,11 +804,12 @@ def fig13():
 
 
 S13_GROUP = [("perm_film_maxT", "max-T within film"), ("perm_24_maxT", "max-T over 24"), ("perm_mean_maxT", "max-T on film mean")]
-S13_FILM = [("perm_contrast_maxT", "sign-flip max-T")]
+S13_FILM = [("repair_maxT", "re-pairing max-T")]
+S13_FILM_TESTS = {"repair_maxT": "B"}      # film methods read from S_13_film_tests.csv (S13_film_tests.py; test B = re-pairing)
 S13_INTER = [("perm_interaction_maxT", "interaction max-T")]
 S13_BAYES = [("bayes_edge", "per-edge Bayes"), ("bayes_pooled_eff", "pooled Bayes"), ("bayes_pooled_int", "(1|edge)")]
 S13_MARK = {"perm_film_maxT": ("o", "0.15"), "perm_24_maxT": ("s", "0.35"), "perm_mean_maxT": ("^", "0.55"),
-            "perm_contrast_maxT": ("D", "0.15"), "perm_interaction_maxT": ("v", "0.15"),
+            "perm_contrast_maxT": ("D", "0.15"), "repair_maxT": ("D", "0.15"), "perm_interaction_maxT": ("v", "0.15"),
             "bayes_edge": ("o", "#c0392b"), "bayes_pooled_eff": ("s", "#e67e22"), "bayes_pooled_int": ("^", "#f1c40f")}
 
 
@@ -816,6 +817,7 @@ S13_CATS = [("c", "group", "c: group"), ("d", "group", "d: group\n(2 edges)"), (
             ("e", "film", "e: film"), ("e", "interaction", "e: interaction"), ("f", "film", "f: film")]
 S13_NULL_ROWS = {"perm_film_maxT": ("group", "group, within film"), "perm_24_maxT": ("group", "group, over 24"),
                  "perm_mean_maxT": ("group", "group, film mean"), "perm_contrast_maxT": ("film", "film, sign-flip"),
+                 "repair_maxT": ("film", "film, re-pairing"),
                  "perm_interaction_maxT": ("interaction", "interaction"), "bayes_edge": ("group", "per-edge Bayes"),
                  "bayes_pooled_eff": ("group", "pooled Bayes"), "bayes_pooled_int": ("group", "(1|edge)")}
 
@@ -823,7 +825,15 @@ S13_NULL_ROWS = {"perm_film_maxT": ("group", "group, within film"), "perm_24_max
 def s13_marker_style(m):
     """Marker, colour and face colour of an S13 method (filled for permutation tests, open for Bayesian models)."""
     mk, col = S13_MARK[m]
-    return mk, col, col if m.startswith("perm") else "white"
+    return mk, col, col if m.startswith("perm") or m in S13_FILM_TESTS else "white"
+
+
+def s13_film_test_rate(est, method, scenario, edge):
+    """(rate, n) of a film test of S_13_film_tests.csv: per-edge max-T on one edge, or 'any (FWER)' under the null."""
+    t = pd.read_csv(RES / est / "S_13" / "S_13_film_tests.csv")
+    row = t[(t.method == S13_FILM_TESTS[method]) & (t.scenario == scenario) & (t.scope == "per-edge max-T") & (t.edge == edge)]
+    assert len(row) == 1, (est, method, scenario, edge)
+    return float(row.rate.iloc[0]), int(row.n.iloc[0])
 
 
 def s13_detection_panels(fig, spec, methods, letter):
@@ -847,12 +857,17 @@ def s13_detection_panels(fig, spec, methods, letter):
         for c, (sc, effect, _) in enumerate(S13_CATS):
             ms_ = methods[effect]
             for k, (m, lab) in enumerate(ms_):
-                sub = planted[(planted.scenario == sc) & (planted.effect == effect) & (planted.method == m)]
-                if sub.empty:
-                    continue
-                rate = sub.rate.mean()
+                if m in S13_FILM_TESTS:
+                    edges = planted[(planted.scenario == sc) & (planted.effect == effect)].edge.unique()
+                    assert len(edges) == 1, (sc, effect, edges)
+                    rate, n = s13_film_test_rate(est, m, sc, edges[0])
+                else:
+                    sub = planted[(planted.scenario == sc) & (planted.effect == effect) & (planted.method == m)]
+                    if sub.empty:
+                        continue
+                    rate, n = sub.rate.mean(), 100 * len(sub)
                 mk, col, mfc = s13_marker_style(m)
-                ax.errorbar(c + dodge(k, len(ms_), 0.75), rate, yerr=wilson_err([rate], 100 * len(sub)), fmt=mk, ms=3, lw=0.6, color=col,
+                ax.errorbar(c + dodge(k, len(ms_), 0.75), rate, yerr=wilson_err([rate], n), fmt=mk, ms=3, lw=0.6, color=col,
                             mfc=mfc, mew=0.8)
         ax.set_xticks(range(len(S13_CATS))); ax.set_xticklabels([c[2] for c in S13_CATS], fontsize=6.2); ax.set_ylim(-0.02, 1.05)
         ax.set_title(f"{est}: planted effects detected")
@@ -881,12 +896,15 @@ def s13_null_panel(ax, methods, letter, letter_x=-0.25):
             if m == "perm_film_maxT":                  # family-wise rate per film (mean over the three films)
                 r = raw[est]; r = r[(r.scenario == "a") & (r.method == m) & (r.dv == "delta")]
                 vals.append(r.groupby(["rep", "film"]).detected.any().mean())
+            elif m in S13_FILM_TESTS:
+                vals.append(s13_film_test_rate(est, m, "a", "any (FWER)")[0])
             else:
                 sel = fwn[(fwn.scenario == "a") & (fwn.method == m) & (fwn.effect == effect) & fwn.dv.isin(["delta", "delta_std"])
                           & (fwn.scope == "all null edges")]
                 vals.append(sel[f"rate {est}"].iloc[0])
         vals = np.array(vals)
-        n = np.array([300 if m == "perm_film_maxT" else 100 for m in methods])
+        n = np.array([300 if m == "perm_film_maxT" else s13_film_test_rate(est, m, "a", "any (FWER)")[1] if m in S13_FILM_TESTS else 100
+                      for m in methods])
         ax.errorbar(np.arange(len(methods)) + dodge(k, 2, 0.4), vals, yerr=wilson_err(vals, n), fmt="o", ms=3, lw=0.6, color=EST_COL[est], label=est)
     ax.set_xticks(range(len(methods))); ax.set_xticklabels([S13_NULL_ROWS[m][1] for m in methods], rotation=50, ha="right", fontsize=5.8)
     ax.set_ylabel("any null edge flagged"); ax.set_title("no effect (scenario a)"); ax.legend(fontsize=6, loc="upper left")
