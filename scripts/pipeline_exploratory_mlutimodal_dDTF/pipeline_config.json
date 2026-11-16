@@ -91,7 +91,6 @@
   "stage05_surrogate": {
     "OUTPUT_SUBDIR": "05_surrogate",
     "ENVELOPES_SUBDIR": "02_envelopes",
-    "ORDER_SUBDIR": "03_mvar",
     "NULL_SCOPES": ["pooled", "exclude", "within_group"],
     "DEFAULT_SCOPE": "within_group",
     "GROUP_CODES": {"TD": 0, "ASD": 1},

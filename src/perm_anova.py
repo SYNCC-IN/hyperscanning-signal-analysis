@@ -386,6 +386,31 @@ def relabel_renull_test(y_fn, labels, rearrangements, term_fn, statistic="F"):
     return F[0], F[1:]
 
 
+def group_terms_fn(term_contrasts, Z):
+    """`term_fn` for `relabel_renull_test`: the statistic of the group term of every within-dyad contrast.
+
+    For each contrast matrix C_W (`rm_contrasts`), the term is the group column X (+1 / -1 for the labels) in
+    ``Y @ C_W ~ [X Z]``; e.g. C_W = overall mean gives G, the film contrasts give G x F. This is the term function of
+    `simulations_multimodal_MVAR/dDTF/S13_group_film_bayes.fl_group_term_F` (omnibus part), with any Z.
+
+    Parameters
+    ----------
+    term_contrasts : list of np.ndarray, shape (n_cells, k_W)
+    Z : np.ndarray, shape (n, q_z)
+        Nuisance columns (``ones((n, 1))``; with a covariate ``[1, c]``: the hybrid renull + covariate test).
+
+    Returns
+    -------
+    callable
+        ``term_fn(Y (L, n, n_cells), labels (L, n) bool, statistic) -> (L, len(term_contrasts))``.
+    """
+    def term_fn(Y, labels, statistic):
+        X = np.where(labels, 1.0, -1.0)[:, :, None]
+        return np.stack([term_statistic(Y @ C, X, Z, statistic) for C in term_contrasts], axis=1)
+
+    return term_fn
+
+
 def balanced_mean(Y, groups):
     """Unweighted mean of the two group means per column, NaN values left out (the S5.3 group-level statistic).
 

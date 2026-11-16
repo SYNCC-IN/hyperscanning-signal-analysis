@@ -81,3 +81,51 @@ def test_detrend_none_is_identity():
     """``detrend_windows(..., 'none')`` returns the windows as cut (mirrors `fit_mvar`)."""
     stack = window_stack(random_design(5), WIN_LEN, STEP)
     assert detrend_windows(stack, "none") is stack
+
+
+def test_film_contrasts_match_contrast_matrix():
+    """`apply_film_contrasts` equals ``Y @ contrast_matrix`` when no weight is zero, and skips zero-weight films."""
+    from src.pairing_tables import apply_film_contrasts, contrast_matrix
+    rng = np.random.default_rng(6)
+    Y = rng.standard_normal((5, 3 * 8))
+    w = np.array([[1.0, -0.5, -0.5], [1.0, -1.0, 0.0]])
+    out = apply_film_contrasts(Y, w, 8)
+    np.testing.assert_allclose(out[:, :8], (Y @ contrast_matrix(w, 8))[:, :8], atol=1e-12)
+    Y[:, 16:] = np.nan                                   # third film missing: only the contrast that weights it is NaN
+    out = apply_film_contrasts(Y, w, 8)
+    assert np.isnan(out[:, :8]).all() and np.isfinite(out[:, 8:]).all()
+
+
+def test_group_terms_fn_matches_term_statistic():
+    """`group_terms_fn` gives `term_statistic` of the group column for every contrast (the S13 omnibus group terms)."""
+    from src.perm_anova import group_terms_fn, rm_contrasts, term_statistic
+    rng = np.random.default_rng(7)
+    levels = {"film": 3, "edge": 8}
+    terms = [rm_contrasts(levels, ()), rm_contrasts(levels, ("film",))]
+    Y = rng.standard_normal((2, 10, 24))
+    labels = np.array([[True] * 5 + [False] * 5, [False, True] * 5])
+    out = group_terms_fn(terms, np.ones((10, 1)))(Y, labels, "ss_hyp")
+    for b in range(2):
+        X = np.where(labels[b], 1.0, -1.0)[:, None]
+        for i, C in enumerate(terms):
+            assert np.isclose(out[b, i], term_statistic(Y[b] @ C, X, np.ones((10, 1)), "ss_hyp"))
+
+
+def test_stack_films_union_layout(tmp_path):
+    """`load_film_table` drops an unstable real dyad; `stack_films` puts films film-major on the union of dyads."""
+    from src.pairing_tables import load_film_table, stack_films
+    edges = ["a->b", "b->a"]
+    paths = {}
+    for f, film in enumerate(["F1", "F2"]):
+        T = np.arange(2 * 3 * 3, dtype=float).reshape(2, 3, 3) + 100 * f
+        stable = np.array([True, True, f == 0])
+        xr.Dataset({"T": (("edge", "child_dyad", "cg_dyad"), T), "real_stable": (("dyad",), stable),
+                    "group": (("dyad",), np.array(["TD", "ASD", "TD"])), "age_months": (("dyad",), np.ones(3))},
+                   coords={"edge": edges, "child_dyad": ["x", "y", "z"], "cg_dyad": ["x", "y", "z"], "dyad": ["x", "y", "z"]}
+                   ).to_netcdf(tmp_path / f"{film}.nc")
+        paths[film] = load_film_table(tmp_path / f"{film}.nc", edges)
+    assert paths["F2"]["ids"] == ["x", "y"] and paths["F2"]["unstable_real"] == ["z"]
+    st = stack_films(paths, ["F1", "F2"])
+    assert st["ids"] == ["x", "y", "z"] and st["present"].tolist() == [[True, True], [True, True], [True, False]]
+    assert st["real"][1, 0] == 4.0 and st["real"][1, 2] == 104.0 and np.isnan(st["real"][2, 2:]).all()
+    assert st["pair_values"][0, 1, 1] == 10.0 and np.isnan(st["pair_values"][0, 0]).all()

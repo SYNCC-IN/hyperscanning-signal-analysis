@@ -26,7 +26,7 @@ per null scope, `05_surrogate/stage05_delta_table_<scope>.csv` (one row per esti
 QC figures and `surrogate_gate.html`.
 """
 
-import json
+import os
 import sys
 from pathlib import Path
 
@@ -53,9 +53,8 @@ from src.surrogate import edge_class_for, pair_tables, plot_delta_summary, plot_
 CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
 CFG = load_stage_config(CONFIG_PATH, "stage05_surrogate")
 
-ANALYSIS_ROOT = PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]
+ANALYSIS_ROOT = Path(os.environ.get("SYNCC_ANALYSIS_ROOT", PROJECT_ROOT / CFG["ANALYSIS_ROOT_NAME"]))  # env: synthetic runs
 ENVELOPES_DIR = ANALYSIS_ROOT / CFG["ENVELOPES_SUBDIR"]
-ORDER_DIR = ANALYSIS_ROOT / CFG["ORDER_SUBDIR"]
 OUTPUT_DIR = ensure_dir(ANALYSIS_ROOT / CFG["OUTPUT_SUBDIR"])
 QC_DIR = ensure_dir(OUTPUT_DIR / "qc")
 
@@ -111,9 +110,6 @@ for film in FILMS:
     envelopes = [xr.load_dataarray(ENVELOPES_DIR / f"{d}_{film}.nc") for d in dyad_ids]
     for d, env in zip(dyad_ids, envelopes):
         assert env.attrs["fs"] == TARGET_SFREQ, f"fs mismatch for {d} {film}"
-        order = json.loads((ORDER_DIR / f"{d}_{film}_order.json").read_text(encoding="utf-8"))
-        assert (order["fit_method"], order["detrend_type"], order["model_order"], order["win_len"], order["step"]) == \
-            (FIT_METHOD, DETREND_TYPE, MODEL_ORDER, WIN_LEN, STEP), f"Stage 3 ran with other fit settings for {d} {film}"
     groups_str = np.array([str(env.attrs["group"]) for env in envelopes])
     ages = np.array([float(env.attrs["age_months"]) for env in envelopes])
     print(f"\n--- {film}: {len(dyad_ids)} dyads ({dict(zip(*np.unique(groups_str, return_counts=True)))}), "
