@@ -100,13 +100,11 @@
     "OUTPUT_SUBDIR": "06_group",
     "INPUT_SUBDIR": "05_surrogate",
     "INPUT_FILENAME": "stage05_delta_table_within_group.csv",
-    "ROI_CHANNELS": ["P7"],
-    "ENGINE": "bambi",
-    "FIT_OTHER_EDGES": true,
-    "FIT_POOLED_MODEL": true,
-    "ADD_AGE_COVARIATE": false,
-    "ADD_IAF_COVARIATE": false,
-    "IAF_DISTANCE_COLUMN": "iaf_distance",
+    "FAMILY_EDGES": null,
+    "FILM_CONTRASTS_BAYES": {
+      "Incredibles_vs_rest": {"Incredibles": 1.0, "Peppa": -0.5, "Brave": -0.5}
+    },
+    "FIT_PER_EDGE_MODELS": true,
     "CHAINS": 4,
     "DRAWS": 2000,
     "TUNE": 2000,
@@ -114,13 +112,8 @@
     "SEED": 0,
     "HDI_PROB": 0.95,
     "CORES": 1,
-    "SD_PRIOR_EDGE": "halfstudentt",
-    "FIT_EDGE_AS_FIXED": true,
     "RHAT_MAX": 1.01,
     "ESS_MIN": 400,
-    "PARETO_K_MAX": 0.7,
-    "PRIMARY_FAMILY": [["cg:ROI->child:ROI", "group_effect", "H2_primary"], ["cg:HRV->child:HRV", "group_effect", "H4_primary"]],
-    "DV_MAIN": "z_vs_surrogate",
     "GROUPS": ["TD", "ASD"]
   },
   "stage07_permutation_tests": {
