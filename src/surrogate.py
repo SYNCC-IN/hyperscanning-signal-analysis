@@ -22,12 +22,10 @@ from scipy.stats import gaussian_kde, median_abs_deviation
 
 try:
     from .connectivity import Granger_estimator, edge_value, read_edge_value
-    from .design import assemble_design_matrix, detrend_windows, node_names, window_stack
-    from .mvar_diag import ar_root_stability, fit_mvar_avg_acf
+    from .design import assemble_design_matrix, node_names
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from src.connectivity import Granger_estimator, edge_value, read_edge_value
-    from src.design import assemble_design_matrix, detrend_windows, node_names, window_stack
-    from src.mvar_diag import ar_root_stability, fit_mvar_avg_acf
+    from src.design import assemble_design_matrix, node_names
 
 
 def surrogate_pairs(dyad_ids, group_of=None):
@@ -129,12 +127,11 @@ def assemble_surrogate_design(nodes, child_envelopes, cg_envelopes, zscore=True)
     return assemble_design_matrix(stitched, names, zscore=zscore)
 
 
-def windowed_ar_stability(design, win_len, step, p, detrend_type="linear"):
-    """Companion-matrix stability of the windowed-ACF AR fit of one design matrix.
+def windowed_ar_stability(design, win_len, step, p, detrend_type="linear", method="yw"):
+    """Companion-matrix stability of the windowed MVAR fit of one design matrix.
 
-    Composition of existing diagnostics at a fixed order: `window_stack` ->
-    `detrend_windows` -> `fit_mvar_avg_acf(p)` -> `ar_root_stability`. Used to
-    gate surrogates and to flag real dyads at the Stage 5 common order.
+    Uses the same fit as the connectivity estimate (`src.sim_estimation.fit_mvar`), so a design is flagged
+    unstable exactly when the model its estimate comes from is unstable.
 
     Parameters
     ----------
@@ -144,8 +141,10 @@ def windowed_ar_stability(design, win_len, step, p, detrend_type="linear"):
         Window length / step in samples.
     p : int
         MVAR model order.
-    detrend_type : {'linear', 'constant'}, optional
-        Per-window detrend type (default 'linear').
+    detrend_type : {'none', 'linear', 'constant'}, optional
+        Per-window detrend type (default 'linear', for older callers).
+    method : {'ols', 'yw'}, optional
+        MVAR fitting method (default 'yw', for older callers).
 
     Returns
     -------
@@ -154,10 +153,65 @@ def windowed_ar_stability(design, win_len, step, p, detrend_type="linear"):
     is_stable : bool
         Whether every eigenvalue modulus is strictly below 1.
     """
-    stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
-    ar_coeffs, _ = fit_mvar_avg_acf(stack, p)
-    _, max_abs_root, is_stable = ar_root_stability(ar_coeffs)
-    return max_abs_root, is_stable
+    try:
+        from .sim_estimation import fit_mvar  # deferred: src.sim_estimation imports this module
+    except ImportError:  # pragma: no cover - fallback for direct script execution
+        from src.sim_estimation import fit_mvar
+    _, _, max_abs_root = fit_mvar(design, p, win_len, step, detrend_type, method)
+    return max_abs_root, bool(max_abs_root < 1.0)
+
+
+def pair_tables(envelopes, nodes, p, win_len, step, freqs, fs, estimators, band_hz, box_cox_lambda, detrend_type,
+                method, stability_max_root):
+    """Connectivity of every (child dyad b, caregiver dyad c) pairing of one film: the pairing table T.
+
+    The diagonal holds the real dyads (design from `src.design.assemble_design_matrix`), the off-diagonal cells the
+    pseudo-dyads (`assemble_surrogate_design`: child-role rows of b, caregiver-role rows of c, cut to the common
+    length, z-scored). Every design gets one MVAR fit (`src.sim_estimation.edge_matrices`); a fit whose largest
+    companion root is >= `stability_max_root` leaves its cell NaN (as `src.sim_inference.surrogate_values`).
+
+    Parameters
+    ----------
+    envelopes : list of xarray.DataArray
+        Stage-2 design files of the film's dyads, in table order.
+    nodes : list of dict
+        Node list of the pipeline config (`src.design.node_names` order).
+    p, win_len, step : int
+        Model order, window length and step (samples).
+    freqs : np.ndarray
+    fs : float
+    estimators : sequence of str
+    band_hz : tuple of float
+    box_cox_lambda : float
+    detrend_type : {'none', 'linear', 'constant'}
+    method : {'ols', 'yw'}
+    stability_max_root : float
+
+    Returns
+    -------
+    tables : dict of {str: np.ndarray, shape (n, n, k, k)}
+        Per estimator, ``tables[est][b, c, target, source]``.
+    roots : np.ndarray, shape (n, n)
+        Largest companion root of every fit.
+    """
+    try:
+        from .sim_estimation import edge_matrices  # deferred: src.sim_estimation imports this module
+    except ImportError:  # pragma: no cover - fallback for direct script execution
+        from src.sim_estimation import edge_matrices
+    names = node_names(nodes)
+    n, k = len(envelopes), len(names)
+    tables = {est: np.full((n, n, k, k), np.nan) for est in estimators}
+    roots = np.full((n, n), np.nan)
+    for b in range(n):
+        for c in range(n):
+            design = (assemble_design_matrix(envelopes[b], names, zscore=True) if b == c
+                      else assemble_surrogate_design(nodes, envelopes[b], envelopes[c], zscore=True))
+            matrices, roots[b, c] = edge_matrices(design, p, win_len, step, freqs, fs, estimators, band_hz,
+                                                  box_cox_lambda, detrend_type, method)
+            if roots[b, c] < stability_max_root:
+                for est in estimators:
+                    tables[est][b, c] = matrices[est]
+    return tables, roots
 
 
 def band_average_cube(cube, freqs, band_hz):
@@ -324,11 +378,11 @@ def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges
     delta_space : bool, optional
         If False (default), plot raw band-averaged estimator values. If True, shift every
         value in a panel by that panel's own `-null_median` before plotting -- i.e. plot
-        `delta_dtf` (`delta_and_z`'s signed `real - median(null)`) instead of
+        `delta` (`delta_and_z`'s signed `real - median(null)`) instead of
         the raw value. The null violin is then centred on zero by construction; each real
-        dyad's offset from zero IS its `delta_dtf`, read directly off the y-axis. Uses the
+        dyad's offset from zero IS its `delta`, read directly off the y-axis. Uses the
         median (matching `delta_and_z`), not the mean, so the delta shown here is exactly
-        the `delta_dtf` value in the tidy table -- not a different, mean-centred quantity.
+        the `delta` value in the tidy table -- not a different, mean-centred quantity.
 
     Returns
     -------
@@ -382,7 +436,7 @@ def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges
             axis.legend(fontsize=6, loc="upper right")
 
     box_cox_suffix = "" if box_cox_lambda == -1 else f", box_cox_lambda={box_cox_lambda}"
-    y_axis_label = (f"delta_dtf ({estimator}, real - null_median{box_cox_suffix})" if delta_space
+    y_axis_label = (f"delta ({estimator}, real - null_median{box_cox_suffix})" if delta_space
                      else f"band-avg {estimator}{box_cox_suffix}")
     for axis in axes_flat[: n_rows * n_cols : n_cols]:
         axis.set_ylabel(y_axis_label)
@@ -394,13 +448,13 @@ def plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges
 
 
 def plot_delta_summary(delta_table_df, edges_to_plot, title):
-    """Per-group mean +/- SEM of `delta_dtf` for the given edges.
+    """Per-group mean +/- SEM of `delta` (real minus null median) for the given edges.
 
     Parameters
     ----------
     delta_table_df : pd.DataFrame
         The tidy Stage 5 table (or a subset), with `group`, `source`,
-        `target`, `delta_dtf` columns.
+        `target`, `delta` columns.
     edges_to_plot : list of tuple(str, str)
         `(source_name, target_name)` edges, in display order.
     title : str
@@ -420,14 +474,14 @@ def plot_delta_summary(delta_table_df, edges_to_plot, title):
         means, sems = [], []
         for source_name, target_name in edges_to_plot:
             edge_df = group_df[(group_df["source"] == source_name) & (group_df["target"] == target_name)]
-            means.append(edge_df["delta_dtf"].mean())
-            sems.append(edge_df["delta_dtf"].std(ddof=1) / np.sqrt(len(edge_df)))
+            means.append(edge_df["delta"].mean())
+            sems.append(edge_df["delta"].std(ddof=1) / np.sqrt(len(edge_df)))
         offset = (i - (len(group_labels) - 1) / 2) * width
         axis.bar(x + offset, means, width=width, yerr=sems, label=group_label, capsize=3)
     axis.axhline(0, color="black", linewidth=0.8)
     axis.set_xticks(x)
     axis.set_xticklabels(edge_labels, rotation=20, fontsize=8)
-    axis.set_ylabel("mean delta_dtf (real - null), +/- SEM")
+    axis.set_ylabel("mean delta (real - null median), +/- SEM")
     axis.legend(title="group")
     axis.set_title(title)
     figure.tight_layout()

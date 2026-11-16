@@ -183,6 +183,60 @@ def edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz,
 
 
 
+def edge_matrices(design, p, win_len, step, freqs, fs, estimators, band_hz, box_cox_lambda=-1, detrend_type="none",
+                  method="ols"):
+    """Band-averaged connectivity matrices of several estimators from ONE MVAR fit of a design.
+
+    Same computation as `edge_matrix` with a fixed order, estimator by estimator, but the model is fitted once
+    (the real-data pipeline scores dDTF and GPDC on every real and pseudo-dyad).
+
+    Parameters
+    ----------
+    design : np.ndarray, shape (k, n_samples)
+    p : int
+        Model order.
+    win_len, step : int or None
+        See `fit_mvar`.
+    freqs : np.ndarray
+    fs : float
+    estimators : sequence of {'DTF', 'ffDTF', 'dDTF', 'GPDC'}
+    band_hz : tuple of float
+    box_cox_lambda : float, optional
+        Box-Cox exponent applied before band-averaging (-1 = none).
+    detrend_type : {'none', 'linear', 'constant'}, optional
+    method : {'ols', 'yw'}, optional
+
+    Returns
+    -------
+    matrices : dict of {str: np.ndarray, shape (k, k)}
+        ``[target, source]`` per estimator.
+    max_abs_root : float
+    """
+    coeffs, variance, max_abs_root = fit_mvar(design, p, win_len, step, detrend_type, method)
+    matrices = {est: band_average_cube(box_cox_transform(connectivity_cube(coeffs, variance, freqs, fs, est), box_cox_lambda),
+                                       freqs, band_hz) for est in estimators}
+    return matrices, max_abs_root
+
+
+def spectral_matrix(ar_coeffs, variance, freqs, fs):
+    """Spectral density matrix ``S(f) = H(f) V H(f)^H`` of a fitted MVAR model, ``H = A(f)^-1``.
+
+    Parameters
+    ----------
+    ar_coeffs : np.ndarray, shape (k, k, p)
+    variance : np.ndarray, shape (k, k)
+    freqs : np.ndarray
+    fs : float
+
+    Returns
+    -------
+    np.ndarray, shape (k, k, n_freqs), complex
+        Same layout and scaling as `src.mtmvar.multivariate_spectra`.
+    """
+    h = np.linalg.inv(freq_matrices(ar_coeffs, freqs, fs))
+    return (h @ variance @ np.conj(h.transpose(0, 2, 1))).transpose(1, 2, 0)
+
+
 def regressor_diagnostics(design, p, win_len, step, node, detrend_type="none"):
     """Collinearity of the lagged regressors of the least-squares MVAR fit on stacked windows.
 
