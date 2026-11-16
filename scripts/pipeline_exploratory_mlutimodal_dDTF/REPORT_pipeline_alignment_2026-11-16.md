@@ -251,7 +251,20 @@ test 6 child:ROI→cg:HRV in three contrasts (0.017–0.045); and the GPDC facto
 
 ### Stage 06 (optional Bayesian effect sizes)
 
-Running at the time of writing; results to follow (`06_group/<estimator>/stage06_effects.csv`, `06_group/group_model_gate.html`).
+Within-group Δ of the 8 cross-person edges, standardized within edge (effects in SD units), 4 chains × 2000 draws.
+Every model passed the gate (R-hat ≤ 1.004, bulk/tail ESS ≥ 1150, no divergences), so the fallback model was not
+needed. Population effects of the main pooled model, posterior mean [95 % HDI]:
+
+| effect | dDTF | GPDC |
+|---|---|---|
+| group (ASD − TD) | −0.085 [−0.307, 0.135] | −0.046 [−0.247, 0.163] |
+| film (Incredibles − mean of Peppa, Brave) | 0.018 [−0.120, 0.159] | 0.046 [−0.098, 0.192] |
+| interaction | −0.141 [−0.446, 0.166] | −0.082 [−0.467, 0.252] |
+
+The (1 | edge) check gives the same picture. No HDI excludes 0 in the pooled models (population or edge-specific).
+One per-edge model (no multiplicity control) has an HDI excluding 0: GPDC child:ROI→cg:HRV, interaction 0.91
+[0.17, 1.62], the same edge with the smallest unadjusted p in stage-07 test 6 (not significant after max-T).
+Earlier stage-06 outputs were moved to `Interbrain_ffDTF_analysis/06_group_archive_2026-11-16/`.
 
 ## Notes and limitations
 
