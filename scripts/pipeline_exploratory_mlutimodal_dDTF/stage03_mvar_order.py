@@ -289,7 +289,8 @@ for dyad_id, film in SENSITIVITY_DYADS:
 
     band_mask = (SENSITIVITY_FREQS >= COUPLING_BAND_HZ[0]) & (SENSITIVITY_FREQS <= COUPLING_BAND_HZ[1])
 
-    figure, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 7), sharex=True)
+    n_rows = max(1, -(-len(PRIMARY_EDGES) // 2))
+    figure, axes = plt.subplots(nrows=n_rows, ncols=2, figsize=(10, 3.5 * n_rows), sharex=True, squeeze=False)
     band_table_rows = []
     for edge_idx, (source_name, target_name) in enumerate(PRIMARY_EDGES):
         source, target = NODE_NAMES.index(source_name), NODE_NAMES.index(target_name)
@@ -305,8 +306,8 @@ for dyad_id, film in SENSITIVITY_DYADS:
         axis.set_title(f"{source_name} -> {target_name}", fontsize=9)
         axis.set_xlabel("Frequency (Hz)")
         axis.legend(fontsize=7)
-    axes[0, 0].set_ylabel(ESTIMATOR)
-    axes[1, 0].set_ylabel(ESTIMATOR)
+    for row in axes:
+        row[0].set_ylabel(ESTIMATOR)
     figure.suptitle(f"{dyad_id} {film}: window-choice sensitivity (p={p_used}, {FIT_METHOD})")
     figure.tight_layout()
     sensitivity_plot_path = QC_DIR / f"{dyad_id}_{film}_sensitivity.png"

@@ -104,7 +104,8 @@ def reverse(edge):
 
 # opposite pairs inside the family, forward = caregiver -> child
 PAIRS = [(e, reverse(e)) for e in FAMILY if ROLE[e.split("->")[0]] == "caregiver" and reverse(e) in FAMILY]
-EDGE_TERMS = FAMILY == CROSS_EDGES                # the 2 x 2 x 2 edge-structure contrasts need all 8 cross-person edges
+SIGNALS = sorted({node.split(":")[1] for e in FAMILY for node in e.split("->")})
+EDGE_TERMS = FAMILY == CROSS_EDGES and len(FAMILY) == 8 and len(SIGNALS) == 2   # complete 2 x 2 x 2 layout only
 TESTS = {"existence": 1, "direction": 2, "group": 3, "group_24": 4, "group_mean": 5, "film_B": 6, "film_signflip": 7,
          "interaction": 8, "factorial": 9, "covariate": 10}                  # generator index of each test
 
@@ -149,7 +150,8 @@ all_rows, descriptive_rows, checklist = [], [], {}
 for est in ESTIMATORS:
     print(f"\n=== {est} ===")
     films = {film: load_film_table(INPUT_DIR / est / f"{film}_pairing_table.nc", FAMILY) for film in FILMS}
-    within = {film: load_film_table(INPUT_DIR / est / f"{film}_pairing_table.nc", WITHIN_EDGES) for film in FILMS}
+    within = {film: load_film_table(INPUT_DIR / est / f"{film}_pairing_table.nc", WITHIN_EDGES)
+              for film in FILMS} if WITHIN_EDGES else {}      # none with one node per person
     rows = []
     checklist[est] = []
     for f, film in enumerate(FILMS):
@@ -198,8 +200,8 @@ for est in ESTIMATORS:
                                     statistic_label="mean Delta ASD - TD"), FAMILY, diff)
 
         # within-person edges: descriptive only (cannot be tested with pseudo-dyads)
-        w = within[film]
-        w_delta, _ = within_group_delta(w["real"], w["pair_values"], group_codes(w["group"]))
+        w = within.get(film)
+        w_delta = within_group_delta(w["real"], w["pair_values"], group_codes(w["group"]))[0] if w else None
         for e, edge in enumerate(WITHIN_EDGES):
             for g in GROUP_CODES:
                 sel = w["group"] == g
