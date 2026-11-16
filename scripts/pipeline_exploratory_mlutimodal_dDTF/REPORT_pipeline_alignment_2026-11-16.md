@@ -275,9 +275,9 @@ Earlier stage-06 outputs were moved to `Interbrain_ffDTF_analysis/06_group_archi
 - **dDTF dominant-direction test** was conservative in the end-to-end null run (0.7 %, CI 0.1–3.7 %).
 - **Stage 00b** (smoothness demo) keeps its earlier settings (YW, linear, p = 2, 0.2–1.0 Hz) and was not re-run; its
   docstring now says so.
-- **Stale files** from the earlier runs remain beside the new ones in `Interbrain_ffDTF_analysis/`: `04_ffdtf/`
-  (now `04_connectivity/`), and in `05_surrogate/` the old `*_null*.npz`, `*_delta*.npz` and
-  `stage05_delta_table.csv` (pooled "film" scope). They are not read by any stage.
+- **Earlier outputs archived** (moved, not deleted) in `Interbrain_ffDTF_analysis/`: `04_ffdtf_archive_2026-11-16/`
+  (the whole former `04_ffdtf/`, 257 files) and `05_surrogate_archive_2026-11-16/` (282 files of the earlier stage 05:
+  `*_null*.npz`, `*_delta*.npz`, `stage05_delta_table.csv`, their QC figures). No stage reads them.
 - `stage04_ffdtf.py` was renamed `stage04_connectivity.py` (config key `stage04_connectivity`). The analysis folder name
   `Interbrain_ffDTF_analysis` and the directory typo `mlutimodal` were kept.
 - `DRIVE_ROOT` can be set by `SYNCC_DRIVE_ROOT` or a git-ignored `pipeline_config.local.json`; `SYNCC_ANALYSIS_ROOT`
