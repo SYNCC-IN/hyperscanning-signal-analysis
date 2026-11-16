@@ -389,9 +389,15 @@ Factorial permutation ANOVA for dyad-level repeated-measures designs: Freedman�
 - `coefficient_ss(Y, X, Z)` — sum of squared OLS coefficients of X (batched).
 - `term_statistic(Y, X, Z, statistic)` — 'F', 'ss_hyp' (unstudentized) or 'beta'.
 - `rearrangement_matrix(n, n_perm, mode, rng, groups=None)` — row permutations or sign vectors, exhaustive when ≤ `n_perm` exist.
-- `freedman_lane(Y, X, Z, rearrangements, mode, statistic="F")` — `(observed, permuted)` statistic: residuals of Y ~ Z permuted or sign-flipped, full model refitted.
+- `freedman_lane(Y, X, Z, rearrangements, mode, statistic="F", shifts=None)` — `(observed, permuted)` statistic: residuals of Y ~ Z permuted or sign-flipped, full model refitted.
 - `labels_from_permutations(in_one, perms)` — group labels implied by permuting data rows against fixed labels.
 - `relabel_renull_test(y_fn, labels, rearrangements, term_fn, statistic="F")` — raw-label permutation of group terms whose data are recomputed for every relabelling (e.g. delta against re-nulled within-group nulls).
+- `balanced_mean(Y, groups)` — unweighted mean of the two group means per column, NaN-tolerant (S5.3 group-level statistic).
+- `balanced_mean_maxT(observed, null, groups, stepdown=True)` — two-sided `|balanced_mean|` tests on shared rearrangements with max-T control.
+- `intercept_ss(Y, groups)` — tr SS_hyp of the intercept of Y ~ [1, group] from NaN-tolerant group means.
+- `repaired_values(table, perms)` — values of the (child, re-paired caregiver) pairs of every re-pairing of a pairing table.
+- `all_pairs_mean(table, groups)` — mean of all within-group pairs (real included): the expectation of a random re-pairing.
+- `bootstrap_null_medians(pair_values, groups, rng, n_boot)` — within-group null medians from a person-level (children x caregivers) bootstrap.
 
 ---
 

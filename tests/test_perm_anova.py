@@ -12,9 +12,11 @@ import pytest
 from scipy.stats import binom, f_oneway
 from statsmodels.stats.anova import AnovaRM
 
-from src.perm_anova import (edge_factor_contrasts, f_statistic, freedman_lane, labels_from_permutations,
-                            rearrangement_matrix, relabel_renull_test, rm_contrasts, ss_components, term_statistic)
-from src.sim_inference import family_pvalues, renull_delta, renull_statistics
+from src.perm_anova import (all_pairs_mean, balanced_mean, balanced_mean_maxT, bootstrap_null_medians, edge_factor_contrasts,
+                            f_statistic, freedman_lane, intercept_ss, labels_from_permutations, rearrangement_matrix,
+                            relabel_renull_test, repaired_values, rm_contrasts, ss_components, term_statistic)
+from src.sim_inference import (caregiver_permutations, family_pvalues, group_null_medians, renull_delta, renull_statistics,
+                               sign_flips, signflip_maxT)
 
 EDGES = ["cg:ROI->child:ROI", "child:ROI->cg:ROI", "cg:HRV->child:HRV", "child:HRV->cg:HRV",
          "cg:HRV->child:ROI", "child:HRV->cg:ROI", "cg:ROI->child:HRV", "child:ROI->cg:HRV"]
@@ -302,3 +304,71 @@ def test_ss_hyp_renull_equals_existing_mean_difference_test():
     combine = np.hstack([np.vstack([np.eye(n_edges) / n_films] * n_films), np.full((n_films * n_edges, 1), 1 / (n_films * n_edges))])
     old = np.abs(renull_statistics(real, pair_values, np.ones((n, n_edges + 1), bool), labels, combine))
     assert np.array_equal(family_pvalues(obs, null)["unadjusted"], family_pvalues(old[0], old[1:])["unadjusted"])
+
+
+def test_balanced_mean_maxT_equals_signflip_maxT():
+    """Sign flips passed as a null of `balanced_mean_maxT` reproduce `signflip_maxT` (same signs, unequal groups, NaN)."""
+    rng = np.random.default_rng(3)
+    groups = np.r_[np.zeros(9, int), np.ones(12, int)]
+    contrast = rng.normal(0.2, 1.0, (21, 8))
+    contrast[4, 2] = np.nan
+    expected = signflip_maxT(contrast, np.random.default_rng(5), 500, groups)
+    signs = sign_flips(21, np.random.default_rng(5), 500)
+    got = balanced_mean_maxT(contrast, signs[:, :, None] * contrast[None], groups)
+    for key in ("unadjusted", "maxT"):
+        assert np.allclose(got[key], expected[key], rtol=0, atol=1e-12)
+
+
+def test_intercept_ss_equals_term_statistic():
+    """`intercept_ss` is tr SS_hyp of the intercept of Y ~ [1, group] (sum-to-zero), batched, unequal groups."""
+    rng = np.random.default_rng(4)
+    groups = np.r_[np.zeros(7, int), np.ones(11, int)]
+    Y = rng.normal(size=(5, 18, 3))
+    X, Z = np.ones((18, 1)), np.where(groups == 1, 1.0, -1.0)[:, None]
+    assert np.allclose(intercept_ss(Y, groups), term_statistic(Y, X, Z, "ss_hyp"))
+
+
+def test_all_pairs_mean_centres_exhaustive_repairing():
+    """Averaged over all within-group re-pairings, the re-paired group means equal `all_pairs_mean`."""
+    rng = np.random.default_rng(6)
+    groups = np.r_[np.zeros(4, int), np.ones(4, int)]
+    table = rng.normal(size=(8, 8, 2))
+    perms = caregiver_permutations(8, rng, 10_000, groups)
+    perms = np.vstack([np.arange(8)[None], perms])                     # enumeration leaves out the identity
+    assert len(perms) == math.factorial(4) ** 2
+    repaired = repaired_values(table, perms)
+    for label in (0, 1):
+        assert np.allclose(repaired[:, groups == label].mean(axis=(0, 1)), all_pairs_mean(table, groups)[label])
+    assert np.allclose(balanced_mean(repaired, groups).mean(axis=0), all_pairs_mean(table, groups).mean(axis=0))
+
+
+def test_bootstrap_null_medians_shape_and_constant_table():
+    """A table that is constant within each group gives that constant in every bootstrap replicate; the diagonal is skipped."""
+    groups = np.r_[np.zeros(5, int), np.ones(5, int)]
+    table = np.where(groups[:, None, None] == 1, 2.0, -1.0) * np.ones((10, 10, 3))
+    table[np.arange(10), np.arange(10)] = np.nan
+    out = bootstrap_null_medians(table, groups, np.random.default_rng(0), 50)
+    assert out.shape == (50, 2, 3)
+    assert np.allclose(out[:, 0], -1.0) and np.allclose(out[:, 1], 2.0)
+
+
+def test_bootstrap_null_medians_centre():
+    """The bootstrap medians scatter around the observed within-group median."""
+    rng = np.random.default_rng(1)
+    groups = np.r_[np.zeros(15, int), np.ones(15, int)]
+    table = rng.normal(size=(30, 30, 2)) + rng.normal(size=(30, 1, 1)) + rng.normal(size=(1, 30, 1))
+    table[np.arange(30), np.arange(30)] = np.nan
+    observed = group_null_medians(table, (groups == 1)[None])[0]
+    boot = bootstrap_null_medians(table, groups, rng, 400)
+    assert np.all(np.abs(boot.mean(axis=0) - observed) < 3 * boot.std(axis=0) / np.sqrt(400) + 0.05)
+    assert np.all(boot.std(axis=0) > 0.05)
+
+
+def test_freedman_lane_zero_shifts():
+    """Zero shifts leave the Freedman-Lane distribution unchanged."""
+    rng = np.random.default_rng(2)
+    Y, X, Z = rng.normal(size=(12, 2)), np.ones((12, 1)), np.r_[-np.ones(6), np.ones(6)][:, None]
+    flips = sign_flips(12, rng, 200)
+    a = freedman_lane(Y, X, Z, flips, "signflip", "ss_hyp")
+    b = freedman_lane(Y, X, Z, flips, "signflip", "ss_hyp", shifts=np.zeros((len(flips), 12, 2)))
+    assert a[0] == b[0] and np.array_equal(a[1], b[1])

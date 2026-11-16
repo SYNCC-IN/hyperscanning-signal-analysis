@@ -76,7 +76,10 @@ TABLES = {
              ("S_13_follow_j_ssratio.csv", ["scenario", "method"], ["median_ss_err_perm_over_obs"]),
              ("S_13_follow_within.csv", ["scenario", "dv", "scope", "term", "statistic"], ["rate", "ci_low", "ci_high", "n"]),
              ("S_13_follow_within_var.csv", ["scenario", "term"], ["var_delta_over_T_real", "var_null_offset_over_T_real",
-                                                                     "var_pooled_dv_over_T_real"])],
+                                                                     "var_pooled_dv_over_T_real"]),
+             ("S_13_film_tests.csv", ["scenario", "method", "scope", "term", "edge"], ["rate", "ci_low", "ci_high", "n"]),
+             ("S_13_group_bf.csv", ["scenario", "method", "scope", "term", "edge"], ["rate", "ci_low", "ci_high", "n",
+                                                                                   "ss_hyp_ratio_median", "ss_err_ratio_median"])],
 }
 # [proposed] calibration of null-rate cells: S13 table -> (family columns, cell columns); rows with null_cell == True
 CALIBRATION_SIM = "S_13"
@@ -88,6 +91,8 @@ CALIBRATION_SOURCES = {
     "S_13_follow_precision.csv": (["scenario", "variant", "statistic"], ["scope", "term"]),
     "S_13_follow_j.csv": (["scenario", "method", "statistic"], ["scope", "term"]),
     "S_13_follow_within.csv": (["scenario", "dv", "statistic"], ["scope", "term"]),
+    "S_13_film_tests.csv": (["scenario", "method"], ["scope", "term"]),
+    "S_13_group_bf.csv": (["scenario", "method"], ["scope", "term"]),
 }
 NOMINAL_ALPHA = 0.05
 BAND = (0.03, 0.07)                   # the existing 'within band' rule

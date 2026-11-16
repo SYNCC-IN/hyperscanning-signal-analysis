@@ -1178,10 +1178,66 @@ def figS4():
             print(f"{est}: none/{path} direction_index min {di.min():.3f}, max {di.max():.3f}")
 
 
+def figS12():
+    """S13 film-contrast tests: A null rates of A/B/C (a, h, b, k), B power (f, e), C renull + ss_hyp group terms in b, f."""
+    film = comparison("S_13_S_13_film_tests.csv")
+    group = comparison("S_13_S_13_group_bf.csv")
+    methods = [("A", "#e7298a", "A: sign flip Δ"), ("B", "#1b9e77", "B: re-pairing T"), ("C", "#7570b3", "C: bootstrap offset")]
+    terms = [("per-edge max-T", "film contrast", "film c."), ("omnibus", "F", "F"), ("omnibus", "FxE", "F×E")]
+    with plt.rc_context(PUB):
+        fig = plt.figure(figsize=(FULL_W, 6.4))
+        gs = fig.add_gridspec(2, 2, hspace=0.62, wspace=0.28, left=0.07, right=0.99, top=0.95, bottom=0.14, width_ratios=[0.8, 1.2])
+        # A: null rates
+        ax = fig.add_subplot(gs[0, :]); fpr_guides(ax)
+        cats = [(sc, scope, term, f"{sc}: {lab}") for sc in ("a", "h", "b", "k") for scope, term, lab in terms]
+        for i, (scenario, scope, term, _) in enumerate(cats):
+            for k, (method, colour, label) in enumerate(methods):
+                rows = film[(film.scenario == scenario) & (film.method == method) & (film.scope == scope) & (film.term == term)]
+                for m, est in enumerate(EST):
+                    ci_bars(ax, [i + dodge(2 * k + m, 6, 0.8)], rows, est, colour, label=label if (i == 0 and est == "dDTF") else None)
+        ax.set_xticks(range(len(cats))); ax.set_xticklabels([c[3] for c in cats], rotation=90, fontsize=5.5)
+        ax.set_ylim(0, max(0.2, ax.get_ylim()[1])); ax.set_ylabel("rejection rate")
+        ax.set_title("film terms under the null (1000 replicates each; film c. = per-edge max-T FWER; filled dDTF, open GPDC)")
+        ax.legend(fontsize=5.5, ncol=3, loc="upper left"); panel(ax, "A", x=-0.06)
+        # B: power
+        ax = fig.add_subplot(gs[1, 0])
+        pcats = [("f", "cg:ROI->child:ROI", "f: edge"), ("f", "omnibus F", "f: F"), ("f", "omnibus FxE", "f: F×E"),
+                 ("e", "cg:ROI->child:ROI", "e: edge"), ("e", "omnibus F", "e: F"), ("e", "omnibus FxE", "e: F×E")]
+        for i, (scenario, what, _) in enumerate(pcats):
+            if what.startswith("omnibus"):
+                sel = (film.scope == "omnibus") & (film.term == what.split()[1])
+            else:
+                sel = (film.scope == "per-edge max-T") & (film.edge == what)
+            for k, (method, colour, _) in enumerate(methods):
+                rows = film[sel & (film.scenario == scenario) & (film.method == method)]
+                for m, est in enumerate(EST):
+                    ci_bars(ax, [i + dodge(2 * k + m, 6, 0.8)], rows, est, colour)
+        ax.axhline(0.8, color="0.3", ls=":", lw=0.6); ax.set_ylim(-0.02, 1.05)
+        ax.set_xticks(range(len(pcats))); ax.set_xticklabels([c[2] for c in pcats], rotation=90, fontsize=5.5)
+        ax.set_ylabel("detection rate"); ax.set_title("power (f: 1000, e: 100 replicates)", fontsize=6.5)
+        panel(ax, "B", x=-0.2)
+        # C: group terms with coupling present
+        ax = fig.add_subplot(gs[1, 1]); fpr_guides(ax)
+        gterms = [("omnibus", t) for t in FL_TERMS if t.startswith("G")] + [("per-edge max-F", "G"), ("per-edge max-F", "GxF")]
+        glabels = [FL_TERM_LABELS[t] if sc == "omnibus" else f"edge {FL_TERM_LABELS[t]}" for sc, t in gterms]
+        for k, (scenario, colour) in enumerate([("b", "#d95f02"), ("f", "#1b9e77")]):
+            rows = pd.concat([group[(group.scenario == scenario) & (group.method == "renull + ss_hyp") & (group.scope == sc) & (group.term == t)]
+                              for sc, t in gterms])
+            for m, est in enumerate(EST):
+                ci_bars(ax, np.arange(len(gterms)) + dodge(2 * k + m, 4, 0.7), rows, est, colour,
+                        label=f"scenario {scenario}" if est == "dDTF" else None)
+        ax.set_xticks(range(len(gterms))); ax.set_xticklabels(glabels, rotation=90, fontsize=5.5)
+        ax.set_ylim(0, max(0.15, ax.get_ylim()[1])); ax.set_ylabel("rejection rate")
+        ax.set_title("group terms, renull + ss_hyp, coupling present (1000 replicates)", fontsize=6.5)
+        ax.legend(fontsize=5.5, loc="upper right"); panel(ax, "C", x=-0.12)
+        save(fig, "figS12_film_contrast_tests")
+
+
 FIGURES = {"level1": level1, "level2": level2, "fig3": fig3, "fig_gain_conversion": fig_gain_conversion,
            "fig02": fig02, "fig06": fig06, "fig07": fig07, "fig08": fig08, "fig09": fig09,
            "fig10": fig10, "fig11": fig11, "fig12": fig12, "fig13": fig13, "fig14": fig14, "figS4": figS4, "figS10": figS10,
-           "figS11": figS11, "figS11_v2": figS11_v2}
+           "figS11": figS11, "figS11_v2": figS11_v2,
+           "figS12": figS12}
 
 if __name__ == "__main__":
     for name in (list(FIGURES) if not NAMES or NAMES == ["all"] else NAMES):

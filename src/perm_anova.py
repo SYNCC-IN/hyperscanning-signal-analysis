@@ -31,14 +31,20 @@ of X; for one X column and one Y column a monotone function of |beta|).
 
 `relabel_renull_test` is the raw-label (Manly-type) permutation for group terms whose dependent variable itself
 depends on the grouping (delta against a within-group null recomputed for every relabelling).
+
+Film-contrast tests (within-dyad terms against a surrogate null, S5.3 group-level statistic = unweighted mean of the
+group means, `balanced_mean`): sign flip of delta (`freedman_lane`, `balanced_mean_maxT`); partner re-pairing of the
+raw pairing table (`repaired_values`, centred by `all_pairs_mean`; the statistic is unstudentized, `intercept_ss` for
+omnibus terms); sign flip with the within-group null median resampled by a person-level bootstrap
+(`bootstrap_null_medians`, passed to `freedman_lane` / `balanced_mean_maxT` as shifts; approximate).
 """
 
 import numpy as np
 
 try:
-    from .sim_inference import caregiver_permutations, sign_flips
+    from .sim_inference import caregiver_permutations, family_pvalues, sign_flips
 except ImportError:  # pragma: no cover - fallback for direct script execution
-    from src.sim_inference import caregiver_permutations, sign_flips
+    from src.sim_inference import caregiver_permutations, family_pvalues, sign_flips
 
 
 def helmert_contrasts(k):
@@ -285,7 +291,7 @@ def rearrangement_matrix(n, n_perm, mode, rng, groups=None):
     return sign_flips(n, rng, n_perm)
 
 
-def freedman_lane(Y, X, Z, rearrangements, mode, statistic="F"):
+def freedman_lane(Y, X, Z, rearrangements, mode, statistic="F", shifts=None):
     """Freedman-Lane permutation (or sign-flip) distribution of a statistic of the columns X (default the pooled F).
 
     The reduced model Y ~ Z is fitted; its residuals are rearranged across dyads (rows permuted, or rows multiplied
@@ -302,6 +308,8 @@ def freedman_lane(Y, X, Z, rearrangements, mode, statistic="F"):
     mode : {'permute', 'signflip'}
     statistic : {'F', 'ss_hyp', 'beta'}, optional
         See `term_statistic`.
+    shifts : np.ndarray, shape (B, n, k), optional
+        Added to every rearranged data set (e.g. the resampled error of an estimated offset, `bootstrap_null_medians`).
 
     Returns
     -------
@@ -320,6 +328,9 @@ def freedman_lane(Y, X, Z, rearrangements, mode, statistic="F"):
     else:
         assert mode == "signflip" and set(np.unique(rearrangements)) <= {-1.0, 1.0}, "signflip mode needs +1/-1 signs"
         rearranged = rearrangements[:, :, None] * resid[None]
+    if shifts is not None:
+        assert shifts.shape == rearranged.shape, "shifts must be (B, n, k)"
+        rearranged = rearranged + shifts
     return float(term_statistic(Y, X, Z, statistic)), term_statistic(fitted[None] + rearranged, X, Z, statistic)
 
 
@@ -373,3 +384,136 @@ def relabel_renull_test(y_fn, labels, rearrangements, term_fn, statistic="F"):
     F = term_fn(Y, all_labels, statistic)
     assert F.ndim == 2 and F.shape[0] == all_labels.shape[0], "term_fn must return (labellings, tests)"
     return F[0], F[1:]
+
+
+def balanced_mean(Y, groups):
+    """Unweighted mean of the two group means per column, NaN values left out (the S5.3 group-level statistic).
+
+    Parameters
+    ----------
+    Y : np.ndarray, shape (..., n, k)
+    groups : np.ndarray of int, shape (n,)
+        Labels 0/1.
+
+    Returns
+    -------
+    np.ndarray, shape (..., k)
+    """
+    means = []
+    for label in (0, 1):
+        block = Y[..., groups == label, :]
+        valid = np.isfinite(block)
+        means.append(np.where(valid, block, 0.0).sum(axis=-2) / valid.sum(axis=-2))
+    return (means[0] + means[1]) / 2
+
+
+def balanced_mean_maxT(observed, null, groups, stepdown=True):
+    """Two-sided tests of ``|balanced_mean|`` per column on shared rearrangements, with max-T family-wise control.
+
+    Parameters
+    ----------
+    observed : np.ndarray, shape (n, k)
+        Observed dyad-level values of the k tests (e.g. the film contrast of 8 edges).
+    null : np.ndarray, shape (B, n, k)
+        The same values under every rearrangement (sign-flipped, re-paired, ...).
+    groups : np.ndarray of int, shape (n,)
+    stepdown : bool, optional
+
+    Returns
+    -------
+    dict of {str: np.ndarray}
+        `src.sim_inference.family_pvalues` output (one value per column).
+    """
+    return family_pvalues(np.abs(balanced_mean(observed, groups)), np.abs(balanced_mean(null, groups)), stepdown)
+
+
+def intercept_ss(Y, groups):
+    """tr SS_hyp of the intercept of Y ~ [1, group (sum-to-zero)], from NaN-tolerant group means.
+
+    The OLS intercept of this model is the unweighted mean of the group means b (`balanced_mean`) and
+    ``tr SS_hyp = ||b||^2 / [(D'D)^-1]_00 = ||b||^2 * 4 / (1/n_0 + 1/n_1)``; with no NaN this equals
+    ``term_statistic(Y, 1, group, 'ss_hyp')``. With NaN values the group sizes are those of the full design.
+
+    Parameters
+    ----------
+    Y : np.ndarray, shape (..., n, k)
+        Dyad-level data of one term (``Y_cells @ C_W``).
+    groups : np.ndarray of int, shape (n,)
+
+    Returns
+    -------
+    np.ndarray, shape (...)
+    """
+    n0, n1 = np.sum(groups == 0), np.sum(groups == 1)
+    return (balanced_mean(Y, groups) ** 2).sum(axis=-1) * 4.0 / (1.0 / n0 + 1.0 / n1)
+
+
+def repaired_values(table, perms):
+    """Values of the pairs formed by every child with the caregiver assigned by each re-pairing.
+
+    Parameters
+    ----------
+    table : np.ndarray, shape (n, n, k)
+        ``table[b, c]`` = values of child b with caregiver c; the diagonal holds the real dyads.
+    perms : np.ndarray of int, shape (B, n)
+        ``perms[b, i]`` = dyad whose caregiver is paired with child i (`caregiver_permutations`).
+
+    Returns
+    -------
+    np.ndarray, shape (B, n, k)
+    """
+    return table[np.arange(table.shape[0])[None, :], perms]
+
+
+def all_pairs_mean(table, groups):
+    """Mean of every within-group pair (real dyads included) per group: the expectation of a random re-pairing.
+
+    Averaged over all within-group re-pairings, ``mean_i table[i, perm[i]]`` equals the mean of all pairs (b, c) with
+    b and c in the group, so subtracting it centres the re-pairing distribution of a group mean exactly. NaN values
+    are left out.
+
+    Parameters
+    ----------
+    table : np.ndarray, shape (n, n, k)
+    groups : np.ndarray of int, shape (n,)
+
+    Returns
+    -------
+    np.ndarray, shape (2, k)
+    """
+    out = []
+    for label in (0, 1):
+        members = np.flatnonzero(groups == label)
+        out.append(np.nanmean(table[np.ix_(members, members)].reshape(-1, table.shape[2]), axis=0))
+    return np.stack(out)
+
+
+def bootstrap_null_medians(pair_values, groups, rng, n_boot):
+    """Within-group null medians from a person-level bootstrap: children and caregivers resampled with replacement.
+
+    In every replicate and group, m children and m caregivers (m = group size) are drawn with replacement from the
+    group's dyads (children first, then caregivers, group 0 first); the null median is taken over all resampled
+    (child, caregiver) pairs, NaN entries (a child with its own caregiver, unstable surrogate fits) left out. This is
+    the two-way crossed ("pigeonhole") bootstrap of a median over pairs; it approximates the sampling variability of
+    `src.sim_inference.group_null_medians`.
+
+    Parameters
+    ----------
+    pair_values : np.ndarray, shape (n, n, k)
+        Surrogate values ``[child dyad, caregiver dyad, column]``, NaN diagonal.
+    groups : np.ndarray of int, shape (n,)
+    rng : numpy.random.Generator
+    n_boot : int
+
+    Returns
+    -------
+    np.ndarray, shape (n_boot, 2, k)
+    """
+    out = []
+    for label in (0, 1):
+        members = np.flatnonzero(groups == label)
+        children = rng.choice(members, size=(n_boot, len(members)))
+        caregivers = rng.choice(members, size=(n_boot, len(members)))
+        block = pair_values[children[:, :, None], caregivers[:, None, :]]          # (n_boot, m, m, k)
+        out.append(np.nanmedian(block.reshape(n_boot, -1, pair_values.shape[2]), axis=1))
+    return np.stack(out, axis=1)

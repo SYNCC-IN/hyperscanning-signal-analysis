@@ -149,11 +149,13 @@ SCENARIOS = {
     "h": {},
     "i": {"cg:ROI->child:ROI": [[0.2, 0.2, 0.2], [0.2, 0.2, 0.2]]},     # base gain; + slope * c (COVARIATE_SCENARIOS)
     "j": {"cg:ROI->child:ROI": [[0.2, 0.2, 0.2], [0.2, 0.2, 0.2]]},     # i + the stimulus of h (S13_fl_followup.py)
+    "k": {"cg:ROI->child:ROI": [[0.3, 0.3, 0.3], [0.3, 0.3, 0.3]]},     # b + the stimulus of h, equal gains (S13_film_tests.py)
 }
 # common stimulus (S7 mechanism and STIM_RADIUS / STIM_F0 / sd_log of S7): a new stimulus time course per film, the same for
 # all dyads of the film; person-specific gains (log-normal) drawn once per study, multiplied by `ratio` in ASD
 STIM_RADIUS, STIM_F0 = 0.7, 0.3
-STIMULUS_SCENARIOS = {"h": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}, "j": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}}
+STIMULUS_SCENARIOS = {"h": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0}, "j": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 3.0},
+                      "k": {"base_gain": 1.0, "sd_log": 0.5, "ratio": 1.0}}
 # dyad-level covariate c ~ N(group_means[group], sd); gain of `edge` = max(0, base + slope * c) (D5)
 COVARIATE_SCENARIOS = {"i": {"edge": "cg:ROI->child:ROI", "group_means": (-0.5, 0.5), "sd": 1.0, "slope": 0.1},
                        "j": {"edge": "cg:ROI->child:ROI", "group_means": (-0.5, 0.5), "sd": 1.0, "slope": 0.1}}
