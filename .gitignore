@@ -47,3 +47,6 @@ scripts/outputs/
 
 # Simulation outputs (regenerable: run simulations_multimodal_MVAR/dDTF/run_all.py)
 simulations_multimodal_MVAR/dDTF/Results/
+
+# Interbrain pipeline: machine-specific overrides of pipeline_config.json "shared" (e.g. DRIVE_ROOT)
+scripts/pipeline_exploratory_mlutimodal_dDTF/pipeline_config.local.json

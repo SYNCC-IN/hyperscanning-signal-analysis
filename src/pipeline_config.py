@@ -23,6 +23,9 @@ def load_stage_config(config_path, stage_key):
     stage) with its `stage_key` section (that stage's own settings); on a key
     collision the stage-specific value wins. Neither section is required to
     exist -- a stage with no stage-specific overrides can omit its section.
+    If a machine-specific file ``<config stem>.local.json`` exists next to the
+    config (git-ignored), its ``"shared"`` section overrides the shared values
+    (e.g. ``DRIVE_ROOT``).
 
     Parameters
     ----------
@@ -36,7 +39,11 @@ def load_stage_config(config_path, stage_key):
     dict
         `{**shared, **stage_specific}`.
     """
-    config = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    config_path = Path(config_path)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
     shared = config.get("shared", {})
+    local_path = config_path.with_name(f"{config_path.stem}.local.json")
+    if local_path.exists():
+        shared = {**shared, **json.loads(local_path.read_text(encoding="utf-8")).get("shared", {})}
     stage_specific = config.get(stage_key, {})
     return {**shared, **stage_specific}

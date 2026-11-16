@@ -1,45 +1,23 @@
-"""Stage 3 - design matrix, model order, and windowed-ACF-averaged MVAR fit.
+"""Stage 3 - design matrix, descriptive order selection, and MVAR fit diagnostics.
 
-Reads Stage 2's `02_envelopes/<dyad_id>_<film>.nc` design files and, for every
-case:
+Reads Stage 2's `02_envelopes/<dyad_id>_<film>.nc` design files and, for every case:
 
-1. Builds the z-scored `(4, n_samples)` design matrix
-   (`src.design.assemble_design_matrix`) and selects the model order `p_used`
-   from the **global 2-D signal** (`src.mvar_diag.select_order` ->
-   `src.mtmvar.mvar_criterion`, 2-D only -- see the caveat below).
-2. Cuts that design matrix into short, overlapping windows
-   (`src.design.window_stack`), detrends each window independently
-   (`detrend_windows`), and fits **one** MVAR from the autocovariance averaged
-   across those windows (`src.mvar_diag.fit_mvar_avg_acf` -> the existing
-   `count_corr`/`ar_coeff` averaging path -- the Kaminski sDTF core). This is
-   the **default** estimation path, not a deferred swap-in.
-3. Runs the same diagnostics (`residual_whiteness`, `ar_root_stability`) on
-   both the windowed fit and a global single-window comparison fit, so the
-   gate can show the windowed method's improvement directly -- most visibly
-   for the two HRV variables, whose within-film non-stationarity (drifting
-   RSA centre frequency and variance) biases a single global fit.
+1. Builds the z-scored `(4, n_samples)` design matrix (`src.design.assemble_design_matrix`) and reports the
+   information-criterion order `p_used` of the global 2-D signal (`src.mvar_diag.select_p_used`). This is
+   DESCRIPTIVE only: the analysis order is the fixed `COMMON_MODEL_ORDER` (p = 4, manuscript 2.3) for real and
+   pseudo-dyads alike, so every Delta baseline is at the same order.
+2. Fits the analysis model exactly as Stages 4-5 do (`src.sim_estimation.fit_mvar`): least squares on the stacked
+   10 s / 50 % windows (`FIT_METHOD='ols'`), windows fitted as cut (`DETREND_TYPE='none'`), order p = 4.
+3. Runs the diagnostics (`residual_whiteness`, `ar_root_stability`) on that fit and on a global single-window fit
+   of the same order, for comparison.
 
-No Granger_estimator here -- that is Stage 4, which will reuse the identical detrended,
-windowed 3-D representation with the explicit `p_used` this stage selects
-(`full_freq_dtf(stack, freqs, fs, optimal_model_order=p_used)`; never `None`
-on a 3-D stack -- see `DTF_analysis_notes/pipeline_plan.md` Stage 4).
+Writes, per dyad x film, `03_mvar/<dyad_id>_<film>_order.json`; across all cases, `03_mvar/stage03_manifest.csv`; a
+window-choice sensitivity check on 1-2 dyads (gate-only); and a QC gate (`qc/*.png` + `mvar_order_gate.html`).
+Each case also gets a connectivity/spectra grid figure (`src.mtmvar.plot_mvar_grid`, `PRIMARY_ESTIMATOR`, no
+Box-Cox) at a fixed order and window geometry (`GRID_MODEL_ORDER`, `GRID_WIN_LEN_S`/`GRID_OVERLAP_FRAC`).
 
-Writes, per dyad x film, `03_mvar/<dyad_id>_<film>_order.json`; across all
-cases, `03_mvar/stage03_manifest.csv`; a small window-choice sensitivity check
-on 1-2 dyads (gate-only, not written to per-dyad outputs); and a QC gate
-(`qc/*.png` figures + `mvar_order_gate.html`).
-
-Each case also gets one Granger_estimator/spectra grid figure (`src.mtmvar.mvar_plot`:
-off-diagonal panels = pairwise Granger_estimator, diagonal panels = auto power spectra),
-fit at a fixed model order and window geometry (`GRID_MODEL_ORDER`,
-`GRID_WIN_LEN_S`/`GRID_OVERLAP_FRAC` below) independent of the per-case
-`p_used`/window selection above -- a fixed, comparable view across all cases.
-
-Known caveat, documented and not fixed here (simplicity convention):
-`src.mtmvar.mvar_criterion` unpacks `n_channels, n_samples = data.shape` and
-therefore crashes on 3-D input; even patched, its `n_samples` penalty term
-would need to reflect the summed sample budget across windows, not one
-window's. Order selection therefore stays on the global 2-D signal.
+Known caveat: `src.mtmvar.mvar_criterion` works on a 2-D signal only, so the descriptive order selection uses the
+global signal, not the windows.
 """
 
 import json
@@ -59,9 +37,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.design import assemble_design_matrix, detrend_windows, node_names, rows_for_signal, window_geometry, window_stack
 from src.io_utils import ensure_dir, parse_case_filename
-from src.mtmvar import ar_coeff, dtf_estimator, plot_mvar_grid
+from src.connectivity import Granger_estimator
+from src.mtmvar import plot_mvar_grid
+from src.sim_estimation import fit_mvar
 from src.mvar_diag import (
-    ar_root_stability, fit_mvar_avg_acf, residual_whiteness, select_p_used,
+    ar_root_stability, residual_whiteness, select_p_used,
     plot_order_curves, plot_roots_comparison, plot_acf_comparison, plot_detrend_example,
 )
 from src.pipeline_config import load_stage_config
@@ -99,25 +79,21 @@ MAX_MODEL_ORDER = CFG["MAX_MODEL_ORDER"]      # short-segment guard, not a scien
 # diagnostics entirely.
 SIGNAL_ROW_GROUPS = {signal: rows_for_signal(NODES, signal) for signal in dict.fromkeys(node["signal"] for node in NODES)}
 
-# Locked window geometry (pipeline_plan.md Stage 3): 1/WIN_LEN_S = 0.1 Hz stays
-# below the ~0.2-1 Hz coupling band, each window comfortably exceeds a small
-# expected p, and 50% overlap lifts a 60 s film from 6 to ~11 windows.
+# Analysis fit (manuscript 2.3), identical in Stages 3-5: 10 s windows, 50 % overlap, no detrending, OLS on the
+# stacked windows, fixed order p = 4.
 WIN_LEN_S = CFG["WIN_LEN_S"]
 OVERLAP_FRAC = CFG["OVERLAP_FRAC"]
 DETREND_TYPE = CFG["DETREND_TYPE"]
+FIT_METHOD = CFG["FIT_METHOD"]
+MODEL_ORDER = CFG["COMMON_MODEL_ORDER"]
 
-RESIDUAL_ACF_MAX_LAG = CFG["RESIDUAL_ACF_MAX_LAG"]   # must stay well below win_len - p_used
+RESIDUAL_ACF_MAX_LAG = CFG["RESIDUAL_ACF_MAX_LAG"]   # must stay well below win_len - MODEL_ORDER
 MIN_WHITE_FRACTION = CFG["MIN_WHITE_FRACTION"]   # quality flag: per-variable fraction of lags within the Bartlett band
 
-# Per-case Granger_estimator/spectra grid figure (src.mtmvar.mvar_plot): fixed model order and
-# window geometry, independent of the p_used/window selected above, for a
-# comparable view across all cases.
-ESTIMATOR = CFG["ESTIMATOR"]  # or "ffDTF" for full-frequency DTF, "GPDC" for generalized partial directed coherence
-# The grid/sensitivity plots below intentionally override "shared".BOX_COX_LAMBDA
-# with this stage's own GRID_BOX_COX_LAMBDA (default -1 = no transform), since we
-# want to see the actual data without any transformation there; this stage never
-# estimates the real Granger_estimator/spectra cube (that's Stage 4), so there is
-# no other "real estimator path" in this script to keep BOX_COX_LAMBDA for.
+# Per-case connectivity/spectra grid figure (src.mtmvar.plot_mvar_grid): fixed model order and window geometry,
+# primary estimator, for a comparable view across all cases. The grid/sensitivity plots use this stage's own
+# GRID_BOX_COX_LAMBDA (default -1 = no transform) to show the untransformed values.
+ESTIMATOR = CFG["PRIMARY_ESTIMATOR"]
 BOX_COX_LAMBDA = CFG["GRID_BOX_COX_LAMBDA"]
 GRID_MODEL_ORDER = CFG["GRID_MODEL_ORDER"]
 GRID_WIN_LEN_S = CFG["GRID_WIN_LEN_S"]
@@ -125,13 +101,12 @@ GRID_OVERLAP_FRAC = CFG["GRID_OVERLAP_FRAC"]
 GRID_FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)
 GRID_SCALE = CFG["GRID_SCALE"]
 
-# Window-choice sensitivity check (gate-only): validates the locked default
-# (10 s/50%) against two alternatives, holding p_used fixed (it is selected on
-# the window-independent global 2-D signal).
+# Window-choice sensitivity check (gate-only): the analysis window (10 s/50%) against two alternatives, at the
+# analysis order.
 SENSITIVITY_DYADS = [tuple(pair) for pair in CFG["SENSITIVITY_DYADS"]]
 SENSITIVITY_WINDOW_CONFIGS = [tuple(cfg) for cfg in CFG["SENSITIVITY_WINDOW_CONFIGS"]]
 SENSITIVITY_FREQS = np.linspace(0.02, TARGET_SFREQ / 2 - 0.02, 100)
-COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])  # band-averaged Granger_estimator for the DV substrate
+COUPLING_BAND_HZ = tuple(CFG["COUPLING_BAND_HZ"])  # band-averaged connectivity = the DV substrate
 PRIMARY_EDGES = [
     (edge["source"], edge["target"]) for edge in CFG["edge_topology"] if edge["class"] != "exploratory"
 ]
@@ -140,7 +115,7 @@ PRIMARY_EDGES = [
 
 
 # ---------------------------------------------------------------------------
-# 1. Per-case: order selection, windowed fit, global-comparison fit, diagnostics
+# 1. Per-case: descriptive order selection, analysis fit (p = MODEL_ORDER), global-comparison fit, diagnostics
 # ---------------------------------------------------------------------------
 nc_paths = sorted(ENVELOPES_DIR.glob("*.nc"))
 print(f"Stage 3: {len(nc_paths)} dyad x film design files found in {ENVELOPES_DIR}")
@@ -158,25 +133,25 @@ for nc_path in nc_paths:
     p_used = order["p_used"]
 
     win_len, step = window_geometry(WIN_LEN_S, OVERLAP_FRAC, TARGET_SFREQ)
-    assert win_len > p_used, f"win_len={win_len} must exceed p_used={p_used} for {dyad_id} {film}"
+    assert win_len > MODEL_ORDER, f"win_len={win_len} must exceed p={MODEL_ORDER} for {dyad_id} {film}"
 
     stack = window_stack(design, win_len, step)
-    stack_detrended = detrend_windows(stack, dtype=DETREND_TYPE)
+    stack_detrended = detrend_windows(stack, dtype=DETREND_TYPE)   # 'none' = windows as cut
     n_windows = stack_detrended.shape[2]
 
-    # Windowed-ACF-averaged fit (the default estimator) + diagnostics.
-    ar_coeffs, _ = fit_mvar_avg_acf(stack_detrended, p_used)
+    # Analysis fit (the one Stages 4-5 use) + diagnostics.
+    ar_coeffs, _, _ = fit_mvar(design, MODEL_ORDER, win_len, step, DETREND_TYPE, FIT_METHOD)
     roots, max_abs_root, stable = ar_root_stability(ar_coeffs)
     residual_acf, whiteness_summary = residual_whiteness(stack_detrended, ar_coeffs, RESIDUAL_ACF_MAX_LAG)
-    n_eff_windowed = win_len - p_used
+    n_eff_windowed = win_len - MODEL_ORDER
     band_windowed = 1.96 / np.sqrt(n_eff_windowed)
 
-    # Global single-window comparison fit, same p_used, no per-window detrend.
-    ar_coeffs_global, _ = ar_coeff(design, p_used)
+    # Global single-window comparison fit, same order and method.
+    ar_coeffs_global, _, _ = fit_mvar(design, MODEL_ORDER, None, None, method=FIT_METHOD)
     roots_global, max_abs_root_global, stable_global = ar_root_stability(ar_coeffs_global)
     design_1window = design[:, :, np.newaxis]
     residual_acf_global, whiteness_summary_global = residual_whiteness(design_1window, ar_coeffs_global, RESIDUAL_ACF_MAX_LAG)
-    band_global = 1.96 / np.sqrt(n_samples - p_used)
+    band_global = 1.96 / np.sqrt(n_samples - MODEL_ORDER)
 
     quality_reasons = []
     if not stable:
@@ -190,7 +165,7 @@ for nc_path in nc_paths:
         "group": str(envelopes.attrs.get("group", "")),
         "age_months": float(envelopes.attrs["age_months"]),
         "n_samples": n_samples,
-        "p_used": p_used,
+        "p_used": p_used, "model_order": MODEL_ORDER, "fit_method": FIT_METHOD,
         "p_by_signal": {signal: orders[PRIMARY_CRIT] for signal, orders in order["orders_by_signal"].items()},
         "primary_crit": PRIMARY_CRIT,
         "orders_full": order["orders_full"], "orders_by_signal": order["orders_by_signal"],
@@ -207,7 +182,7 @@ for nc_path in nc_paths:
 
     manifest_rows.append({
         "dyad_id": dyad_id, "film": film, "group": record["group"], "n_samples": n_samples,
-        "p_used": p_used, "order_at_cap": order["order_at_cap"],
+        "p_used": p_used, "model_order": MODEL_ORDER, "fit_method": FIT_METHOD, "order_at_cap": order["order_at_cap"],
         **{f"p_{signal}": p for signal, p in record["p_by_signal"].items()},
         "n_windows": n_windows, "max_abs_root": max_abs_root, "stable": stable,
         "max_abs_root_global": max_abs_root_global,
@@ -233,13 +208,13 @@ for nc_path in nc_paths:
     plt.close(fig)
 
     fig = plot_roots_comparison(roots_global, roots, max_abs_root_global, max_abs_root,
-                                 f"{case_title}: AR roots, global vs windowed (p={p_used})")
+                                 f"{case_title}: AR roots, global vs windowed (p={MODEL_ORDER}, {FIT_METHOD})")
     roots_path = QC_DIR / f"{dyad_id}_{film}_roots_comparison.png"
     fig.savefig(roots_path)
     plt.close(fig)
 
     fig = plot_acf_comparison(residual_acf_global, residual_acf, band_global, band_windowed, NODE_NAMES,
-                               f"{case_title}: residual ACF, global vs windowed (p={p_used})")
+                               f"{case_title}: residual ACF, global vs windowed (p={MODEL_ORDER}, {FIT_METHOD})")
     acf_path = QC_DIR / f"{dyad_id}_{film}_acf_comparison.png"
     fig.savefig(acf_path)
     plt.close(fig)
@@ -253,7 +228,7 @@ for nc_path in nc_paths:
     fig = plot_mvar_grid(
         design, GRID_MODEL_ORDER, GRID_WIN_LEN_S, GRID_OVERLAP_FRAC, TARGET_SFREQ, DETREND_TYPE, GRID_FREQS, NODE_NAMES,
         f"{case_title}: {ESTIMATOR} grid (p={GRID_MODEL_ORDER}, window={GRID_WIN_LEN_S:g}s/{int(GRID_OVERLAP_FRAC * 100)}%)",
-        COUPLING_BAND_HZ, scale=GRID_SCALE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA
+        COUPLING_BAND_HZ, scale=GRID_SCALE, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA, method=FIT_METHOD
     )
     mvar_grid_path = QC_DIR / f"{dyad_id}_{film}_mvar_grid.png"
     fig.savefig(mvar_grid_path)
@@ -261,7 +236,7 @@ for nc_path in nc_paths:
 
     gate_entries.append({
         "dyad_id": dyad_id, "film": film, "group": record["group"],
-        "p_used": p_used, "n_windows": n_windows, "max_abs_root": max_abs_root, "stable": stable,
+        "p_used": p_used, "model_order": MODEL_ORDER, "n_windows": n_windows, "max_abs_root": max_abs_root, "stable": stable,
         "min_white_fraction": min(whiteness_summary.values()), "quality_ok": quality_ok,
         "order_curves": order_curves_path.name, "roots": roots_path.name,
         "acf": acf_path.name, "detrend": detrend_path.name, "mvar_grid": mvar_grid_path.name,
@@ -273,7 +248,7 @@ manifest_df.to_csv(OUTPUT_DIR / "stage03_manifest.csv", index=False)
 # ---------------------------------------------------------------------------
 # 2. Run summary
 # ---------------------------------------------------------------------------
-print(f"\n=== Stage 3 summary ({len(manifest_df)} cases, primary_crit={PRIMARY_CRIT}, "
+print(f"\n=== Stage 3 summary ({len(manifest_df)} cases, p={MODEL_ORDER} ({FIT_METHOD}, detrend={DETREND_TYPE}), descriptive crit={PRIMARY_CRIT}, "
       f"window={WIN_LEN_S}s/{int(OVERLAP_FRAC * 100)}% overlap) ===")
 for group_label, group_df in manifest_df.groupby("group"):
     n = len(group_df)
@@ -302,15 +277,14 @@ for dyad_id, film in SENSITIVITY_DYADS:
     envelopes = xr.load_dataarray(nc_path)
     design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
 
-    order = select_p_used(design, MAX_MODEL_ORDER, CRIT_TYPES, PRIMARY_CRIT, SIGNAL_ROW_GROUPS)
-    p_used = order["p_used"]  # held fixed across configs: selected on the window-independent global signal
+    p_used = MODEL_ORDER  # the analysis order, fixed across window configs
 
     spectra_by_config = {}
     for win_len_s, overlap_frac in SENSITIVITY_WINDOW_CONFIGS:
         win_len, step = window_geometry(win_len_s, overlap_frac, TARGET_SFREQ)
         assert win_len > p_used, f"win_len={win_len} must exceed p_used={p_used} for sensitivity config {win_len_s}s"
-        stack = detrend_windows(window_stack(design, win_len, step), dtype=DETREND_TYPE)
-        granger_estimator = dtf_estimator(stack, SENSITIVITY_FREQS, TARGET_SFREQ, optimal_model_order=p_used, ESTIMATOR=ESTIMATOR, box_cox_lambda=BOX_COX_LAMBDA)
+        granger_estimator, _ = Granger_estimator(design, SENSITIVITY_FREQS, TARGET_SFREQ, p_used, win_len, step,
+                                                 DETREND_TYPE, ESTIMATOR, BOX_COX_LAMBDA, FIT_METHOD)
         spectra_by_config[(win_len_s, overlap_frac)] = granger_estimator
 
     band_mask = (SENSITIVITY_FREQS >= COUPLING_BAND_HZ[0]) & (SENSITIVITY_FREQS <= COUPLING_BAND_HZ[1])
@@ -331,9 +305,9 @@ for dyad_id, film in SENSITIVITY_DYADS:
         axis.set_title(f"{source_name} -> {target_name}", fontsize=9)
         axis.set_xlabel("Frequency (Hz)")
         axis.legend(fontsize=7)
-    axes[0, 0].set_ylabel(f"{ESTIMATOR} (Granger causality)")
-    axes[1, 0].set_ylabel(f"{ESTIMATOR} (Granger causality)")
-    figure.suptitle(f"{dyad_id} {film}: window-choice sensitivity (p_used={p_used})")
+    axes[0, 0].set_ylabel(ESTIMATOR)
+    axes[1, 0].set_ylabel(ESTIMATOR)
+    figure.suptitle(f"{dyad_id} {film}: window-choice sensitivity (p={p_used}, {FIT_METHOD})")
     figure.tight_layout()
     sensitivity_plot_path = QC_DIR / f"{dyad_id}_{film}_sensitivity.png"
     figure.savefig(sensitivity_plot_path)
@@ -384,8 +358,10 @@ HTML_TEMPLATE = """<!doctype html>
 </head>
 <body>
 <h1>Stage 3 windowed-MVAR gate</h1>
-<p>estimator=<b>__ESTIMATOR__</b> (box_cox_lambda=<b>__BOX_COX_LAMBDA__</b>, -1 = no transform), primary_crit=<b>__PRIMARY_CRIT__</b>, window=<b>__WIN_LEN_S__ s / __OVERLAP_PCT__% overlap</b>,
-   detrend=<b>__DETREND_TYPE__</b>, min_white_fraction=__MIN_WHITE_FRACTION__.</p>
+<p>analysis fit: <b>__FIT_METHOD__</b>, order <b>p=__MODEL_ORDER__</b> (fixed; the criterion order is descriptive only,
+   primary_crit=__PRIMARY_CRIT__), window=<b>__WIN_LEN_S__ s / __OVERLAP_PCT__% overlap</b>, detrend=<b>__DETREND_TYPE__</b>,
+   min_white_fraction=__MIN_WHITE_FRACTION__. Grid figures: estimator=<b>__ESTIMATOR__</b>,
+   box_cox_lambda=<b>__BOX_COX_LAMBDA__</b> (-1 = no transform).</p>
 <div id="summary">__SUMMARY__</div>
 <h2>Window-choice sensitivity</h2>
 <div id="sensitivity">__SENSITIVITY_TEXT__</div>
@@ -446,5 +422,6 @@ html = html.replace("__BOX_COX_LAMBDA__", str(BOX_COX_LAMBDA))
 html = html.replace("__PRIMARY_CRIT__", PRIMARY_CRIT).replace("__WIN_LEN_S__", str(WIN_LEN_S))
 html = html.replace("__OVERLAP_PCT__", str(int(OVERLAP_FRAC * 100))).replace("__DETREND_TYPE__", DETREND_TYPE)
 html = html.replace("__MIN_WHITE_FRACTION__", str(MIN_WHITE_FRACTION))
+html = html.replace("__FIT_METHOD__", FIT_METHOD).replace("__MODEL_ORDER__", str(MODEL_ORDER))
 (OUTPUT_DIR / "mvar_order_gate.html").write_text(html, encoding="utf-8")
 print(f"Wrote interactive gate to {OUTPUT_DIR / 'mvar_order_gate.html'}")
