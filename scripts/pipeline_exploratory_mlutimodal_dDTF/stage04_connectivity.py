@@ -95,8 +95,9 @@ for nc_path in nc_paths:
     assert envelopes.attrs["fs"] == TARGET_SFREQ, f"fs mismatch for {dyad_id} {film}"
     design = assemble_design_matrix(envelopes, NODE_NAMES, zscore=True)
     order_record = json.loads((ORDER_DIR / f"{dyad_id}_{film}_order.json").read_text(encoding="utf-8"))
-    assert (order_record["fit_method"], order_record["detrend_type"], order_record["model_order"]) == \
-        (FIT_METHOD, DETREND_TYPE, MODEL_ORDER), f"Stage 3 was run with other fit settings for {dyad_id} {film}: rerun it"
+    assert (order_record["fit_method"], order_record["detrend_type"], order_record["model_order"],
+            order_record["win_len"], order_record["step"]) == \
+        (FIT_METHOD, DETREND_TYPE, MODEL_ORDER, WIN_LEN, STEP), f"Stage 3 was run with other fit settings for {dyad_id} {film}: rerun it"
 
     for est in ESTIMATORS:
         cube, spectra = Granger_estimator(design, FREQS, TARGET_SFREQ, MODEL_ORDER, WIN_LEN, STEP, DETREND_TYPE,
