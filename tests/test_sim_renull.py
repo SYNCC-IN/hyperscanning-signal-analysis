@@ -41,6 +41,36 @@ def test_renull_contrast_combines_films_linearly():
     np.testing.assert_allclose(got, expected)
 
 
+def test_renull_group_contrast_skips_missing_zero_weight_film():
+    """A missing unweighted film is excluded identically from observed and permuted re-nulled contrasts."""
+    from src.pairing_tables import apply_film_contrasts, contrast_matrix
+    from src.sim_inference import family_pvalues, label_permutations
+
+    rng = np.random.default_rng(11)
+    groups = np.repeat([0, 1], 6)
+    real, pair_values = exchangeable_study(rng, 12, 3)
+    real[2, 2] = np.nan
+    pair_values[2, :, 2] = np.nan
+    pair_values[:, 2, 2] = np.nan
+    raw_delta, _ = delta_and_z_all(real[:, None, :], pair_values[:, :, None, :], "within_group", groups)
+    weights = np.array([[1.0, -1.0, 0.0]])
+    delta = apply_film_contrasts(raw_delta.reshape(12, 3), weights, 1)
+    combine = contrast_matrix(weights, 1)
+    n_perm, seed = 100, 12
+
+    actual = group_permutation_maxT(delta, groups, np.random.default_rng(seed), n_perm, renull=True,
+                                    real=real, pair_values=pair_values, combine=combine)
+
+    labels = label_permutations(groups == 1, np.random.default_rng(seed), n_perm)
+    all_labels = np.vstack([(groups == 1)[None], labels])
+    renulled = renull_delta(real, pair_values, all_labels)
+    expected_delta = apply_film_contrasts(renulled, weights, 1)
+    expected_stats = group_mean_difference(np.where(np.isfinite(delta)[None], expected_delta, np.nan), all_labels)
+    expected = family_pvalues(np.abs(expected_stats[0]), np.abs(expected_stats[1:]))
+    for key in actual:
+        np.testing.assert_allclose(actual[key], expected[key])
+
+
 def test_renull_and_fixed_delta_draw_the_same_permutations():
     """Both versions consume the same draws, so the generator is in the same state afterwards."""
     groups = np.repeat([0, 1], 8)

@@ -145,7 +145,24 @@ def comparison(rates):
     return pd.DataFrame(rows)
 
 
+def require_simulation_results():
+    """Require the S1/S3 reference CSVs before starting the end-to-end runs."""
+    required = [SIM_RESULTS / est / scenario / filename
+                for est in ESTIMATORS
+                for scenario, filename in (("S_01", "partB_detection_rate_maxT.csv"),
+                                           ("S_03", "summary_fwer.csv"))]
+    missing = [path for path in required if not path.is_file()]
+    if missing:
+        paths = "\n".join(f"  {path.relative_to(PROJECT_ROOT)}" for path in missing)
+        raise FileNotFoundError(
+            "Stage 0c requires the full S1/S3 simulation reference outputs. "
+            "Generate them first with `python simulations_multimodal_MVAR/dDTF/run_all.py full 1 3`.\n"
+            f"Missing files:\n{paths}"
+        )
+
+
 if __name__ == "__main__":
+    require_simulation_results()
     seeds = np.random.SeedSequence(BASE_SEED).generate_state(sum(N_STUDIES.values()))
     tasks = [{"scenario": s, "rep": r} for s, n in N_STUDIES.items() for r in range(n)]
     for task, seed in zip(tasks, seeds):

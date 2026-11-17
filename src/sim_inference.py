@@ -583,7 +583,7 @@ def renull_statistics(real, pair_values, valid, labels, combine=None):
     """
     delta = renull_delta(real, pair_values, labels)
     if combine is not None:
-        delta = delta @ combine
+        delta = np.stack([delta[..., weights != 0] @ weights[weights != 0] for weights in combine.T], axis=-1)
     return group_mean_difference(np.where(valid[None], delta, np.nan), labels)
 
 

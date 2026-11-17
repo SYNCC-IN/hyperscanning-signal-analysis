@@ -105,7 +105,11 @@ Pliki `*.html` to „bramki” – raporty do obejrzenia w przeglądarce po każ
 
 - Etapy 01–02 czytają dane z Google Drive; od etapu 03 wszystko liczy się z plików w `Interbrain_ffDTF_analysis/`.
 - Etapy 03 i 04 są opisowe (diagnostyka, rysunki). Wnioskowanie to etapy 05 → 07.
-- Sprawdzenie, że kod działa poprawnie (dane syntetyczne o znanej prawdzie, ok. 5 min):
+- Przed syntetycznym sprawdzeniem end-to-end (ok. 5 min) trzeba wygenerować referencyjne wyniki pełnych symulacji S1 i S3 dla dDTF oraz GPDC:
+  `.venv/bin/python simulations_multimodal_MVAR/dDTF/run_all.py full 1 3`
+  Wyniki znajdują się w ignorowanym przez git katalogu `simulations_multimodal_MVAR/dDTF/Results/`; etap 00c sprawdza,
+  czy wymagane pliki CSV istnieją, zanim rozpocznie kosztowne symulowane studia.
+- Sprawdzenie, że kod działa poprawnie (dane syntetyczne o znanej prawdzie):
   ```bash
   .venv/bin/python scripts/pipeline_exploratory_mlutimodal_dDTF/stage00c_end_to_end.py 20 50
   .venv/bin/python -m pytest tests/test_pipeline_alignment.py
