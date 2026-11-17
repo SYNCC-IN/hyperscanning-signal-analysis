@@ -1,6 +1,6 @@
 """Stage 1 - assemble data + coverage table.
 
-First real-data stage of the interbrain ffDTF + HRV pipeline
+First real-data stage of the interbrain dDTF/GPDC + HRV pipeline
 (`DTF_analysis_notes/pipeline_plan.md`). Composes existing loaders
 (`src.io_utils.get_participant_files`, `src.assemble.assemble_dyad`) into a
 per-dyad container per `dyad_id`, then emits one coverage row per
@@ -12,6 +12,7 @@ transients out of the retained per-film data.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,7 +35,7 @@ from src.pipeline_config import load_stage_config
 CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
 CFG = load_stage_config(CONFIG_PATH, "stage01_coverage")
 
-DRIVE_ROOT = Path(CFG["DRIVE_ROOT"])
+DRIVE_ROOT = Path(os.environ.get("SYNCC_DRIVE_ROOT", CFG["DRIVE_ROOT"]))  # env var > pipeline_config.local.json > pipeline_config.json
 EEG_CLEANED_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "ICA_output" / "EEG_ICA_CLEANED"
 IBI_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "IBI"
 

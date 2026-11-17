@@ -234,7 +234,7 @@ MVAR modeling, DTF-family connectivity, and FAD decomposition. See [docs/fad_spe
 - `partial_coherence(spectra)` — partial coherence from a multivariate spectra array.
 - `mvar_plot(on_diag, off_diag, freqs, x_label, y_label, chan_names, top_title, scale='linear', fig_size=(8, 8), band_hz=None, fig=None, max_on_diag=None, max_off_diag=None)` — bar-plot grid of diagonal (auto) + off-diagonal (cross) connectivity terms; `off_diag`'s sign is preserved (not forced non-negative), since a Box-Cox-transformed cube can be negative and its sign is meaningful — fill/shading and axis limits are drawn down to `off_diag`'s own minimum (0 unless it goes negative), not hard-coded to 0.
 - `example_dyads_figure(dyad, r_smooth, r_rough, freqs, fs, p, win_len, step, detrend_type, estimator, channel_labels, channel_colors, output_dir, max_on_diag=None, max_off_diag=None)` — save one synthetic dyad's signals plus MVAR spectra/dDTF figure; returns the diagonal/off-diagonal plot scales used so other figures can share them.
-- `plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs, variable_names, title, coupling_band_hz, scale='linear', ESTIMATOR='dDTF', box_cox_lambda=-1)` — one call combining window/detrend + `dtf_estimator`/`multivariate_spectra` + `mvar_plot`, for a fixed-order/fixed-geometry connectivity grid figure (interbrain ffDTF pipeline, Stage 3 QC grid).
+- `plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs, variable_names, title, coupling_band_hz, scale='linear', ESTIMATOR='dDTF', box_cox_lambda=-1, method='yw')` — one call combining `src.connectivity.Granger_estimator` (the `src.sim_estimation.fit_mvar` path) + `mvar_plot`, for a fixed-order/fixed-geometry connectivity grid figure (interbrain pipeline, Stage 3 QC grid).
 - `get_linewidths(graph)` *(no docstring)* — scale directed-graph edge widths from their `weight` attributes for `graph_plot`.
 - `graph_plot(connectivity_matrix, ax, freqs, freq_range, chan_names, title)` — plot a connectivity matrix as a directed graph (`networkx`); returns the `DiGraph`.
 - `fad_decomposition(signal, fs, model_order=None, max_model_order=20, crit_type='AIC', plot=False, pair_conjugates=True, imag_tol=1e-08)` — FAD (Frequency-Amplitude-Damping) decomposition of a univariate AR model into damped oscillators.
@@ -243,17 +243,18 @@ MVAR modeling, DTF-family connectivity, and FAD decomposition. See [docs/fad_spe
 
 ---
 
-## Interbrain ffDTF + HRV pipeline (`scripts/pipeline_exploratory_mlutimodal_dDTF/`)
+## Interbrain dDTF/GPDC + HRV pipeline (`scripts/pipeline_exploratory_mlutimodal_dDTF/`)
 
-Library modules specific to the 8-stage (stage00-stage06) interbrain dDTF/ffDTF +
-HRV connectivity pipeline. Stage scripts own configuration/orchestration (settings
+Library modules specific to the interbrain dDTF/GPDC + HRV connectivity pipeline (stage00-stage07; since
+2026-11-16 the estimation and inference run on the simulations' code path: `src/sim_estimation.py`,
+`src/sim_inference.py`, `src/perm_anova.py`). Stage scripts own configuration/orchestration (settings
 live in that folder's `pipeline_config.json`, loaded via `src/pipeline_config.py`);
 these modules own the reusable logic. `src/mtmvar.py` above (shared with the older
 `src/warsaw_pilot_data.py`/`src/eeg_alpha_ibi_ffdtf.py` examples) is this pipeline's
 low-level MVAR/DTF core.
 
 ### `src/pipeline_config.py`
-- `load_stage_config(config_path, stage_key)` — load one stage's settings: the JSON's `"shared"` section merged with its `stage_key` section (stage-specific keys win on collision).
+- `load_stage_config(config_path, stage_key)` — load one stage's settings: the JSON's `"shared"` section merged with its `stage_key` section (stage-specific keys win on collision); a git-ignored `<stem>.local.json` next to the config overrides `"shared"` (e.g. `DRIVE_ROOT`).
 
 ### `src/assemble.py`
 Per-dyad data assembly (Stage 1/2): wires `src/io_utils.py`'s NetCDF readers into one continuous per-dyad structure.
@@ -273,7 +274,7 @@ MVAR design-matrix construction (Stage 2/3): individualized-band ROI envelopes +
 - `stack_design(node_signals, names, fs, attrs)` — stack the per-node MVAR design variables (in `names` order) into one labeled `xarray.DataArray`.
 - `assemble_design_matrix(envelopes, names, zscore=True)` — turn a Stage 2 envelope DataArray into the `(len(names), n_samples)` MVAR design matrix, selecting/ordering by `names` and optionally z-scoring.
 - `window_stack(design, win_len, step)` — cut a design matrix into overlapping windows, stacked on a trials axis.
-- `detrend_windows(stack, dtype='linear')` — detrend each (channel, window) time series independently, per window.
+- `detrend_windows(stack, dtype='linear')` — detrend each (channel, window) time series independently, per window; `dtype='none'` returns the windows as cut (manuscript setting).
 - `window_geometry(win_len_s, overlap_frac, target_sfreq)` — derive integer window length/step (samples) from a length/overlap spec.
 - `assert_edges_known(edges, names, context='')` — raise a loud, edge-naming `ValueError` if any `(source, target)` pair references a node not in `names`; used at stage load time to validate `pipeline_config.json`'s `edge_topology`/`PRIMARY_FAMILY`.
 
@@ -292,25 +293,26 @@ MVAR model-order selection and fit-quality diagnostics (Stage 3): the windowed-A
 - `plot_detrend_example(stack, stack_detrended, variable_names, win_len_s, coupling_band_hz, title, n_examples=3)` — plot a few example windows, pre- vs post-detrend, one row per variable.
 
 ### `src/connectivity.py`
-Granger-estimator (dDTF/ffDTF/GPDC) connectivity estimation (Stage 4): the windowed-ACF-averaged MVAR core, at a fixed model order.
+Connectivity estimation (dDTF/GPDC/ffDTF/DTF) through `src.sim_estimation.fit_mvar` + `connectivity_cube` (one code path with the simulations).
 
-- `Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type='linear', ESTIMATOR='dDTF', box_cox_lambda=-1)` — windowed-ACF-averaged connectivity + multivariate spectra at a fixed order; the stable interface stages 4+ call.
+- `Granger_estimator(design, freqs, fs, p, win_len, step, detrend_type='linear', ESTIMATOR='dDTF', box_cox_lambda=-1, method='yw')` — connectivity cube + spectral matrix of one windowed MVAR fit; the defaults ('linear', 'yw') are kept for older callers, the pipeline passes `DETREND_TYPE='none'`, `FIT_METHOD='ols'`.
 - `read_edge_value(cube, source, target, names=None, orientation='target_source')` — read one directed edge's value out of a connectivity cube/matrix, by raw index or by name (`names` = e.g. `src.design.node_names(nodes)`).
-- `edge_value(design, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — band-averaged connectivity value for one directed edge of a 2-channel design (combines `Granger_estimator` + `src.surrogate.band_average_cube` + `read_edge_value`).
+- `edge_value(design, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz, method='yw')` — band-averaged connectivity value for one directed edge of a design (combines `Granger_estimator` + `src.surrogate.band_average_cube` + `read_edge_value`).
 
 ### `src/surrogate.py`
 Film-matched surrogate-dyad null construction (Stage 5): mismatched-pair reassembly, stability gating, and the signed delta/z against the null.
 
 - `surrogate_pairs(dyad_ids, group_of=None)` — all ordered `(child_dyad, cg_dyad)` pairs with `child_dyad != cg_dyad`; optionally restricted to same-group pairs (`group_of` given) for the within-group null sensitivity.
 - `assemble_surrogate_design(nodes, child_envelopes, cg_envelopes, zscore=True)` — stitch a foreign child's `role=="child"` node variables with a foreign caregiver's `role=="caregiver"` node variables into one design matrix, in `node_names(nodes)` order (any per-role node count/composition).
-- `windowed_ar_stability(design, win_len, step, p, detrend_type='linear')` — companion-matrix stability of the windowed-ACF AR fit of one design matrix; used to gate surrogates and flag real dyads.
+- `windowed_ar_stability(design, win_len, step, p, detrend_type='linear', method='yw')` — companion-matrix stability of the same fit as the estimate (`src.sim_estimation.fit_mvar`).
+- `pair_tables(envelopes, nodes, p, win_len, step, freqs, fs, estimators, band_hz, box_cox_lambda, detrend_type, method, stability_max_root)` — the pairing table T of one film: every (child dyad, caregiver dyad) pairing (diagonal = real dyads), one fit per cell, all estimators; NaN where the fit is unstable (Stage 5).
 - `band_average_cube(cube, freqs, band_hz)` — average a `(k, k, n_freqs)` cube over an inclusive frequency band -> `(k, k)`.
 - `delta_and_z(real_value, null_values)` — signed delta (`real - null median`) and z (robust, MAD-scaled) of a real edge value against its surrogate null.
 - `real_edge_values(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — per-dyad band-averaged connectivity value for `edge` (the real, same-dyad estimate).
 - `surrogate_null(dyads, edge, freqs, fs, p, win_len, step, detrend_type, estimator, box_cox_lambda, band_hz)` — pooled surrogate null for `edge`, over every foreign (child, caregiver) pairing.
 - `edge_class_for(source_name, target_name, edge_class)` — this directed edge's H2/H4/exploratory/`"other"` tag from an `{(source, target): class}` map (defaults to `"other"`).
-- `plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, names, estimator, box_cox_lambda, title, delta_space=False)` — split violin of the surrogate null vs real dyads (TD left / ASD right), per edge; `delta_space=True` centers on zero and plots `delta_dtf` directly.
-- `plot_delta_summary(delta_table_df, edges_to_plot, title)` — per-group mean +/- SEM of `delta_dtf` for the given edges.
+- `plot_null_vs_real_violin(edges_to_plot, null_matrix, real_by_dyad, all_edges, edge_class, names, estimator, box_cox_lambda, title, delta_space=False)` — split violin of the surrogate null vs real dyads (TD left / ASD right), per edge; `delta_space=True` centers on zero and plots `delta` directly.
+- `plot_delta_summary(delta_table_df, edges_to_plot, title)` — per-group mean +/- SEM of `delta` for the given edges.
 - `compute_null(candidate_pairs, envelopes_by_dyad, win_len, step, model_order, detrend_type, stability_max_root, freqs, fs, estimator, box_cox_lambda, band_hz, all_edges, nodes)` — estimate a surrogate null matrix for one set of candidate mismatched pairs; scope-agnostic core shared by the pooled reference null and the within-group sensitivity null.
 
 ### `src/group_model.py`
@@ -398,6 +400,22 @@ Factorial permutation ANOVA for dyad-level repeated-measures designs: Freedman�
 - `repaired_values(table, perms)` — values of the (child, re-paired caregiver) pairs of every re-pairing of a pairing table.
 - `all_pairs_mean(table, groups)` — mean of all within-group pairs (real included): the expectation of a random re-pairing.
 - `bootstrap_null_medians(pair_values, groups, rng, n_boot)` — within-group null medians from a person-level (children x caregivers) bootstrap.
+- `group_terms_fn(term_contrasts, Z)` — `term_fn` for `relabel_renull_test`: statistic of the group term of every within-dyad contrast (G, G x F, G x E, ...), with nuisance columns Z.
+
+### `src/pairing_tables.py`
+Stage-5 pairing tables T (NetCDF per film x estimator) in the layouts the permutation tests take (Stage 7).
+
+- `load_film_table(nc_path, edges)` — stable real dyads of one film (an unstable real dyad is dropped with its row and column), real values (n, edges) and pair values (n, n, edges; NaN diagonal).
+- `stack_films(film_tables, films)` — the films on the union of their dyads, film-major columns; a dyad absent from a film is NaN there.
+- `apply_film_contrasts(Y, weights, n_edges)` — film contrasts of film-major columns, skipping zero-weight films.
+- `contrast_matrix(weights, n_edges)` — the same map as a matrix (`kron(weights.T, I)`), the `combine` of `group_permutation_maxT`.
+
+### `src/sim_estimation.py` (functions the pipeline uses)
+- `fit_mvar(design, p, win_len, step, detrend_type='none', method='ols')` — one MVAR fit (OLS on stacked windows, or YW); returns coefficients, residual covariance, largest companion root.
+- `connectivity_cube(ar_coeffs, variance, freqs, fs, estimator)` — DTF / ffDTF / dDTF / GPDC cube `[target, source, freq]`.
+- `edge_matrix(design, p, win_len, step, freqs, fs, estimator, band_hz, box_cox_lambda=-1, detrend_type='none', p_max=8, crit_type='SC', method='ols')` — band-averaged matrix of one design (the simulations' estimator).
+- `edge_matrices(design, p, win_len, step, freqs, fs, estimators, band_hz, box_cox_lambda=-1, detrend_type='none', method='ols')` — the same for several estimators from one fit.
+- `spectral_matrix(ar_coeffs, variance, freqs, fs)` — spectral density matrix `H V H^H` of a fitted model.
 
 ---
 

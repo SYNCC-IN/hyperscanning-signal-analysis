@@ -32,9 +32,9 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 try:
-    from .design import detrend_windows, window_geometry, window_stack
+    from .design import window_geometry
 except ImportError:  # pragma: no cover - fallback for direct script execution
-    from src.design import detrend_windows, window_geometry, window_stack
+    from src.design import window_geometry
 
 
 def count_corr(x, ip, iwhat):
@@ -756,11 +756,12 @@ def example_dyads_figure(dyad, r_smooth, r_rough, freqs, fs, p, win_len, step, d
 
 
 def plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, detrend_type, freqs,
-                    variable_names, title, coupling_band_hz, scale="linear", ESTIMATOR="dDTF", box_cox_lambda=-1):
-    """Grid of pairwise Granger_estimator (off-diagonal) and auto power spectra (diagonal).
+                    variable_names, title, coupling_band_hz, scale="linear", ESTIMATOR="dDTF", box_cox_lambda=-1,
+                    method="yw"):
+    """Grid of pairwise connectivity (off-diagonal) and auto power spectra (diagonal).
 
-    Windows and detrends `design` at a fixed geometry and fits one
-    windowed-ACF-averaged MVAR at a fixed model order, for a figure that's
+    Fits one windowed MVAR at a fixed geometry and model order (`src.connectivity.Granger_estimator`, i.e.
+    `src.sim_estimation.fit_mvar`), for a figure that's
     directly comparable across cases regardless of each case's own
     order/window selection. Delegates the actual figure to `mvar_plot`, which
     creates its own figure rather than returning one -- `plt.gcf()` recovers
@@ -776,10 +777,10 @@ def plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, d
         Fixed window geometry (seconds, fractional overlap).
     target_sfreq : float
         Sampling frequency in Hz.
-    detrend_type : {'linear', 'constant'}
+    detrend_type : {'none', 'linear', 'constant'}
         Per-window detrend type.
     freqs : np.ndarray
-        Frequency axis (Hz) for the granger_estimator/spectra grid.
+        Frequency axis (Hz) for the connectivity/spectra grid.
     variable_names : list of str
         Channel labels, in `design`'s row order.
     title : str
@@ -793,16 +794,20 @@ def plot_mvar_grid(design, model_order, win_len_s, overlap_frac, target_sfreq, d
     box_cox_lambda : float, optional
         Box-Cox exponent applied to the granger_estimator cube (see
         `box_cox_transform`). Default -1 = no transform.
+    method : {'ols', 'yw'}, optional
+        MVAR fitting method (`src.sim_estimation.fit_mvar`; default 'yw' for older callers).
 
     Returns
     -------
     matplotlib.figure.Figure
     """
+    try:
+        from .connectivity import Granger_estimator  # deferred: src.connectivity imports this module
+    except ImportError:  # pragma: no cover - fallback for direct script execution
+        from src.connectivity import Granger_estimator
     win_len, step = window_geometry(win_len_s, overlap_frac, target_sfreq)
-    assert win_len > model_order, f"win_len={win_len} must exceed model_order={model_order}"
-    stack = detrend_windows(window_stack(design, win_len, step), dtype=detrend_type)
-    spectra = multivariate_spectra(stack, freqs, target_sfreq, optimal_model_order=model_order)
-    granger_estimator = dtf_estimator(stack, freqs, target_sfreq, optimal_model_order=model_order, ESTIMATOR=ESTIMATOR, box_cox_lambda=box_cox_lambda)
+    granger_estimator, spectra = Granger_estimator(design, freqs, target_sfreq, model_order, win_len, step, detrend_type,
+                                                   ESTIMATOR, box_cox_lambda, method)
     mvar_plot(spectra, granger_estimator, freqs, x_label="from ", y_label="to ", chan_names=variable_names,
               top_title=title, scale=scale, fig_size=(9, 9), band_hz=coupling_band_hz)
     return plt.gcf()

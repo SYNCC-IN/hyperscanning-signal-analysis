@@ -312,8 +312,9 @@ def detrend_windows(stack, dtype='linear'):
     ----------
     stack : np.ndarray, shape (k, win_len, n_windows)
         Windowed design matrix from `window_stack`.
-    dtype : {'linear', 'constant'}, optional
-        Detrend type, as in `scipy.signal.detrend`. ``'linear'`` (default)
+    dtype : {'linear', 'constant', 'none'}, optional
+        Detrend type, as in `scipy.signal.detrend`; ``'none'`` returns the windows as cut (the manuscript setting,
+        mirroring `src.sim_estimation.fit_mvar`). ``'linear'`` (default)
         removes mean + slope; its low-frequency attenuation edge sits at
         roughly ``1 / win_len_seconds``, so the window length must keep that
         below the coupling band of interest. ``'constant'`` removes only the
@@ -325,11 +326,13 @@ def detrend_windows(stack, dtype='linear'):
     np.ndarray, shape (k, win_len, n_windows)
         Detrended windows, same shape as `stack`.
     """
+    if dtype == 'none':
+        return stack
     centred = stack - stack.mean(axis=1, keepdims=True)
     if dtype == 'constant':
         return centred
     if dtype != 'linear':
-        raise ValueError(f"dtype must be 'linear' or 'constant', got {dtype!r}")
+        raise ValueError(f"dtype must be 'linear', 'constant' or 'none', got {dtype!r}")
     t = np.arange(stack.shape[1]) - (stack.shape[1] - 1) / 2
     slope = np.sum(centred * t[None, :, None], axis=1) / np.sum(t ** 2)
     return centred - slope[:, None, :] * t[None, :, None]

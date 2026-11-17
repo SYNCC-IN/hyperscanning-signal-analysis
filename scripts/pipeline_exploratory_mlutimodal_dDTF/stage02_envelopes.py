@@ -1,4 +1,4 @@
-"""Stage 2 - individual-band envelopes for the interbrain ffDTF + HRV pipeline.
+"""Stage 2 - individual-band envelopes for the interbrain dDTF/GPDC + HRV pipeline.
 
 Reads Stage 1's `Interbrain_ffDTF_analysis/01_coverage/coverage.csv` plus the
 hand-curated `included_dyads` list from `pipeline_config.json`'s "shared"
@@ -51,6 +51,7 @@ differ by orders of magnitude in physical units -- are visually comparable.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -89,7 +90,7 @@ from src.reporting import render_dyad_panel_envelopes
 CONFIG_PATH = Path(__file__).with_name("pipeline_config.json")
 CFG = load_stage_config(CONFIG_PATH, "stage02_envelopes")
 
-DRIVE_ROOT = Path(CFG["DRIVE_ROOT"])
+DRIVE_ROOT = Path(os.environ.get("SYNCC_DRIVE_ROOT", CFG["DRIVE_ROOT"]))  # env var > pipeline_config.local.json > pipeline_config.json
 EEG_CLEANED_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "ICA_output" / "EEG_ICA_CLEANED"
 IBI_ROOT = DRIVE_ROOT / "UNIWAW_EEG_exported_BY_TASKS" / "IBI"
 

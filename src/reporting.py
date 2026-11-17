@@ -67,7 +67,8 @@ def render_dyad_panel_mvar_order(dyad_id, entries):
         badge_text = "quality_ok" if entry["quality_ok"] else "quality_fail"
         html.append(f'<div class="film-block"><h3>{entry["film"]} (group={entry["group"]})</h3>')
         html.append(
-            f'<div class="header-line">n_windows={entry["n_windows"]}  p_used={entry["p_used"]}  '
+            f'<div class="header-line">n_windows={entry["n_windows"]}  p={entry["model_order"]} '
+            f'(criterion order {entry["p_used"]}, descriptive)  '
             f'max_abs_root={entry["max_abs_root"]:.3f}  stable={entry["stable"]}  '
             f'min_white_fraction={entry["min_white_fraction"]:.2f}  '
             f'<span class="badge {badge_class}">{badge_text}</span></div>'
@@ -77,28 +78,28 @@ def render_dyad_panel_mvar_order(dyad_id, entries):
         html.append(f'<img src="qc/{entry["roots"]}" alt="AR roots global vs windowed">')
         html.append(f'<img src="qc/{entry["acf"]}" alt="residual ACF global vs windowed">')
         html.append(f'<img src="qc/{entry["detrend"]}" alt="pre vs post detrend">')
-        html.append(f'<img src="qc/{entry["mvar_grid"]}" alt="ffDTF grid" class="mvar-grid">')
+        html.append(f'<img src="qc/{entry["mvar_grid"]}" alt="connectivity grid" class="mvar-grid">')
         html.append('</div></div>')
     html.append('</div>')
     return "\n".join(html)
 
 
-def render_dyad_panel_ffdtf(dyad_id, entries):
-    """Render one Stage 4 dyad's QC panel (one film-block per case) as an HTML fragment."""
-    html = [f'<div class="dyad-panel" id="panel-{dyad_id}"><h2>{dyad_id}</h2>']
+def render_dyad_panel_ffdtf(dyad_id, entries, estimator):
+    """Render one Stage 4 dyad's QC panel for one estimator (one film-block per case) as an HTML fragment."""
+    html = [f'<div class="dyad-panel" id="panel-{dyad_id}-{estimator}"><h2>{dyad_id}: {estimator}</h2>']
     for entry in entries:
         badge_class = "badge-ok" if entry["quality_ok"] else "badge-bad"
         badge_text = "quality_ok" if entry["quality_ok"] else "quality_fail (Stage 3)"
         edge_text = "  ".join(f"{edge}={value:.3f}" for edge, value in entry["edge_values"].items())
         html.append(f'<div class="film-block"><h3>{entry["film"]} (group={entry["group"]})</h3>')
         html.append(
-            f'<div class="header-line">p_used={entry["p_used"]}  window={entry["win_len"]}/{entry["step"]} samp  '
-            f'Granger_estimator range=[{entry["Granger_estimator_min"]:.3f}, {entry["Granger_estimator_max"]:.3f}]  '
-            f'max_rowsum_dev={entry["max_rowsum_dev"]:.2e}  '
+            f'<div class="header-line">p={entry["model_order"]}  stable={entry["stable"]} '
+            f'(max root {entry["max_abs_root"]:.3f})  '
+            f'{estimator} range=[{entry["value_min"]:.3f}, {entry["value_max"]:.3f}]  '
             f'<span class="badge {badge_class}">{badge_text}</span></div>'
         )
         html.append(f'<div class="header-line">{edge_text}</div>')
-        html.append(f'<div class="row"><img src="qc/{entry["grid_image"]}" alt="Granger_estimator grid"></div>')
+        html.append(f'<div class="row"><img src="{estimator}/qc/{entry["grid_image"]}" alt="{estimator} grid"></div>')
         html.append('</div>')
     html.append('</div>')
     return "\n".join(html)
