@@ -84,7 +84,7 @@ def panel_b(ax):
     ti = 14
     ax.plot(xs[ti - 4:ti], np.full(4, wy), "o", ms=3, mfc="white", mec=RED, mew=0.8)
     ax.plot(xs[ti], wy, "o", ms=3.5, color=RED)
-    ax.annotate("one regression row:\nx_w(t) and its lags x_w(t−1 … t−p),\nall from the same window",
+    ax.annotate(r"one regression row:" "\n" r"$\mathbf{x}_w(t)$ and its lags" "\n" r"$\mathbf{x}_w(t-1), \dots, \mathbf{x}_w(t-p)$," "\n" r"all from the same window",
                 xy=(xs[ti], wy + 0.8), xytext=(29, 41), fontsize=6.3, color=RED,
                 arrowprops=dict(arrowstyle="-", color=RED, lw=0.6))
     X0, Y0, H, WY, WX = 70, 6, 46, 4, 13
@@ -104,7 +104,7 @@ def panel_b(ax):
     ax.add_patch(FancyArrowPatch((51, 27), (X0 - 2, 27), arrowstyle="-|>",
                  mutation_scale=9, color="k", lw=0.8))
     ax.text((51 + X0 - 2) / 2, 28.3, "stack rows\nof all windows", ha="center", fontsize=6.3)
-    ax.text(X0 + (WY + 1 + WX) / 2, Y0 - 1.5, "one least-squares fit\n→ A(r), Σ  (Eq. 3)",
+    ax.text(X0 + (WY + 1 + WX) / 2, Y0 - 1.5, r"one least-squares fit" "\n" r"→ $A(r)$, $\Sigma$  (Eq. 3)",
             ha="center", va="top", fontsize=7)
     ax.set_title("Least squares on stacked windows", fontsize=8.5)
 
@@ -122,14 +122,14 @@ def panel_c(axm, axh):
     axm.plot(perm, np.arange(N), "o", ms=4, mfc="none", mec=BLUE, mew=1.1)
     axm.set_xticks([]); axm.set_yticks([])
     axm.set_xlabel("caregiver c", fontsize=7); axm.set_ylabel("child b", fontsize=7)
-    axm.set_title("table T_bc for one edge", fontsize=8.5)
+    axm.set_title(r"table $V_{bc}$ for one edge", fontsize=8.5)
     real = np.mean(np.diag(T))
     nulls = np.array([T[np.arange(N), rng.permutation(N)].mean() for _ in range(1000)])
     axh.hist(nulls, bins=30, color=BLUE, alpha=0.5)
     axh.set_ylim(0, axh.get_ylim()[1] * 1.3)
     axh.axvline(real, color=RED, lw=1.4)
-    axh.text(real, axh.get_ylim()[1] * 0.92, "real\nmean ", color=RED, fontsize=6.5, va="top", ha="right")
-    axh.set_yticks([]); axh.set_xlabel("mean over re-paired dyads", fontsize=7)
+    axh.text(real, axh.get_ylim()[1] * 0.92, r"$\bar V_{\mathrm{real}}$ ", color=RED, fontsize=6.5, va="top", ha="right")
+    axh.set_yticks([]); axh.set_xlabel(r"$\bar V_{\pi}$: mean over re-paired dyads", fontsize=7)
     axh.tick_params(labelsize=6)
     for s in ("top", "right", "left"):
         axh.spines[s].set_visible(False)
@@ -149,7 +149,7 @@ def panel_d(axs, axh):
     axs.plot(d * flips, y, "o", ms=3.5, mfc="none", mec=BLUE, mew=0.9)
     axs.set_yticks([0, 1]); axs.set_yticklabels(["one sign\nflip", "observed"], fontsize=6.5)
     axs.set_ylim(-0.5, 1.5)
-    axs.set_xlabel("d = Δforward − Δreverse (per dyad)", fontsize=7)
+    axs.set_xlabel(r"$d = \Delta_{\mathrm{forward}} - \Delta_{\mathrm{reverse}}$ (per dyad)", fontsize=7)
     axs.tick_params(labelsize=6)
     for s in ("top", "right"):
         axs.spines[s].set_visible(False)
@@ -158,8 +158,8 @@ def panel_d(axs, axh):
     axh.hist(nulls, bins=30, color=BLUE, alpha=0.5)
     axh.set_ylim(0, axh.get_ylim()[1] * 1.3)
     axh.axvline(d.mean(), color=RED, lw=1.4)
-    axh.text(d.mean(), axh.get_ylim()[1] * 0.92, "observed\nmean d ", color=RED, fontsize=6.5, va="top", ha="right")
-    axh.set_yticks([]); axh.set_xlabel("mean d after sign flips", fontsize=7)
+    axh.text(d.mean(), axh.get_ylim()[1] * 0.92, r"observed" "\n" r"mean $d$ ", color=RED, fontsize=6.5, va="top", ha="right")
+    axh.set_yticks([]); axh.set_xlabel(r"mean $d$ after sign flips", fontsize=7)
     axh.tick_params(labelsize=6)
     for s in ("top", "right", "left"):
         axh.spines[s].set_visible(False)
