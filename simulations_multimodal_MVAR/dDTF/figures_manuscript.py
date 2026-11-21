@@ -169,7 +169,7 @@ def fig3():
         ax.set_xlabel("source"); ax.set_title(ttl, fontsize=9, loc="left")
         ax.spines[:].set_visible(True)
     axes[0].set_ylabel("target")
-    fig.colorbar(im, ax=axes[1:], fraction=0.025, label="proportion of studies with p < 0.05")
+    fig.colorbar(im, ax=axes[1:], fraction=0.025, label=r"proportion of studies with $p < 0.05$")
     fig.savefig(OUT / "fig3_S1_recovery.png", dpi=200, bbox_inches="tight"); plt.close(fig)
 
 
@@ -184,18 +184,18 @@ def fig_gain_conversion():
         ax.fill_between(sub.gain, 100 * sub.PI_q05, 100 * sub.PI_q95, color=col, alpha=0.2, lw=0)
         ax.plot(sub.gain, 100 * sub.PI_mean, color=col, lw=1.5, ls=ls, label=edge_type.replace("->", " → "))
     ax.set_xlabel("coupling gain"); ax.set_ylabel("prediction improvement PI (%)")
-    ax.set_title("A  Prediction improvement and Granger causality F", fontsize=9, loc="left")
+    ax.set_title(r"A  Prediction improvement and Granger causality $F$", fontsize=9, loc="left")
     ax.legend(fontsize=7, frameon=False)
     sec = ax.secondary_yaxis("right", functions=(lambda pi: -np.log(1.0 - np.clip(pi, 0, 99.9) / 100.0),
                                                  lambda f: 100.0 * (1.0 - np.exp(-f))))
-    sec.set_ylabel("Granger causality F")
+    sec.set_ylabel(r"Granger causality $F$")
     ax = axes[1]
     for est, col in [("dDTF", "0.3"), ("GPDC", "#b2182b")]:
         ax.fill_between(s4.gain, s4[f"delta_{est}_q25"], s4[f"delta_{est}_q75"], color=col, alpha=0.2, lw=0)
         ax.plot(s4.gain, s4[f"delta_{est}_med"], color=col, lw=1.5, marker="o", ms=3, label=est)
     ax.axhline(0, color="k", lw=0.6)
-    ax.set_xlabel("coupling gain"); ax.set_ylabel("Δ (Box–Cox units)")
-    ax.set_title("B  Median Δ at 60 s (brain → brain, N = 25)", fontsize=9, loc="left")
+    ax.set_xlabel("coupling gain"); ax.set_ylabel(r"$\Delta$ (Box–Cox units)")
+    ax.set_title(r"B  Median $\Delta$ at 60 s (brain → brain, $N = 25$)", fontsize=9, loc="left")
     ax.legend(fontsize=7, frameon=False)
     for ext in ("png", "svg"):
         fig.savefig(OUT / f"fig_gain_conversion.{ext}", dpi=200, bbox_inches="tight")
@@ -300,7 +300,7 @@ def fig06():
                             label=f"{est}, {'all pseudo-dyads' if mode == 'pooled' else 'excluding own members'}")
             ax.set_xticks(range(len(cells))); ax.set_xticklabels([f"{s}" for n, s in cells], fontsize=6.5)
             for g, n in enumerate((10, 25, 50)):
-                ax.text(3 * g + 1, -0.2, f"N = {n}", transform=ax.get_xaxis_transform(), ha="center", fontsize=7)
+                ax.text(3 * g + 1, -0.2, rf"$N = {n}$", transform=ax.get_xaxis_transform(), ha="center", fontsize=7)
                 if g:
                     ax.axvline(3 * g - 0.5, color="0.75", lw=0.4)
             ax.set_ylim(0, 0.1); ax.set_xlim(-0.6, 8.6); ax.set_title(title)
@@ -336,7 +336,7 @@ def fig06():
                 ax.errorbar(x + dodge(k, 6, 0.75), y, yerr=wilson_err(y, m), fmt=mk, ms=2.6, lw=0.5, color=EST_COL[est],
                             mfc=EST_COL[est] if est == "dDTF" else "white", mew=0.7, label=f"{est}, {lab}")
             ax.set_xticks(range(len(cells_c))); ax.set_xticklabels([f"{n}/{s}" for n, s in cells_c], rotation=90, fontsize=5.5)
-            ax.set_ylim(*ylim); ax.set_xlabel("N / segment (s)"); ax.set_title(f"family-wise rate,\n{title}")
+            ax.set_ylim(*ylim); ax.set_xlabel(r"$N$ / segment (s)"); ax.set_title(f"family-wise rate,\n{title}")
             if j == 0:
                 ax.set_ylabel("rate (any of 8 edges)"); panel(ax, "C", x=-0.32)
             else:
@@ -349,8 +349,8 @@ def fig06():
             npz = np.load(RES / est / "S_03" / "z_values_pooled.npz", allow_pickle=True)
             z = np.concatenate([np.asarray(npz[k], float).ravel() for k in npz.files if k != "edges"])
             ax.hist(z[np.isfinite(z)], bins=np.linspace(-5, 5, 81), density=True, histtype="step", color=EST_COL[est], lw=1.0, label=est)
-        ax.set_xlim(-4.5, 4.5); ax.set_ylim(0, 0.55); ax.set_xlabel("robust z"); ax.set_ylabel("density")
-        ax.set_title("robust z,\nno coupling"); ax.legend(fontsize=5.5, loc="upper left"); panel(ax, "D", x=-0.3)
+        ax.set_xlim(-4.5, 4.5); ax.set_ylim(0, 0.55); ax.set_xlabel(r"robust $z$"); ax.set_ylabel("density")
+        ax.set_title(r"robust $z$," "\n" r"no coupling"); ax.legend(fontsize=5.5, loc="upper left"); panel(ax, "D", x=-0.3)
         save(fig, "fig06_calibration")
 
 
@@ -373,7 +373,7 @@ def fig07():
                         col = shade(EST_COL[est], k, len(ns))
                         wilson_band(ax, sub.gain, sub[f"power {est}"], n_rep, col)
                         ax.plot(sub.gain, sub[f"power {est}"], color=col, ls=ls, marker=mk, ms=2.5,
-                                label=f"N = {n}, {seg} s")
+                                label=rf"$N = {n}$, {seg} s")
                 ax.set_ylim(-0.02, 1.02); ax.set_xticks([0, 0.1, 0.2, 0.3, 0.4, 0.5]); ax.set_xlabel("gain")
                 ax.set_title(f"{title}\n{est}")
                 if e == 0:
@@ -444,9 +444,9 @@ S8_ORDER = ["baseline", "estimator=DTF", "estimator=ffDTF", "estimator=dDTF", "e
             "overlap=0.25", "overlap=0.75", "fit=Yule-Walker", "fit=Yule-Walker, window=20s", "detrend=linear", "detrend=constant",
             "box-cox=none", "band=0.05-0.15", "band=0.1-0.3", "band=0.3-0.5"]
 S8_LABEL = {"baseline": "default", "estimator=DTF": "DTF",
-            "estimator=ffDTF": "ffDTF", "estimator=dDTF": "dDTF (GPDC run)", "estimator=GPDC": "GPDC (dDTF run)", "order=2": "p = 2",
-            "order=3": "p = 3", "order=6": "p = 6", "order=8": "p = 8", "order=AIC": "p by AIC", "order=HQ": "p by HQ",
-            "order=SC": "p by SC", "window=6s": "6 s windows", "window=15s": "15 s windows", "window=20s": "20 s windows",
+            "estimator=ffDTF": "ffDTF", "estimator=dDTF": "dDTF (GPDC run)", "estimator=GPDC": "GPDC (dDTF run)", "order=2": r"$p = 2$",
+            "order=3": r"$p = 3$", "order=6": r"$p = 6$", "order=8": r"$p = 8$", "order=AIC": r"$p$ by AIC", "order=HQ": r"$p$ by HQ",
+            "order=SC": r"$p$ by SC", "window=6s": "6 s windows", "window=15s": "15 s windows", "window=20s": "20 s windows",
             "window=whole segment": "no windows", "overlap=0.25": "25% overlap", "overlap=0.75": "75% overlap",
             "fit=Yule-Walker": "Yule–Walker, 10 s", "fit=Yule-Walker, window=20s": "Yule–Walker, 20 s",
             "detrend=linear": "linear detrending", "detrend=constant": "constant detrending", "box-cox=none": "no Box–Cox", "band=0.05-0.15": "band 0.05–0.15 Hz",
@@ -519,16 +519,16 @@ def fig08():
                                 marker=mk, ms=3, lw=0.8, mfc="white" if role == "absent reverse" else EST_COL[est],
                                 )
         handles = [matplotlib.lines.Line2D([], [], color=EST_COL[e], lw=1, label=e) for e in EST] + [
-            matplotlib.lines.Line2D([], [], color="0.3", ls="-", lw=0.8, label="without Z (4 nodes)"),
-            matplotlib.lines.Line2D([], [], color="0.3", ls="--", lw=0.8, label="with Z (5 nodes)"),
+            matplotlib.lines.Line2D([], [], color="0.3", ls="-", lw=0.8, label=r"without $Z$ (4 nodes)"),
+            matplotlib.lines.Line2D([], [], color="0.3", ls="--", lw=0.8, label=r"with $Z$ (5 nodes)"),
             matplotlib.lines.Line2D([], [], color="0.3", ls="", marker="o", ms=3, label="cg → child heart"),
             matplotlib.lines.Line2D([], [], color="0.3", ls="", marker="s", ms=3, mfc="white", label="child → cg heart")]
-        ax.set_xticks([0.2, 0.4, 0.6]); ax.set_ylim(-0.02, 1.05); ax.set_xlabel("gain of Z"); ax.set_ylabel("heart–heart edge detected")
-        ax.set_title("omitted driver Z (60 s, p = 4)"); ax.legend(handles=handles, fontsize=5, loc="center left", labelspacing=0.15, bbox_to_anchor=(0.12, 0.6))
+        ax.set_xticks([0.2, 0.4, 0.6]); ax.set_ylim(-0.02, 1.05); ax.set_xlabel(r"gain of $Z$"); ax.set_ylabel("heart–heart edge detected")
+        ax.set_title(r"omitted driver $Z$ (60 s, $p = 4$)"); ax.legend(handles=handles, fontsize=5, loc="center left", labelspacing=0.15, bbox_to_anchor=(0.12, 0.6))
         panel(ax, "D", x=-0.32)
         # E: sweep with Z included: segment length and model order, with collinearity diagnostics
         withz = sweep[(sweep.analysis == "5-node [est] (Z included)") & (sweep.role == "absent")]
-        for j, (axis, sel, xlabel) in enumerate([("seg_s", withz.p == 4, "segment (s), p = 4"), ("p", withz.seg_s == 60, "model order p, 60 s")]):
+        for j, (axis, sel, xlabel) in enumerate([("seg_s", withz.p == 4, r"segment (s), $p = 4$"), ("p", withz.seg_s == 60, r"model order $p$, 60 s")]):
             ax = fig.add_subplot(right[1 + j, 1] if j == 0 else right[2, 0]); ax.axhline(ALPHA, color="0.3", ls="--", lw=0.6)
             for est in EST:
                 for gain, mk in [(0.4, "o"), (0.6, "s")]:
@@ -536,7 +536,7 @@ def fig08():
                     ax.errorbar(sub[axis], sub[f"study_rate {est}"], yerr=wilson_err(sub[f"study_rate {est}"], 200), color=EST_COL[est],
                                 marker=mk, ms=3, lw=0.8, mfc=EST_COL[est] if gain == 0.6 else "white", label=f"{est}, gain {gain}")
             ax.set_xticks(sorted(withz[axis].unique())); ax.set_ylim(-0.02, 1.05); ax.set_xlabel(xlabel)
-            ax.set_ylabel("cg → child heart detected"); ax.set_title("with Z: " + ("segment length" if j == 0 else "model order"))
+            ax.set_ylabel("cg → child heart detected"); ax.set_title(r"with $Z$: " + ("segment length" if j == 0 else "model order"))
             if j == 0:
                 ax.legend(fontsize=5, loc="upper left"); panel(ax, "E", x=-0.32)
         ax = fig.add_subplot(right[2, 1])
@@ -545,7 +545,7 @@ def fig08():
             sub = diag[sel].sort_values(axis)
             ax.plot(range(3), sub["vif_cg_heart_real dDTF"], color="0.25", marker=mk, ms=3, label=f"VIF {lab}")
             ax.plot(range(3), sub["cond_real dDTF"], color="0.6", marker=mk, ms=3, ls="--", label=f"condition no. {lab}")
-        ax.set_xticks(range(3)); ax.set_xticklabels(["60 s / p 2", "120 s / p 4", "300 s / p 6"], fontsize=6)
+        ax.set_xticks(range(3)); ax.set_xticklabels([r"60 s /" "\n" r"$p = 2$", r"120 s /" "\n" r"$p = 4$", r"300 s /" "\n" r"$p = 6$"], fontsize=6)
         ax.set_ylabel("collinearity (real dyads)"); ax.set_title("5-node model, gain 0.6")
         ax.legend(fontsize=5, loc="upper left", labelspacing=0.15); ax.set_ylim(0, 75)
         save(fig, "fig08_specificity")
@@ -807,7 +807,7 @@ S13_GROUP = [("perm_film_maxT", "max-T within film"), ("perm_24_maxT", "max-T ov
 S13_FILM = [("repair_maxT", "re-pairing max-T")]
 S13_FILM_TESTS = {"repair_maxT": "B"}      # film methods read from S_13_film_tests.csv (S13_film_tests.py; test B = re-pairing)
 S13_INTER = [("perm_interaction_maxT", "interaction max-T")]
-S13_BAYES = [("bayes_edge", "per-edge Bayes"), ("bayes_pooled_eff", "pooled Bayes"), ("bayes_pooled_int", "(1|edge)")]
+S13_BAYES = [("bayes_edge", "per-edge Bayes"), ("bayes_pooled_eff", "pooled Bayes"), ("bayes_pooled_int", r"$(1 \mid \mathrm{edge})$")]
 S13_MARK = {"perm_film_maxT": ("o", "0.15"), "perm_24_maxT": ("s", "0.35"), "perm_mean_maxT": ("^", "0.55"),
             "perm_contrast_maxT": ("D", "0.15"), "repair_maxT": ("D", "0.15"), "perm_interaction_maxT": ("v", "0.15"),
             "bayes_edge": ("o", "#c0392b"), "bayes_pooled_eff": ("s", "#e67e22"), "bayes_pooled_int": ("^", "#f1c40f")}
@@ -819,7 +819,7 @@ S13_NULL_ROWS = {"perm_film_maxT": ("group", "group, within film"), "perm_24_max
                  "perm_mean_maxT": ("group", "group, film mean"), "perm_contrast_maxT": ("film", "film, sign-flip"),
                  "repair_maxT": ("film", "film, re-pairing"),
                  "perm_interaction_maxT": ("interaction", "interaction"), "bayes_edge": ("group", "per-edge Bayes"),
-                 "bayes_pooled_eff": ("group", "pooled Bayes"), "bayes_pooled_int": ("group", "(1|edge)")}
+                 "bayes_pooled_eff": ("group", "pooled Bayes"), "bayes_pooled_int": ("group", r"$(1 \mid \mathrm{edge})$")}
 
 
 def s13_marker_style(m):
@@ -1077,19 +1077,20 @@ def figS11_v2():
                   ("a", "renull", "F", "#1b9e77", 0.3), ("h", "renull", "F", "#d95f02", 0.3),
                   ("a", "fixed", "F", "#1b9e77", 0.15), ("h", "fixed", "F", "#d95f02", 0.15)]
         n_slots = 2 * (len(series) + 1)
+        stat_labels = {"ss_hyp": r"$SS_{\mathrm{hyp}}$", "F": r"$F$"}
         k = 0
         for scenario, variant, statistic, colour, alpha in series:
             for est in EST:
                 rows = pd.concat([prec[(prec.scenario == scenario) & (prec.variant == variant) & (prec.statistic == statistic)
                                        & (prec.scope == sc) & (prec.term == t)] for sc, t in terms])
                 ci_bars(ax, np.arange(len(terms)) + dodge(k, n_slots, 0.85), rows, est, colour, alpha=alpha,
-                        label=f"{scenario}, {variant} + {statistic}" if est == "dDTF" else None)
+                        label=f"{scenario}, {variant} + {stat_labels[statistic]}" if est == "dDTF" else None)
                 k += 1
         for est in EST:
             rows = jtab[(jtab.method == "hybrid_renull_cov") & (jtab.statistic == "ss_hyp")]
             x = [labels.index("G"), labels.index("edge G")]
             ci_bars(ax, np.array(x) + dodge(k, n_slots, 0.85), pd.concat([rows[rows.scope == "omnibus"], rows[rows.scope == "per-edge max-F"]]),
-                    est, "#7570b3", marker="s", label="j, hybrid + ss_hyp" if est == "dDTF" else None)
+                    est, "#7570b3", marker="s", label=r"j, hybrid + $SS_{\mathrm{hyp}}$" if est == "dDTF" else None)
             k += 1
         ax.set_xticks(range(len(terms))); ax.set_xticklabels(labels); ax.set_ylim(0, 0.32); ax.set_ylabel("rejection rate")
         ax.set_title("group terms under the null (a, h: 1000 replicates; j: 200; filled dDTF, open GPDC; faint: comparators)")
@@ -1112,12 +1113,12 @@ def figS11_v2():
                 ci_bars(ax, [i + dodge(k, 2, 0.4)], mean, est, colour)
         ax.axhline(0.8, color="0.3", ls=":", lw=0.6); ax.set_ylim(-0.02, 1.05)
         ax.set_xticks(range(len(cats))); ax.set_xticklabels([c[5] for c in cats], rotation=90, fontsize=5.5)
-        ax.set_ylabel("detection rate"); ax.set_title("power: renull + ss_hyp (pink) vs S13 tests (grey)", fontsize=6.5)
+        ax.set_ylabel("detection rate"); ax.set_title(r"power: renull + $SS_{\mathrm{hyp}}$ (pink) vs S13 tests (grey)", fontsize=6.5)
         fig.text(0.005, 0.47, "B", fontsize=11, fontweight="bold")
         # C: scenario j
         ax = fig.add_subplot(gs[1, 1]); fpr_guides(ax)
-        jm = [("hybrid_renull_cov", "ss_hyp", "hybrid ss"), ("hybrid_renull_cov", "F", "hybrid F"), ("hybrid_renull_cov", "beta", "hybrid β"),
-              ("fixed_FL_cov", "F", "FL c F"), ("fixed_FL_cov", "ss_hyp", "FL c ss"), ("renull_no_cov", "ss_hyp", "no c ss")]
+        jm = [("hybrid_renull_cov", "ss_hyp", r"hybrid $SS_{\mathrm{hyp}}$"), ("hybrid_renull_cov", "F", r"hybrid $F$"), ("hybrid_renull_cov", "beta", r"hybrid $\beta$"),
+              ("fixed_FL_cov", "F", r"FL c $F$"), ("fixed_FL_cov", "ss_hyp", r"FL c $SS_{\mathrm{hyp}}$"), ("renull_no_cov", "ss_hyp", r"no c $SS_{\mathrm{hyp}}$")]
         for i, (method, statistic, _) in enumerate(jm):
             for k, (scope, marker) in enumerate([("omnibus", "o"), ("per-edge max-F", "s")]):
                 rows = jtab[(jtab.method == method) & (jtab.statistic == statistic) & (jtab.scope == scope)]
@@ -1129,15 +1130,18 @@ def figS11_v2():
         ax = fig.add_subplot(gs[1, 2]); fpr_guides(ax)
         wc = [(sc, t) for sc in ("a", "h") for t in ("F", "FxE", "E", "film contrast")]
         dvs = [("delta", "#e7298a"), ("T_real", "#1b9e77"), ("T_real_minus_pooled", "#7570b3")]
+        dv_labels = {"delta": r"$\Delta$", "T_real": r"$V$ (real dyads, no null)", "T_real_minus_pooled": r"$V$ minus pooled null median"}
         for i, (scenario, term) in enumerate(wc):
             for k, (dv, colour) in enumerate(dvs):
+                if term == "E" and dv == "T_real":           # E on V is not a null: not drawn
+                    continue
                 rows = within[(within.scenario == scenario) & (within.term == term) & (within.dv == dv)
                               & within.statistic.isin(["F", "maxT"])]
                 for m, est in enumerate(EST):
                     ci_bars(ax, [i + dodge(2 * k + m, 6, 0.8)], rows, est, colour,
-                            label=dv.replace("_", " ") if (i == 0 and est == "dDTF") else None)
-        ax.set_xticks(range(len(wc))); ax.set_xticklabels([f"{sc}: {t.replace('film contrast', 'film c.')}" for sc, t in wc], rotation=90, fontsize=5.5)
-        ax.set_ylim(0, 0.3); ax.set_ylabel("rejection rate (F; film contrast max-T)"); ax.set_title("within terms by DV (E on T_real not null)", fontsize=6.5)
+                            label=dv_labels[dv] if (i == 0 and est == "dDTF") else None)
+        ax.set_xticks(range(len(wc))); ax.set_xticklabels([f"{sc}: {FL_TERM_LABELS.get(t, 'film c.')}" for sc, t in wc], rotation=90, fontsize=5.5)
+        ax.set_ylim(0, 0.3); ax.set_ylabel(r"rejection rate ($F$; film contrast max-T)"); ax.set_title(r"within terms by DV (E not shown for $V$)", fontsize=6.5)
         ax.legend(fontsize=5, loc="upper left"); panel(ax, "D", x=-0.3)
         save(fig, "figS11_fl_anova_v2")
 
@@ -1200,7 +1204,7 @@ def figS12():
     """S13 film-contrast tests: A null rates of A/B/C (a, h, b, k), B power (f, e), C renull + ss_hyp group terms in b, f."""
     film = comparison("S_13_S_13_film_tests.csv")
     group = comparison("S_13_S_13_group_bf.csv")
-    methods = [("A", "#e7298a", "A: sign flip Δ"), ("B", "#1b9e77", "B: re-pairing T"), ("C", "#7570b3", "C: bootstrap offset")]
+    methods = [("A", "#e7298a", r"A: sign flip $\Delta$"), ("B", "#1b9e77", r"B: re-pairing $V$"), ("C", "#7570b3", "C: bootstrap offset")]
     terms = [("per-edge max-T", "film contrast", "film c."), ("omnibus", "F", "F"), ("omnibus", "FxE", "F×E")]
     with plt.rc_context(PUB):
         fig = plt.figure(figsize=(FULL_W, 6.4))
@@ -1246,7 +1250,7 @@ def figS12():
                         label=f"scenario {scenario}" if est == "dDTF" else None)
         ax.set_xticks(range(len(gterms))); ax.set_xticklabels(glabels, rotation=90, fontsize=5.5)
         ax.set_ylim(0, max(0.15, ax.get_ylim()[1])); ax.set_ylabel("rejection rate")
-        ax.set_title("group terms, renull + ss_hyp, coupling present (1000 replicates)", fontsize=6.5)
+        ax.set_title(r"group terms, renull + $SS_{\mathrm{hyp}}$, coupling present (1000 replicates)", fontsize=6.5)
         ax.legend(fontsize=5.5, loc="upper right"); panel(ax, "C", x=-0.12)
         save(fig, "figS12_film_contrast_tests")
 
